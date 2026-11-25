@@ -1125,6 +1125,9 @@ impl ChatCore {
     /// The client of the conversation: a trusted device's, or the server
     /// account's.
     fn route(&self, conversation_id: &str) -> Result<(ChatClient, String), ChatError> {
+        if let Some(group) = crate::group::conversation_group(conversation_id) {
+            return self.group_client(group);
+        }
         match crate::device_chat::conversation_device(conversation_id) {
             Some(endpoint_id) => self.device_client(endpoint_id),
             None => self.client_and_user(),
@@ -1171,14 +1174,21 @@ impl ChatCore {
             .filter(|d| d.trusted)
             .map(|d| d.endpoint_id)
             .collect();
+        let groups: Vec<String> = relay
+            .record
+            .get()
+            .groups
+            .iter()
+            .map(|g| crate::group::group_conversation(&g.id))
+            .collect();
         self.devices_lock().clients.retain(|id, client| {
-            let keep = trusted.contains(id);
+            let keep = trusted.contains(id) || groups.contains(id);
             if !keep {
                 client.shutdown();
             }
             keep
         });
-        trusted
+        let mut clients: Vec<(ChatClient, String)> = trusted
             .iter()
             .filter_map(|id| match self.device_client(id) {
                 Ok(found) => Some(found),
@@ -1187,7 +1197,36 @@ impl ChatCore {
                     None
                 }
             })
-            .collect()
+            .collect();
+        clients.extend(groups.iter().filter_map(|conversation| {
+            let group = crate::group::conversation_group(conversation)?;
+            match self.group_client(group) {
+                Ok(found) => Some(found),
+                Err(e) => {
+                    forge_runtime::logging::warn!("a group conversation didn't open: {e}");
+                    None
+                }
+            }
+        }));
+        clients
+    }
+
+    /// The client of group `group`'s conversation, opened on first use.
+    /// It is kept with the device conversations, by conversation id.
+    fn group_client(&self, group: &str) -> Result<(ChatClient, String), ChatError> {
+        self.ensure_running()?;
+        let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
+        let conversation_id = crate::group::group_conversation(group);
+        if let Some(client) = self.devices_lock().clients.get(&conversation_id) {
+            return Ok((client.clone(), crate::device_chat::ME.to_string()));
+        }
+        if relay.record.get().group(group).is_none() {
+            return Err(ChatError::NotFound { conversation_id });
+        }
+        let repo = relay.group_repo(group).map_err(|e| ChatError::Storage {
+            reason: e.to_string(),
+        })?;
+        self.open_relay_client(&relay, &conversation_id, Arc::new(repo))
     }
 
     /// The client of `endpoint_id`'s conversation, opened on first use.
@@ -1211,7 +1250,27 @@ impl ChatCore {
             .map_err(|e| ChatError::Storage {
                 reason: e.to_string(),
             })?;
-        let directory = self.storage_directory.join("devices").join(endpoint_id);
+        self.open_relay_client(&relay, endpoint_id, Arc::new(repo))
+    }
+
+    /// Opens the client of one of Relay's own conversations (a device's,
+    /// kept by its endpoint id, or a group's, by its conversation id) on
+    /// `repo`, live while Relay is open.
+    fn open_relay_client(
+        &self,
+        relay: &Arc<crate::RelayCore>,
+        key: &str,
+        repo: Arc<dyn chat_core::ChatRepo>,
+    ) -> Result<(ChatClient, String), ChatError> {
+        let user_id = crate::device_chat::ME.to_string();
+        let conversation_id = match crate::group::conversation_group(key) {
+            Some(_) => key.to_string(),
+            None => crate::device_chat::device_conversation(key),
+        };
+        let directory = self
+            .storage_directory
+            .join("devices")
+            .join(key.replace(':', "-"));
         std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", directory.display()),
         })?;
@@ -1223,7 +1282,7 @@ impl ChatCore {
         let hub = self.events.clone();
         let events_user = user_id.clone();
         let client = ChatClient::open(
-            Arc::new(repo),
+            repo,
             ChatStore::in_directory(directory),
             config,
             move |event: chat_core::ChatEvent| hub.publish(types::event(event, &events_user)),
@@ -1236,14 +1295,12 @@ impl ChatCore {
             forge_runtime::logging::warn!("a device conversation isn't live: {e}");
         }
         let mut devices = self.devices_lock();
-        if let Some(opened) = devices.clients.get(endpoint_id) {
+        if let Some(opened) = devices.clients.get(key) {
             // Opened by another command meanwhile: keep that one.
             client.shutdown();
             return Ok((opened.clone(), user_id));
         }
-        devices
-            .clients
-            .insert(endpoint_id.to_string(), client.clone());
+        devices.clients.insert(key.to_string(), client.clone());
         Ok((client, user_id))
     }
 

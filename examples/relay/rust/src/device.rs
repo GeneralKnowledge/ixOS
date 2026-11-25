@@ -133,6 +133,25 @@ pub(crate) enum DeviceMsg {
         trusted: Vec<(String, String)>,
         revoked: Vec<String>,
     },
+    /// A message in a group chat (`group`, N7), by the id chat-core gave
+    /// it, kept through retries. Taken only from a member of the group.
+    GroupMessage {
+        group: [u8; 16],
+        id: String,
+        body: String,
+        reply_to: Option<String>,
+    },
+    /// The whole group as its admin now has it: members are (endpoint id,
+    /// name). Taken only from the admin, and only when newer.
+    GroupUpdate {
+        group: [u8; 16],
+        version: u64,
+        name: String,
+        admin: String,
+        members: Vec<(String, String)>,
+    },
+    /// The sender has left the group.
+    GroupLeave { group: [u8; 16] },
 }
 
 impl DeviceMsg {
@@ -242,6 +261,13 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn received_before(&self, from: &str, id: &[u8; 16]) -> bool;
     /// A note arrived; returns when it is saved, with its id remembered.
     fn note(&self, from: &str, id: [u8; 16], text: String) -> Result<(), RelayError>;
+    /// A group item arrived (N7); returns when it is saved, or why it
+    /// isn't taken.
+    fn group(&self, _from: &str, _item: crate::group::GroupItem) -> Result<(), RelayError> {
+        Err(RelayError::Declined {
+            reason: "This device doesn't take group chats".into(),
+        })
+    }
     /// A conversation message arrived; returns when it is in the log (a
     /// message whose id is there already is not added again).
     fn message(
@@ -661,6 +687,23 @@ impl DeviceHandler {
                     },
                 }
             }
+            group @ (DeviceMsg::GroupMessage { .. }
+            | DeviceMsg::GroupUpdate { .. }
+            | DeviceMsg::GroupLeave { .. }) => {
+                let host = Arc::clone(&self.host);
+                let from = them.to_string();
+                let item =
+                    crate::group::incoming(group).ok_or_else(|| connection("not a group item"))?;
+                match tokio::task::spawn_blocking(move || host.group(&from, item))
+                    .await
+                    .map_err(connection)?
+                {
+                    Ok(()) => DeviceMsg::Done,
+                    Err(err) => DeviceMsg::Refused {
+                        reason: err.saved_reason(),
+                    },
+                }
+            }
             DeviceMsg::File {
                 id,
                 hash,
@@ -840,6 +883,8 @@ pub(crate) enum Outgoing {
     Note(String),
     /// A conversation message; it carries its own id.
     Message(crate::device_chat::PeerMessage),
+    /// A group item (N7), answered Done or Refused.
+    Group(DeviceMsg),
     /// Files and folders as one item, already in the blob store (the
     /// outbox keeps them there).
     Stored(crate::code_send::Offer),
@@ -1217,6 +1262,10 @@ async fn exchange(
             say(&mut send, &msg).await?;
             hear(&mut recv, STEP).await?
         }
+        Outgoing::Group(msg) => {
+            say(&mut send, &msg).await?;
+            hear(&mut recv, STEP).await?
+        }
         Outgoing::Stored(offer) => {
             lock(&node.device_allowed)
                 .entry(them)
@@ -1362,6 +1411,32 @@ mod tests {
                     offers: vec!["notes".into(), "files".into()],
                 },
                 include_str!("../fixtures/device-1/status.hex"),
+            ),
+            (
+                DeviceMsg::GroupMessage {
+                    group: [7; 16],
+                    id: "m1".into(),
+                    body: "hi".into(),
+                    reply_to: None,
+                },
+                include_str!("../fixtures/device-1/group-message.hex"),
+            ),
+            (
+                DeviceMsg::GroupUpdate {
+                    group: [7; 16],
+                    version: 2,
+                    name: "Family".into(),
+                    admin: "aa".into(),
+                    members: vec![
+                        ("aa".into(), "Phone".into()),
+                        ("bb".into(), "Laptop".into()),
+                    ],
+                },
+                include_str!("../fixtures/device-1/group-update.hex"),
+            ),
+            (
+                DeviceMsg::GroupLeave { group: [7; 16] },
+                include_str!("../fixtures/device-1/group-leave.hex"),
             ),
         ]
     }

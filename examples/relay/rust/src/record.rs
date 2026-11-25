@@ -54,6 +54,9 @@ pub struct Record {
     /// person dismisses it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub away_notice: bool,
+    /// Group chats this device is in or was in (`group`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<crate::group::SavedGroup>,
 }
 
 /// What couldn't be read, in words, and where it is kept on this device.

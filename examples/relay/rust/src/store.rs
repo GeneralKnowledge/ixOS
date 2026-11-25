@@ -50,7 +50,8 @@ pub(crate) const JSON_FILE: &str = "relay.json";
 const MIGRATED: &str = "migrated";
 
 /// The schema, one step per version.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     -- What isn't a list: identity, policy, mode, servers, flags.
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     -- The record's lists, each row its saved JSON, in the order added.
@@ -77,10 +78,22 @@ const MIGRATIONS: &[&str] = &["
         path TEXT NOT NULL,
         PRIMARY KEY (conversation, id)
     );
-"];
+",
+    "
+    -- Group chats (N7): the groups this device is in, and which members
+    -- have each of our group messages.
+    CREATE TABLE groups (key TEXT PRIMARY KEY, seq INTEGER NOT NULL, body TEXT NOT NULL);
+    CREATE TABLE group_delivered (
+        conversation TEXT NOT NULL,
+        message TEXT NOT NULL,
+        member TEXT NOT NULL,
+        PRIMARY KEY (conversation, message, member)
+    );
+",
+];
 
 /// The record's lists, by table: each row's key, and its value.
-const LISTS: [&str; 4] = ["devices", "deliveries", "received", "history"];
+const LISTS: [&str; 5] = ["devices", "deliveries", "received", "history", "groups"];
 
 impl From<StorageError> for RelayError {
     fn from(err: StorageError) -> Self {
@@ -281,6 +294,7 @@ impl Store {
             record.deliveries = rows(c, "deliveries")?;
             record.received_ids = rows(c, "received")?;
             record.transfers = rows(c, "history")?;
+            record.groups = rows(c, "groups")?;
             Ok(Some(record))
         })
     }
@@ -313,6 +327,7 @@ pub(crate) fn save(c: &Connection, before: &Record, after: &Record) -> Result<()
         transfers: Vec::new(),
         deliveries: Vec::new(),
         received_ids: Vec::new(),
+        groups: Vec::new(),
         ..r.clone()
     };
     let meta = shell(after);
@@ -347,7 +362,37 @@ pub(crate) fn save(c: &Connection, before: &Record, after: &Record) -> Result<()
     sync(c, "history", &before.transfers, &after.transfers, |t| {
         t.id.to_string()
     })?;
+    sync(c, "groups", &before.groups, &after.groups, |g| g.id.clone())?;
     Ok(())
+}
+
+/// Remembers that group member `member` has our message `message`.
+pub(crate) fn set_group_delivered(
+    c: &Connection,
+    conversation: &str,
+    message: &str,
+    member: &str,
+) -> Result<(), RelayError> {
+    c.execute(
+        "INSERT OR IGNORE INTO group_delivered (conversation, message, member)
+         VALUES (?1, ?2, ?3)",
+        params![conversation, message, member],
+    )?;
+    Ok(())
+}
+
+/// The group members that have our message `message`.
+pub(crate) fn group_delivered(
+    c: &Connection,
+    conversation: &str,
+    message: &str,
+) -> Result<Vec<String>, RelayError> {
+    let mut statement = c.prepare(
+        "SELECT member FROM group_delivered WHERE conversation = ?1 AND message = ?2
+         ORDER BY member",
+    )?;
+    let members = statement.query_map(params![conversation, message], |r| r.get(0))?;
+    Ok(members.collect::<Result<_, _>>()?)
 }
 
 fn sync<T: Serialize + PartialEq>(

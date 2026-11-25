@@ -51,6 +51,12 @@ pub(crate) enum Posted {
     Note {
         text: String,
     },
+    /// A group item (N7): the `relay/device/1` message it would be sent
+    /// as directly, in its CBOR.
+    Group {
+        #[serde(with = "serde_bytes")]
+        msg: Vec<u8>,
+    },
     Message {
         id: String,
         body: String,
@@ -82,6 +88,7 @@ impl Posted {
                 reply_to: reply_to.clone(),
             }),
             Payload::Files { .. } => None,
+            group => crate::group::outgoing(group).map(|msg| Posted::Group { msg: msg.encode() }),
         }
     }
 
@@ -419,6 +426,25 @@ impl RelayCore {
                 &from,
                 crate::device_chat::PeerMessage { id, body, reply_to },
             ),
+            Posted::Group { msg } => {
+                let item = crate::device::DeviceMsg::decode(&msg)
+                    .ok()
+                    .and_then(crate::group::incoming);
+                match item {
+                    Some(item) => match host.group(&from, item) {
+                        // Refused (not a member, or no longer): dropped,
+                        // as a direct send would be.
+                        Err(crate::model::RelayError::Declined { reason }) => {
+                            forge_runtime::logging::info!(
+                                "relay: a group item from the mailbox wasn't taken: {reason}"
+                            );
+                            Ok(())
+                        }
+                        other => other,
+                    },
+                    None => Ok(()),
+                }
+            }
             Posted::Files { .. } => unreachable!("taken above"),
         })
         .await;

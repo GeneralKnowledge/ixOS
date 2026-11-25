@@ -82,7 +82,9 @@ use relay_core::{
 
 const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <code> | \
 send <device> (--text TEXT | PATH...) [--to host:port] | \
-messages <device> | status [<device>] | revoke <device> | forget <device> | \
+messages <device> | groups | group create NAME <device>... | \
+group (add GROUP <device>... | remove GROUP <device> | rename GROUP NAME | leave GROUP | \
+send GROUP TEXT | messages GROUP) | status [<device>] | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
 sees-devices <device> on|off | grant <device> sites on|off | \
 site [FOLDER | 127.0.0.1:PORT | --stop] | web <device> [--port N] | listen [--site FOLDER|127.0.0.1:PORT] | person <device> (NAME | --mine) | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
@@ -227,6 +229,13 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             }
             _ => return None,
         },
+        "groups" => (|| {
+            for g in block_on(core.groups()).map_err(|e| e.to_string())? {
+                out += &group_lines(&g);
+            }
+            Ok(())
+        })(),
+        "group" => group_command(core, rest).map(|text| out += &text),
         "messages" => (|| {
             let who = rest.first().ok_or(USAGE)?;
             let device = find_device(core, who)
@@ -993,6 +1002,120 @@ fn site_line(site: &relay_core::SiteSource) -> String {
         "Sharing {what} as this device's site, with devices granted it \
          (`relay grant <device> sites on`)."
     )
+}
+
+/// A group by its id, the start of its id, or its name.
+fn find_group(core: &RelayCore, which: &str) -> Result<relay_core::group::Group, String> {
+    let groups = block_on(core.groups()).map_err(|e| e.to_string())?;
+    let found: Vec<_> = groups
+        .into_iter()
+        .filter(|g| g.id.starts_with(which) || g.name.eq_ignore_ascii_case(which))
+        .collect();
+    match found.len() {
+        1 => Ok(found.into_iter().next().unwrap()),
+        0 => Err(format!("no group {which}; `relay groups` lists them")),
+        _ => Err(format!("more than one group is {which}: use its id")),
+    }
+}
+
+fn group_lines(g: &relay_core::group::Group) -> String {
+    let state = if g.left { "  (left)" } else { "" };
+    let mut out = format!("{}  {}{state}\n", g.name, g.id);
+    for m in &g.members {
+        let admin = if m.endpoint_id == g.admin {
+            ", admin"
+        } else {
+            ""
+        };
+        let note = if m.is_me {
+            " (this device)"
+        } else if !m.trusted {
+            " (not paired with this device: skipped for now)"
+        } else {
+            ""
+        };
+        out += &format!("  {}{note}{admin}  {}\n", m.name, m.endpoint_id);
+    }
+    out
+}
+
+/// `relay group create|add|remove|rename|leave|send|messages ...`.
+fn group_command(core: &RelayCore, rest: &[String]) -> Result<String, String> {
+    let device_id = |who: &String| {
+        find_device(core, who)
+            .map(|d| d.endpoint_id)
+            .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))
+    };
+    let err = |e: RelayError| e.to_string();
+    match rest {
+        [verb, name, members @ ..] if verb == "create" && !members.is_empty() => {
+            let ids = members
+                .iter()
+                .map(device_id)
+                .collect::<Result<Vec<_>, _>>()?;
+            let g = block_on(core.create_group(name.clone(), ids)).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which, members @ ..] if verb == "add" && !members.is_empty() => {
+            let g = find_group(core, which)?;
+            let ids = members
+                .iter()
+                .map(device_id)
+                .collect::<Result<Vec<_>, _>>()?;
+            let g = block_on(core.add_group_members(g.id, ids)).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which, member] if verb == "remove" => {
+            let g = find_group(core, which)?;
+            let id = g
+                .members
+                .iter()
+                .find(|m| m.endpoint_id == *member || m.name.eq_ignore_ascii_case(member))
+                .map(|m| m.endpoint_id.clone())
+                .ok_or_else(|| format!("{member} isn't in {}", g.name))?;
+            let g = block_on(core.remove_group_member(g.id, id)).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which, name] if verb == "rename" => {
+            let g = find_group(core, which)?;
+            let g = block_on(core.rename_group(g.id, name.clone())).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which] if verb == "leave" => {
+            let g = find_group(core, which)?;
+            block_on(core.leave_group(g.id)).map_err(err)?;
+            Ok(format!("Left {}.\n", g.name))
+        }
+        [verb, which, text @ ..] if verb == "send" && !text.is_empty() => {
+            let g = find_group(core, which)?;
+            let m = block_on(core.send_group_message(&g.id, text.join(" "))).map_err(err)?;
+            let d = core.group_delivery(&g.id, &m.id).map_err(err)?;
+            Ok(format!(
+                "Sent to {}: delivered to {} of {}{}\n",
+                g.name,
+                d.delivered,
+                d.of,
+                message_status(&m)
+            ))
+        }
+        [verb, which] if verb == "messages" => {
+            let g = find_group(core, which)?;
+            let mut out = String::new();
+            for m in core.group_messages(&g.id).map_err(err)? {
+                let mine = m.author_id == relay_core::device_chat::ME;
+                let who = if mine { "me" } else { m.author.as_str() };
+                let status = if mine {
+                    let d = core.group_delivery(&g.id, &m.id).map_err(err)?;
+                    format!("  (delivered to {} of {})", d.delivered, d.of)
+                } else {
+                    String::new()
+                };
+                out += &format!("{who}: {}{status}\n", message_line(&m));
+            }
+            Ok(out)
+        }
+        _ => Err(USAGE.into()),
+    }
 }
 
 fn find_device(core: &RelayCore, who: &str) -> Option<relay_core::Device> {

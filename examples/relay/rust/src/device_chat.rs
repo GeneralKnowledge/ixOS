@@ -145,7 +145,13 @@ pub struct LogFile {
 
 /// Device conversation `endpoint_id`'s id, if `endpoint_id` can be one
 /// (endpoint ids are hex; anything else never names a conversation).
+///
+/// A group's conversation id (`group:<id>`) is its own key: group
+/// conversations keep their messages the same way ([`crate::group`]).
 fn checked(endpoint_id: &str) -> Result<String, RelayError> {
+    if crate::group::conversation_group(endpoint_id).is_some() {
+        return Ok(endpoint_id.to_string());
+    }
     if endpoint_id.is_empty() || !endpoint_id.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err(RelayError::UnknownPeer {
             id: endpoint_id.into(),
@@ -169,6 +175,11 @@ impl<'a> Conversations<'a> {
             c,
             changed: Vec::new(),
         }
+    }
+
+    /// The transaction's connection, for tables beside the messages.
+    pub fn connection(&self) -> &Connection {
+        self.c
     }
 
     /// What changed, by device, for the listeners.
@@ -350,6 +361,18 @@ impl PeerLog {
         path.exists().then_some(path)
     }
 
+    /// A stream of what changes in this conversation, until `cancel`.
+    pub(crate) fn stream(&self, cancel: &CancelHandle) -> Result<Box<dyn RemoteStream>, ChatError> {
+        if cancel.is_cancelled() {
+            return Err(ChatError::Cancelled);
+        }
+        Ok(Box::new(LogStream {
+            rx: self.listen(),
+            cancel: cancel.clone(),
+            quiet_for: Duration::ZERO,
+        }))
+    }
+
     fn listen(&self) -> mpsc::Receiver<Message> {
         let (tx, rx) = mpsc::channel();
         lock(&self.logs.listeners)
@@ -406,6 +429,10 @@ impl PeerLogs {
             dir: self.inner.dir.join(endpoint_id),
             logs: Arc::clone(&self.inner),
         })
+    }
+
+    pub(crate) fn store(&self) -> &Store {
+        &self.inner.store
     }
 
     /// Tells open streams what a committed transaction changed.
@@ -543,14 +570,7 @@ impl ChatRepo for PeerRepo {
         cancel: &CancelHandle,
     ) -> Result<Box<dyn RemoteStream>, ChatError> {
         self.check(conversation_id)?;
-        if cancel.is_cancelled() {
-            return Err(ChatError::Cancelled);
-        }
-        Ok(Box::new(LogStream {
-            rx: self.log.listen(),
-            cancel: cancel.clone(),
-            quiet_for: Duration::ZERO,
-        }))
+        self.log.stream(cancel)
     }
 
     /// A device attachment opens from where it is on this device

@@ -129,16 +129,19 @@ in a different order; each sender's own messages are always in order.
 Each step is a PR, Linux-tested before the phone sees it.
 
 1. This design.
-2. The core in Rust: the groups table, the two messages, fan-out through
-   the outbox, the receiving rules, `GroupRepo`, the FFI and the CLI.
+2. The core in Rust: the groups table, the messages (`GroupMessage`,
+   `GroupUpdate`, and `GroupLeave` for a member leaving), fan-out through
+   the outbox and the mailbox, the receiving rules, `GroupRepo` and the
+   CLI. Members must be trusted devices of the sender in this step;
+   members introduced by the admin come with step 4.
    Tested with three or four in-process devices: a message reaches every
    member, a removed member gets nothing new, a non-member is refused, an
    update not from the admin is refused, a member away gets it on return.
-3. The iPhone: New Group, the group's screen, sender names, delivery
-   counts.
-4. Photos and files in groups (one blob, offered to each member), and the
-   mailbox for members who aren't your trusted devices (deposit passes for
-   group members).
+3. The iPhone: the FFI, New Group, the group's screen, sender names,
+   delivery counts.
+4. Members introduced by the admin (a group-only right on
+   `relay/device/1`, dialled by key, deposit passes for their mailbox),
+   and photos and files in groups (one blob, offered to each member).
 5. One phone run: the phone and two laptop instances ("create" and
    "tablet") in a group, messages all ways, one member offline then back,
    a member removed.

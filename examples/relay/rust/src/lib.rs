@@ -29,6 +29,7 @@ mod code_send;
 mod code_session;
 mod device;
 pub mod device_chat;
+pub mod group;
 mod migrate;
 mod model;
 mod node;
@@ -1918,6 +1919,18 @@ impl CoreDevices {
 }
 
 impl device::DeviceInbound for CoreDevices {
+    fn group(&self, from: &str, item: group::GroupItem) -> Result<(), RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        let me = forge_runtime::block_on(core.node())?.id().to_string();
+        let from = from.to_string();
+        // The group and its conversation: one transaction.
+        self.command_with("group-item", move |r, c| {
+            r.take_group_item(c, &me, &from, item)
+        })
+    }
+
     fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
             kind: forge_app::ErrorKind::ShutDown,
@@ -2008,7 +2021,7 @@ impl device::DeviceInbound for CoreDevices {
         let Some(core) = self.core.upgrade() else {
             return device::StatusReport::default();
         };
-        let mut offers: Vec<String> = ["notes", "files", "messages"]
+        let mut offers: Vec<String> = ["notes", "files", "messages", "groups"]
             .into_iter()
             .map(String::from)
             .collect();
