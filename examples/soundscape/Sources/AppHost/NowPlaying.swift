@@ -25,6 +25,9 @@ struct NowPlayingView: View {
     @State private var showingLyrics = false
     @State private var showingQueue = false
     @State private var addingToPlaylist = false
+    /// A Jamendo lookup for Go to Album or Go to Artist; a newer one, or
+    /// closing Now Playing, cancels it, so a late answer opens nothing.
+    @State private var lookup: Task<Void, Never>?
     @Namespace private var artworkSpace
 
     var body: some View {
@@ -70,6 +73,7 @@ struct NowPlayingView: View {
         // double tap plays or pauses.
         .accessibilityAction(.escape) { dismiss() }
         .accessibilityAction(.magicTap) { player.toggle() }
+        .onDisappear { lookup?.cancel() }
         .task(id: player.current?.artworkUrl ?? player.current?.song) {
             guard let current = player.current else { return }
             let found = await ArtworkPaletteLoader.palette(title: current.song, url: current.artworkUrl)
@@ -246,7 +250,7 @@ struct NowPlayingView: View {
         } else if let jamendo = p.jamendo, current.album != nil {
             goButton("Go to Album", detail: current.album, systemImage: "square.stack",
                      identifier: "\(identifier).goToAlbum") {
-                Task { await goToJamendoRelease(of: jamendo, artist: current.artist) }
+                look { await goToJamendoRelease(of: jamendo, artist: current.artist) }
             }
         }
         if let artist = p.artist {
@@ -255,7 +259,10 @@ struct NowPlayingView: View {
         } else if let jamendo = p.jamendo {
             goButton("Go to Artist", detail: current.artist, systemImage: "music.mic",
                      identifier: "\(identifier).goToArtist") {
-                Task { go(.jamendoArtist(await model.canonical(.ofTrack(jamendo, name: current.artist)))) }
+                look {
+                    let artist = await model.canonical(.ofTrack(jamendo, name: current.artist))
+                    if !Task.isCancelled { go(.jamendoArtist(artist)) }
+                }
             }
         }
     }
@@ -276,9 +283,17 @@ struct NowPlayingView: View {
     /// The Jamendo release the song is on, found on its artist's page
     /// (kept on the phone after the first time); the artist's page when
     /// it isn't found there.
+    /// Starts a lookup in place of any still running.
+    private func look(_ work: @escaping @MainActor () async -> Void) {
+        lookup?.cancel()
+        lookup = Task { await work() }
+    }
+
     private func goToJamendoRelease(of trackId: String, artist name: String?) async {
         let artist = await model.canonical(.ofTrack(trackId, name: name))
-        guard case .success(let page) = await model.jamendoArtist(artist),
+        let page = await model.jamendoArtist(artist)
+        guard !Task.isCancelled else { return }
+        guard case .success(let page) = page,
               let release = page.releases.first(where: { $0.tracks.contains { $0.id == trackId } })
         else {
             go(.jamendoArtist(artist))
