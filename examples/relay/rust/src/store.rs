@@ -407,7 +407,7 @@ pub(crate) fn set_group_sent(
     recipients: u32,
 ) -> Result<(), RelayError> {
     c.execute(
-        "INSERT OR IGNORE INTO group_sent (conversation, message, recipients)
+        "INSERT OR REPLACE INTO group_sent (conversation, message, recipients)
          VALUES (?1, ?2, ?3)",
         params![conversation, message, recipients],
     )?;

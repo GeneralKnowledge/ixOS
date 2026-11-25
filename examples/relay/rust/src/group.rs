@@ -283,7 +283,9 @@ impl Record {
     }
 
     /// Takes the messages held for group `id` now that an update came:
-    /// those from a member are added, the rest dropped (expired ones too).
+    /// those from a member are added; the others wait on for a later
+    /// update (one in between needn't name their sender) until they
+    /// expire, or this device is out of the group.
     fn release_held(
         &mut self,
         c: &mut Conversations<'_>,
@@ -296,28 +298,38 @@ impl Record {
             if now - at > HELD_FOR_MS {
                 continue;
             }
-            let Ok(kept) = serde_json::from_str::<serde_json::Value>(&kept) else {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&kept) else {
                 continue;
             };
+            let Some(g) = self.group(id).filter(|g| !g.left) else {
+                continue;
+            };
+            if g.member(&sender).is_none() {
+                crate::store::hold_group_message(
+                    c.connection(),
+                    id,
+                    &sender,
+                    &message,
+                    &kept,
+                    at,
+                    MOST_HELD,
+                )?;
+                continue;
+            }
             let message = PeerMessage {
                 id: message,
-                body: kept["body"].as_str().unwrap_or_default().to_string(),
-                reply_to: kept["reply_to"].as_str().map(String::from),
+                body: value["body"].as_str().unwrap_or_default().to_string(),
+                reply_to: value["reply_to"].as_str().map(String::from),
             };
-            let known = self
-                .group(id)
-                .is_some_and(|g| !g.left && g.member(&sender).is_some());
-            if known {
-                self.take_group_item(
-                    c,
-                    me,
-                    &sender,
-                    GroupItem::Message {
-                        group: id.to_string(),
-                        message,
-                    },
-                )?;
-            }
+            self.take_group_item(
+                c,
+                me,
+                &sender,
+                GroupItem::Message {
+                    group: id.to_string(),
+                    message,
+                },
+            )?;
         }
         Ok(())
     }
@@ -685,16 +697,18 @@ impl RelayCore {
                             },
                         )?,
                     };
-                    // Who it was for when first sent: its "of N" stays the
-                    // same when members change later.
+                    // Who it is for: the members that have it already
+                    // and those it goes to now. Its "of N" stays the same
+                    // when members change later; a retry recounts it.
+                    let have =
+                        crate::store::group_delivered(c.connection(), &conversation, &message.id)?;
+                    let of = have.len() + recipients.iter().filter(|to| !have.contains(to)).count();
                     crate::store::set_group_sent(
                         c.connection(),
                         &conversation,
                         &message.id,
-                        recipients.len() as u32,
+                        of as u32,
                     )?;
-                    let have =
-                        crate::store::group_delivered(c.connection(), &conversation, &message.id)?;
                     let mut firsts = Vec::new();
                     let mut woken = Vec::new();
                     for to in recipients.iter().filter(|to| !have.contains(to)) {
@@ -1208,10 +1222,51 @@ mod tests {
             .unwrap();
         let bodies: Vec<&str> = messages.iter().map(|m| m.body.as_str()).collect();
         assert_eq!(bodies, ["early"]);
-        assert!(store
-            .read(|c| crate::store::take_held(c, &id))
-            .unwrap()
-            .is_empty());
+        let held = |store: &crate::store::Store| {
+            store
+                .read(|c| {
+                    Ok::<i64, RelayError>(c.query_row(
+                        "SELECT COUNT(*) FROM group_held",
+                        [],
+                        |r| r.get(0),
+                    )?)
+                })
+                .unwrap()
+        };
+        // The stranger's waits: a later update may make it a member.
+        assert_eq!(held(&store), 1);
+
+        // Version 2 (a rename) doesn't name it; version 3 adds it.
+        let mut renamed = g.clone();
+        renamed.name = "Renamed".into();
+        renamed.version = 2;
+        let mut added = group("a", &["a", "b", "me", "stranger"], 3);
+        added.id = id.clone();
+        store
+            .write(|c| {
+                let mut cs = Conversations::new(c);
+                r.take_group_item(&mut cs, "me", "a", GroupItem::Update(renamed))?;
+                Ok::<_, RelayError>(())
+            })
+            .unwrap();
+        assert_eq!(
+            held(&store),
+            1,
+            "kept through an update that doesn't explain it"
+        );
+        store
+            .write(|c| {
+                let mut cs = Conversations::new(c);
+                r.take_group_item(&mut cs, "me", "a", GroupItem::Update(added))?;
+                Ok::<_, RelayError>(())
+            })
+            .unwrap();
+        let messages = store
+            .read(|c| crate::store::since(c, &group_conversation(&id), None))
+            .unwrap();
+        let bodies: Vec<&str> = messages.iter().map(|m| m.body.as_str()).collect();
+        assert_eq!(bodies, ["early", "spam"]);
+        assert_eq!(held(&store), 0);
     }
 
     #[test]
