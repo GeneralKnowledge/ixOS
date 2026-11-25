@@ -117,7 +117,7 @@ struct DiscoverView: View {
             }
         }
         .searchable(text: $search, prompt: source == .jamendo ? "Search Jamendo" : "Search the Internet Archive")
-        .refreshable { attempt += 1 }
+        .refreshable { model.refreshJamendo(); attempt += 1 }
         .task(id: "\(source.rawValue)|\(model.jamendoClientId ?? "")|\(query)|\(attempt)") { await find() }
         .overlay {
             if let problem, empty {
@@ -625,7 +625,7 @@ struct JamendoTracksView: View {
             // A lookup stopped by leaving the app starts again on return.
             if tracks == nil && problem == nil { attempt += 1 }
         }
-        .refreshable { attempt += 1 }
+        .refreshable { model.refreshJamendo(); attempt += 1 }
         .overlay {
             if let problem, tracks == nil {
                 ForgeStateView.failed(

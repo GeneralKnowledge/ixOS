@@ -297,11 +297,27 @@ final class TakePlayer {
     private func loadQueued(playing: Bool, queueBefore: PlayQueue? = nil) {
         guard let queue, let track = queueCurrent(queue: queue) else { return }
         let next = Loaded(track)
-        if playing, isPlaying, !isComparing, a != nil, let item = Self.item(next.audioUrl) {
-            switchTo(next, item: item, from: queueBefore)
-            return
+        if playing, isPlaying, !isComparing, a != nil {
+            if let item = Self.item(next.audioUrl) {
+                switchTo(next, item: item, from: queueBefore)
+                return
+            }
+            // No address to load. Moved to by a tap or Next while a song is
+            // heard: that song carries on, and the queue goes back to it
+            // (a switch still loading goes too).
+            let queues = switchQueues ?? (before: queueBefore, after: queue)
+            if queues.before != nil {
+                failure = Self.describe(nil, playing: next)
+                cancelSwitch()
+                backToHeard(before: queues.before, after: queues.after)
+                return
+            }
+            // After a song ended there is nothing to go back to: the queue
+            // stays on the song that can't play, so Next moves past it.
         }
+        cancelSwitch()
         load(a: next, b: nil, match: nil)
+        if Self.item(next.audioUrl) == nil { failure = Self.describe(nil, playing: next) }
         if playing { resume() } else { pause() }
     }
 
@@ -311,7 +327,7 @@ final class TakePlayer {
     /// switch replaces this one.
     private func switchTo(_ next: Loaded, item: AVPlayerItem, from before: PlayQueue?) {
         // A switch replacing a switch goes back, on failure, to what is heard.
-        let heardQueue = switchQueues?.before ?? before
+        let heardQueue = switchQueues.map { $0.before } ?? before
         cancelSwitch()
         endHandover()
         cancelPrepared()
@@ -356,7 +372,7 @@ final class TakePlayer {
             log.warn("stream failed: \(item.error.map { "\($0)" } ?? "")")
             let queues = switchQueues
             cancelSwitch()
-            if let queues, let before = queues.before, queue == queues.after { queue = before }
+            backToHeard(before: queues?.before, after: queues?.after)
         default:
             break
         }
@@ -388,6 +404,32 @@ final class TakePlayer {
         loadArtwork(next.artworkUrl)
         updateNowPlaying()
         save()
+    }
+
+    /// After a switch that can't happen, the queue goes back to the song
+    /// heard: as it was (`before`) when nothing changed it since (`after`);
+    /// otherwise the edited queue moves to the heard song, at the
+    /// occurrence heard (also with repeat One, where A restarts and the
+    /// queue would otherwise stay on the song that failed).
+    /// With no `before`, the change came from a song ending: that song is
+    /// over, so the queue stays where it is.
+    private func backToHeard(before: PlayQueue?, after: PlayQueue?) {
+        guard let queue, let heard = a?.id, let before else { return }
+        if queue == after {
+            self.queue = before
+            return
+        }
+        let positions = queue.order.indices.filter { position in
+            let index = Int(queue.order[position])
+            return queue.tracks.indices.contains(index) && queue.tracks[index].recording.id == heard
+        }
+        // The heard occurrence is where it was before the switch (a
+        // duplicated song has several); the nearest to that if an edit
+        // moved it.
+        let heardAt = Int(before.position)
+        guard let nearest = positions.min(by: { abs($0 - heardAt) < abs($1 - heardAt) }),
+              nearest != Int(queue.position) else { return }
+        self.queue = queueJump(queue: queue, position: UInt32(nearest))
     }
 
     /// Forgets a song still loading on B.
@@ -736,7 +778,9 @@ final class TakePlayer {
                 loadQueued(playing: false)
             }
             // Otherwise the queue is already on the song loading; it starts
-            // once ready.
+            // once ready. The song that ended is nothing to go back to if
+            // the new one fails, so Next moves on past it.
+            if let queues = switchQueues { switchQueues = (before: nil, after: queues.after) }
             return
         }
         if side == .b, !isComparing {
@@ -843,8 +887,10 @@ final class TakePlayer {
         self.prepared = nil
         mainIndex = 1 - mainIndex
         a = prepared.loaded
-        queue = prepared.to
+        // Time first: a queue change saves, and should save the new song
+        // at its start, not the old song's position.
         time = 0
+        queue = prepared.to
         duration = 0
         counted = false
         failure = nil

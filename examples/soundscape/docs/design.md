@@ -348,7 +348,10 @@ and light and dark mode.
     is solid.
 12. Changing song: while a Jamendo song plays, tap another one and press Next: the song playing carries on
     with "Loading …" in the mini-player until the new one starts, with no silence in between.
-13. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
+13. A library artist with Jamendo songs: below your songs, "Albums on Jamendo", "EPs on Jamendo" and
+    "Singles on Jamendo" list everything they have, not just what you saved. Leave and open the artist again,
+    or relaunch the app: it opens at once without "Finding more…" (kept answers). Pull down asks Jamendo again.
+14. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
     glass; the mini-player is a glass card that responds to a touch; Now Playing's heart, More, pin and
     thumbs buttons are clear glass; Undo is a frosted banner, not glass. With Reduce Transparency on, all
     of them are solid.

@@ -9,6 +9,8 @@
 //! compared by the image files themselves (their SHA-256), fetched once.
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -145,13 +147,33 @@ fn artist(item: &Value) -> Option<JamendoArtist> {
 }
 
 /// Covers already compared: artwork address to its SHA-256, so a page
-/// opened again fetches nothing new.
+/// opened again fetches nothing new. [`Covers::at`] keeps them in a file
+/// (in the caches folder) across launches; [`Covers::save`] writes it.
 #[derive(Default)]
 pub struct Covers {
     known: Mutex<HashMap<String, String>>,
+    file: Option<PathBuf>,
+    changed: AtomicBool,
 }
 
+/// The most cover hashes kept in the file.
+pub const MAX_KEPT_COVERS: usize = 5000;
+
 impl Covers {
+    /// Covers kept in `file`, starting from what it holds (nothing when it
+    /// is missing or can't be read).
+    pub fn at(file: PathBuf) -> Self {
+        let known = std::fs::read(&file)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
+        Self {
+            known: Mutex::new(known),
+            file: Some(file),
+            changed: AtomicBool::new(false),
+        }
+    }
+
     fn get(&self, url: &str) -> Option<String> {
         self.known
             .lock()
@@ -165,6 +187,31 @@ impl Covers {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .insert(url.to_string(), hash);
+        self.changed.store(true, Ordering::SeqCst);
+    }
+
+    /// Writes the file when something new was compared. A failure only
+    /// means the covers are compared again next launch.
+    pub fn save(&self) {
+        let Some(file) = &self.file else { return };
+        if !self.changed.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        let mut known = self.known.lock().unwrap_or_else(|p| p.into_inner());
+        if known.len() > MAX_KEPT_COVERS {
+            known.clear();
+        }
+        let written = serde_json::to_vec(&*known)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| {
+                if let Some(dir) = file.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+                }
+                forge_storage::write_atomic(file, &bytes).map_err(|e| e.to_string())
+            });
+        if let Err(err) = written {
+            forge_runtime::logging::warn!("couldn't keep compared covers: {err}");
+        }
     }
 }
 

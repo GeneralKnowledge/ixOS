@@ -16,6 +16,7 @@ pub mod archive;
 pub mod catalogue;
 pub mod collection;
 pub mod jamendo;
+pub mod jamendo_cache;
 pub mod jamendo_explore;
 pub mod library;
 pub mod listen;
@@ -99,6 +100,8 @@ const COLLECTION_FILE: &str = "collection.json";
 const OFFLINE_FILE: &str = "offline.json";
 /// What was playing, to carry on after the app closes.
 const PLAYBACK_FILE: &str = "playback.json";
+/// Jamendo covers already compared, in the caches folder's `jamendo/`.
+const COVERS_FILE: &str = "covers.json";
 /// The largest music file imported.
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 /// The largest picture accepted as artwork.
@@ -188,8 +191,12 @@ pub struct SoundscapeCore {
     playback: Arc<Published<PlaybackFile>>,
     /// True while `sync_downloads` runs, so a second one returns at once.
     syncing: Arc<AtomicBool>,
+    /// The app's HTTP client, with Jamendo's answers kept
+    /// (`jamendo_cache`).
     http: Arc<dyn HttpClient>,
-    /// Jamendo covers already compared (`jamendo_explore`), for this run.
+    answers: Arc<jamendo_cache::JamendoAnswers>,
+    /// Jamendo covers already compared (`jamendo_explore`), kept in the
+    /// caches folder across launches.
     covers: Arc<jamendo_explore::Covers>,
 }
 
@@ -1075,6 +1082,13 @@ impl SoundscapeCore {
             .await
     }
 
+    /// Makes every Jamendo answer kept so far stale, for pull to refresh:
+    /// the next ask of each goes to Jamendo, and the kept answer is used
+    /// only if Jamendo can't answer (`jamendo_cache`).
+    pub fn refresh_jamendo(&self) {
+        self.answers.refresh();
+    }
+
     /// Discover's Jamendo shelves, in the order shown.
     pub fn jamendo_shelves(&self) -> Vec<JamendoShelf> {
         jamendo::SHELVES.to_vec()
@@ -1132,7 +1146,15 @@ impl SoundscapeCore {
         let work = self.rt.foreground(cancellation.as_deref());
         self.rt
             .run("jamendo-artist", work, move |cancel| {
-                jamendo_explore::artist_page(http.as_ref(), &client_id, &artist_id, &covers, cancel)
+                let page = jamendo_explore::artist_page(
+                    http.as_ref(),
+                    &client_id,
+                    &artist_id,
+                    &covers,
+                    cancel,
+                );
+                covers.save();
+                page
             })
             .await
     }
@@ -1153,7 +1175,15 @@ impl SoundscapeCore {
             .run("jamendo-artist", work, move |cancel| {
                 let artist =
                     jamendo_explore::artist_of(http.as_ref(), &client_id, &track_id, cancel)?;
-                jamendo_explore::artist_page(http.as_ref(), &client_id, &artist, &covers, cancel)
+                let page = jamendo_explore::artist_page(
+                    http.as_ref(),
+                    &client_id,
+                    &artist,
+                    &covers,
+                    cancel,
+                );
+                covers.save();
+                page
             })
             .await
     }
@@ -2285,7 +2315,19 @@ impl SoundscapeCore {
     ) -> Result<Arc<Self>, SoundscapeError> {
         // Studio (loop projects) was removed on 2026-11-18. Its files
         // (soundscape.json, recordings/) are left where they are.
-        let _ = (caches_directory, fresh);
+        let _ = fresh;
+        // Jamendo's answers and compared covers: files the app can lose.
+        let jamendo_caches =
+            (!caches_directory.is_empty()).then(|| Path::new(caches_directory).join("jamendo"));
+        let answers = Arc::new(jamendo_cache::JamendoAnswers::new(
+            http,
+            jamendo_caches.clone(),
+            Arc::new(|| u64::try_from(now_ms()).unwrap_or(0)),
+        ));
+        let covers = Arc::new(match &jamendo_caches {
+            Some(dir) => jamendo_explore::Covers::at(dir.join(COVERS_FILE)),
+            None => jamendo_explore::Covers::default(),
+        });
         let directory = DataDirectory::open(data_directory)?;
         // Only an address: an unreadable file is set aside rather than
         // keeping the projects from opening.
@@ -2417,8 +2459,9 @@ impl SoundscapeCore {
             playback: playback_published,
             progress: Arc::default(),
             syncing: Arc::default(),
-            http,
-            covers: Arc::default(),
+            http: Arc::clone(&answers) as Arc<dyn HttpClient>,
+            answers,
+            covers,
         }))
     }
 }
