@@ -8,7 +8,8 @@ use std::sync::Arc;
 use forge_net::{Method, Response, StaticClient};
 use soundscape_core::jamendo::{tracks_url, Ask, SHELVES};
 use soundscape_core::jamendo_explore::{
-    artist_url, artists_url, loose_covers, releases, songs, JamendoArtistList, ReleaseKind,
+    artist_url, artists_by_id_url, artists_url, loose_covers, main_genre, releases, songs,
+    JamendoArtistList, ReleaseKind,
 };
 use soundscape_core::{JamendoShelf, SoundscapeCore};
 
@@ -311,4 +312,88 @@ fn a_songs_artist_is_found_by_its_jamendo_id() {
     let id = block(core.jamendo_artist_id_of_track("jamendo:3".into(), None)).unwrap();
     assert_eq!(id, "42");
     assert!(block(core.jamendo_artist_id_of_track("archive:x".into(), None)).is_err());
+}
+
+/// A `/tracks` item by another artist, in `genre`.
+fn by(id: u32, artist: (&str, &str), genre: &str) -> String {
+    format!(
+        r#"{{"id": "{id}", "name": "Song {id}", "duration": 200, "artist_id": "{}",
+  "artist_name": "{}", "album_id": "", "album_name": "", "image": "",
+  "audio": "https://prod-1.storage.jamendo.com/?trackid={id}&format=mp32",
+  "musicinfo": {{"tags": {{"genres": ["{genre}"]}}}}}}"#,
+        artist.0, artist.1
+    )
+}
+
+#[test]
+fn an_artists_main_genre_is_the_one_most_of_their_songs_carry() {
+    let items: Vec<serde_json::Value> = [
+        by(1, ("42", "Lune"), "ambient"),
+        by(2, ("42", "Lune"), "jazz"),
+        by(3, ("42", "Lune"), "jazz"),
+    ]
+    .iter()
+    .map(|i| serde_json::from_str(i).unwrap())
+    .collect();
+    assert_eq!(main_genre(&items).as_deref(), Some("jazz"));
+    assert_eq!(
+        main_genre(&items[..2]).as_deref(),
+        Some("ambient"),
+        "a tie goes to the first seen"
+    );
+    assert_eq!(main_genre(&[]), None);
+}
+
+#[test]
+fn similar_artists_are_others_popular_in_the_artists_main_genre() {
+    let popular = answer(&[
+        by(10, ("42", "Lune"), "ambient"),
+        by(11, ("7", "Drift"), "ambient"),
+        by(12, ("8", "Fjord"), "ambient"),
+        by(13, ("7", "Drift"), "ambient"),
+    ]);
+    let pictures = r#"{"headers": {"status": "success"}, "results": [
+        {"id": "8", "name": "Fjord", "image": "https://usercontent.jamendo.com/?type=artist&id=8"}]}"#;
+    let http = client()
+        .route(
+            Method::Get,
+            tracks_url(CLIENT, &Ask::Genre("ambient".into())),
+            Ok(Response::new(200, popular)),
+        )
+        .route(
+            Method::Get,
+            artists_by_id_url(CLIENT, &["7".into(), "8".into()]),
+            Ok(Response::new(200, pictures)),
+        );
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir, Arc::new(http));
+    let similar = block(core.jamendo_similar_artists("42".into(), None)).unwrap();
+    assert_eq!(similar.genre, "Ambient");
+    let names: Vec<&str> = similar.artists.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Drift", "Fjord"],
+        "each once, never the artist themselves"
+    );
+    assert_eq!(
+        similar.artists[0].image_url, None,
+        "Jamendo gave Drift no picture"
+    );
+    assert!(similar.artists[1].image_url.is_some());
+}
+
+#[test]
+fn similar_artists_keep_their_names_when_pictures_cant_be_had() {
+    let popular = answer(&[by(11, ("7", "Drift"), "ambient")]);
+    let http = client().route(
+        Method::Get,
+        tracks_url(CLIENT, &Ask::Genre("ambient".into())),
+        Ok(Response::new(200, popular)),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir, Arc::new(http));
+    let similar = block(core.jamendo_similar_artists("42".into(), None)).unwrap();
+    assert_eq!(similar.artists.len(), 1);
+    assert_eq!(similar.artists[0].name, "Drift");
+    assert!(block(core.jamendo_similar_artists("4 2".into(), None)).is_err());
 }

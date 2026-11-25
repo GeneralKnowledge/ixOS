@@ -292,6 +292,13 @@ the same album art go together*. So on an artist's page:
   has by them: Albums, EPs and Singles "on Jamendo", the same sections as their Jamendo page (asked by the
   artist's Jamendo id, found from one of their songs), not only the songs you saved. Your own albums are titled
   Your Albums once Jamendo's are there.
+- **Similar Artists** (on a Jamendo artist's page and a library artist's "on Jamendo" part): the other artists
+  popular this week in the genre most of the artist's songs carry, as round tiles, with "Popular in <genre> this
+  week" under them (`jamendo_similar_artists`). Jamendo has no similar-artists list of its own, so this is
+  Soundscape's reading. The artist's songs are the request their page already made (usually kept); their
+  pictures come from one `/artists` request for all of them (`id=1+2+3`, from Jamendo's documentation, not
+  checked live), and without it the tiles show names. Nothing is shown when there are none or Jamendo can't be
+  asked.
 - **A release** shows its cover, kind and year, its songs, and Add All to Library; a grouped one says its singles
   share a cover and are separate on Jamendo. Its artist's name leads back to the artist, so Artist, Release,
   Artist returns to the first page.

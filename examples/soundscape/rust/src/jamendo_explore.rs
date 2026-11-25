@@ -471,3 +471,128 @@ fn release(key: String, mut songs: Vec<Song>) -> JamendoRelease {
         tracks: songs.into_iter().map(|s| s.track).collect(),
     }
 }
+
+// MARK: Similar artists
+
+/// The most similar artists shown on an artist's page.
+pub const SIMILAR_ARTISTS: usize = 12;
+
+/// Artists like one artist: others popular this week in their main genre.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoSimilarArtists {
+    /// The genre they share, as shown ("Electronic").
+    pub genre: String,
+    pub artists: Vec<JamendoArtist>,
+}
+
+/// The genre most of an artist's songs carry (`/tracks` items with
+/// `musicinfo`), as a tag Jamendo can be asked by; ties go to the genre
+/// seen first.
+pub fn main_genre(items: &[Value]) -> Option<String> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for item in items {
+        let Some(genres) = item["musicinfo"]["tags"]["genres"].as_array() else {
+            continue;
+        };
+        for genre in genres.iter().filter_map(Value::as_str) {
+            let Ok(genre) = jamendo::clean_tag(genre) else {
+                continue;
+            };
+            match counts.iter_mut().find(|(g, _)| *g == genre) {
+                Some((_, count)) => *count += 1,
+                None => counts.push((genre, 1)),
+            }
+        }
+    }
+    // max_by_key keeps the last of equals; reversed, the first seen wins.
+    counts
+        .into_iter()
+        .rev()
+        .max_by_key(|(_, count)| *count)
+        .map(|(genre, _)| genre)
+}
+
+/// The artists of `/tracks` items other than `except`, each once, in the
+/// order their songs came, at most `max`. Only names: tracks carry no
+/// artist picture.
+pub fn other_artists(items: &[Value], except: &str, max: usize) -> Vec<JamendoArtist> {
+    let mut found: Vec<JamendoArtist> = Vec::new();
+    for item in items {
+        let Some(id) = text(&item["artist_id"]).and_then(|id| clean_artist_id(&id).ok()) else {
+            continue;
+        };
+        if id == except || found.iter().any(|a| a.id == id) {
+            continue;
+        }
+        let Some(name) = tag(text(&item["artist_name"]).as_deref()) else {
+            continue;
+        };
+        found.push(JamendoArtist {
+            id,
+            name,
+            image_url: None,
+            joined: None,
+        });
+        if found.len() == max {
+            break;
+        }
+    }
+    found
+}
+
+/// The `/artists` request for several artists at once.
+pub fn artists_by_id_url(client_id: &str, ids: &[String]) -> String {
+    format!(
+        "{API}/artists/?client_id={}&format=json&limit={}&id={}",
+        crate::listen::encode(client_id, false),
+        ids.len().max(1),
+        ids.join("+")
+    )
+}
+
+/// Artists like `artist_id`: the other artists popular this week in the
+/// genre most of their songs carry, with their pictures when Jamendo gives
+/// them (names alone otherwise). None found is an empty list, not an
+/// error.
+pub fn similar_artists(
+    http: &dyn HttpClient,
+    client_id: &str,
+    artist_id: &str,
+    cancel: &CancelHandle,
+) -> Result<JamendoSimilarArtists, SoundscapeError> {
+    let artist_id = clean_artist_id(artist_id)?;
+    // The same request as the artist's page, so usually already kept.
+    let own = jamendo::results(http, client_id, &Ask::Releases(artist_id.clone()), cancel)?;
+    let Some(genre) = main_genre(&own) else {
+        return Ok(JamendoSimilarArtists {
+            genre: String::new(),
+            artists: Vec::new(),
+        });
+    };
+    let popular = jamendo::results(http, client_id, &Ask::Genre(genre.clone()), cancel)?;
+    let mut artists = other_artists(&popular, &artist_id, SIMILAR_ARTISTS);
+    if !artists.is_empty() {
+        let ids: Vec<String> = artists.iter().map(|a| a.id.clone()).collect();
+        match jamendo::results_at(http, &artists_by_id_url(client_id, &ids), cancel) {
+            Ok(items) => {
+                let full: HashMap<String, JamendoArtist> = items
+                    .iter()
+                    .filter_map(artist)
+                    .map(|a| (a.id.clone(), a))
+                    .collect();
+                for known in &mut artists {
+                    if let Some(found) = full.get(&known.id) {
+                        *known = found.clone();
+                    }
+                }
+            }
+            Err(err) if cancel.is_cancelled() => return Err(err),
+            // Pictures are a nicety: names alone still lead to the pages.
+            Err(err) => forge_runtime::logging::warn!("similar artists' pictures: {err}"),
+        }
+    }
+    Ok(JamendoSimilarArtists {
+        genre: jamendo::genre_name(&genre),
+        artists,
+    })
+}

@@ -2382,6 +2382,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func jamendoShelves()  -> [JamendoShelf]
     
     /**
+     * Artists like the Jamendo artist `artist_id`: others popular this
+     * week in the genre most of their songs carry
+     * ([`jamendo_explore::similar_artists`]). On-screen work.
+     */
+    func jamendoSimilarArtists(artistId: String, cancellation: Cancellation?) async throws  -> JamendoSimilarArtists
+    
+    /**
      * Remembers that these songs aren't one song, so they aren't offered
      * for merging again.
      */
@@ -3580,6 +3587,27 @@ open func jamendoShelves() -> [JamendoShelf]  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Artists like the Jamendo artist `artist_id`: others popular this
+     * week in the genre most of their songs carry
+     * ([`jamendo_explore::similar_artists`]). On-screen work.
+     */
+open func jamendoSimilarArtists(artistId: String, cancellation: Cancellation?)async throws  -> JamendoSimilarArtists  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_jamendo_similar_artists(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(artistId),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeJamendoSimilarArtists_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -6087,6 +6115,69 @@ public func FfiConverterTypeJamendoRelease_lift(_ buf: RustBuffer) throws -> Jam
 #endif
 public func FfiConverterTypeJamendoRelease_lower(_ value: JamendoRelease) -> RustBuffer {
     return FfiConverterTypeJamendoRelease.lower(value)
+}
+
+
+/**
+ * Artists like one artist: others popular this week in their main genre.
+ */
+public struct JamendoSimilarArtists: Equatable, Hashable {
+    /**
+     * The genre they share, as shown ("Electronic").
+     */
+    public var genre: String
+    public var artists: [JamendoArtist]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The genre they share, as shown ("Electronic").
+         */genre: String, artists: [JamendoArtist]) {
+        self.genre = genre
+        self.artists = artists
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension JamendoSimilarArtists: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeJamendoSimilarArtists: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> JamendoSimilarArtists {
+        return
+            try JamendoSimilarArtists(
+                genre: FfiConverterString.read(from: &buf), 
+                artists: FfiConverterSequenceTypeJamendoArtist.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: JamendoSimilarArtists, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.genre, into: &buf)
+        FfiConverterSequenceTypeJamendoArtist.write(value.artists, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoSimilarArtists_lift(_ buf: RustBuffer) throws -> JamendoSimilarArtists {
+    return try FfiConverterTypeJamendoSimilarArtists.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeJamendoSimilarArtists_lower(_ value: JamendoSimilarArtists) -> RustBuffer {
+    return FfiConverterTypeJamendoSimilarArtists.lower(value)
 }
 
 
@@ -14613,6 +14704,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_shelves() != 22897) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_jamendo_similar_artists() != 33332) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_keep_songs_apart() != 6266) {
