@@ -357,3 +357,7 @@ and light and dark mode.
     of them are solid.
 15. Similar Artists: on a Jamendo artist's page, a row of round artist tiles under their releases says
     "Popular in <genre> this week"; tapping one opens just that artist (not every tile in the row).
+16. Now Playing: tapping the song's title or artist opens a menu with "Go to Album" (the album's name
+    under it) and "Go to Artist" (the artist's name). A library song opens its album and artist pages; a
+    Jamendo song not in the library opens its Jamendo release and Jamendo artist. The More menu offers the
+    same two.
