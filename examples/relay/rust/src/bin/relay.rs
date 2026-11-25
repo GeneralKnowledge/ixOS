@@ -82,7 +82,9 @@ use relay_core::{
 
 const USAGE: &str = "usage: relay listen | devices | send PATH... | receive <code> | \
 send <device> (--text TEXT | PATH...) [--to host:port] | \
-messages <device> | status [<device>] | revoke <device> | forget <device> | \
+messages <device> | groups | group create NAME <device>... | \
+group (add GROUP <device>... | remove GROUP <device> | rename GROUP NAME | leave GROUP | \
+send GROUP TEXT | messages GROUP) | status [<device>] | revoke <device> | forget <device> | \
 trust <device> | asks <device> on|off | introduces <device> on|off | \
 sees-devices <device> on|off | grant <device> sites on|off | \
 site [FOLDER | 127.0.0.1:PORT | --stop] | web <device> [--port N] | listen [--site FOLDER|127.0.0.1:PORT] | person <device> (NAME | --mine) | sync <device> [--accept] | policy [codes-only | ask | automatic] | \
@@ -227,6 +229,13 @@ fn shared(core: &RelayCore, command: &str, rest: &[String]) -> Option<Result<Str
             }
             _ => return None,
         },
+        "groups" => (|| {
+            for g in block_on(core.groups()).map_err(|e| e.to_string())? {
+                out += &group_lines(&g);
+            }
+            Ok(())
+        })(),
+        "group" => group_command(core, rest).map(|text| out += &text),
         "messages" => (|| {
             let who = rest.first().ok_or(USAGE)?;
             let device = find_device(core, who)
@@ -995,6 +1004,157 @@ fn site_line(site: &relay_core::SiteSource) -> String {
     )
 }
 
+/// A group by its id, the start of its id, or its name.
+fn find_group(core: &RelayCore, which: &str) -> Result<relay_core::group::RelayGroup, String> {
+    let groups = block_on(core.groups()).map_err(|e| e.to_string())?;
+    let found: Vec<_> = groups
+        .into_iter()
+        .filter(|g| g.id.starts_with(which) || g.name.eq_ignore_ascii_case(which))
+        .collect();
+    match found.len() {
+        1 => Ok(found.into_iter().next().unwrap()),
+        0 => Err(format!("no group {which}; `relay groups` lists them")),
+        _ => Err(format!("more than one group is {which}: use its id")),
+    }
+}
+
+fn group_lines(g: &relay_core::group::RelayGroup) -> String {
+    let state = if g.left { "  (left)" } else { "" };
+    let mut out = format!("{}  {}{state}\n", g.name, g.id);
+    for m in &g.members {
+        let admin = if m.endpoint_id == g.admin {
+            ", admin"
+        } else {
+            ""
+        };
+        let note = if m.is_me {
+            " (this device)"
+        } else if !m.trusted {
+            " (not paired with this device: skipped for now)"
+        } else {
+            ""
+        };
+        out += &format!("  {}{note}{admin}  {}\n", m.name, m.endpoint_id);
+    }
+    out
+}
+
+/// `relay group create|add|remove|rename|leave|send|messages ...`.
+fn group_command(core: &RelayCore, rest: &[String]) -> Result<String, String> {
+    let device_id = |who: &String| {
+        find_device(core, who)
+            .map(|d| d.endpoint_id)
+            .ok_or_else(|| format!("no device {who}; `relay devices` lists them"))
+    };
+    let err = |e: RelayError| e.to_string();
+    match rest {
+        [verb, name, members @ ..] if verb == "create" && !members.is_empty() => {
+            let ids = members
+                .iter()
+                .map(device_id)
+                .collect::<Result<Vec<_>, _>>()?;
+            let g = block_on(core.create_group(name.clone(), ids)).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which, members @ ..] if verb == "add" && !members.is_empty() => {
+            let g = find_group(core, which)?;
+            let ids = members
+                .iter()
+                .map(device_id)
+                .collect::<Result<Vec<_>, _>>()?;
+            let g = block_on(core.add_group_members(g.id, ids)).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which, member] if verb == "remove" => {
+            let g = find_group(core, which)?;
+            // Its endpoint id, or a name only one member has.
+            let id = match g.members.iter().find(|m| m.endpoint_id == *member) {
+                Some(m) => m.endpoint_id.clone(),
+                None => {
+                    let named: Vec<_> = g
+                        .members
+                        .iter()
+                        .filter(|m| m.name.eq_ignore_ascii_case(member))
+                        .collect();
+                    match named.as_slice() {
+                        [one] => one.endpoint_id.clone(),
+                        [] => return Err(format!("{member} isn't in {}", g.name)),
+                        _ => {
+                            return Err(format!(
+                            "more than one member of {} is called {member}: use its endpoint id",
+                            g.name
+                        ))
+                        }
+                    }
+                }
+            };
+            let g = block_on(core.remove_group_member(g.id, id)).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which, name] if verb == "rename" => {
+            let g = find_group(core, which)?;
+            let g = block_on(core.rename_group(g.id, name.clone())).map_err(err)?;
+            Ok(group_lines(&g))
+        }
+        [verb, which] if verb == "leave" => {
+            let g = find_group(core, which)?;
+            block_on(core.leave_group(g.id)).map_err(err)?;
+            Ok(format!("Left {}.\n", g.name))
+        }
+        [verb, which, text @ ..] if verb == "send" && !text.is_empty() => {
+            let g = find_group(core, which)?;
+            // Where the members are on this network now, looked up once
+            // for all of them, as `relay send` does for one device.
+            let others: Vec<String> = g
+                .members
+                .iter()
+                .filter(|m| !m.is_me && m.trusted)
+                .map(|m| m.endpoint_id.clone())
+                .collect();
+            let nearby: Vec<relay_core::NearbyDevice> = find_devices_addresses(&others)
+                .into_iter()
+                .map(|(endpoint_id, addresses)| relay_core::NearbyDevice {
+                    endpoint_id,
+                    addresses,
+                })
+                .collect();
+            if !nearby.is_empty() {
+                core.devices_nearby(nearby);
+            }
+            let m = block_on(core.send_group_message(&g.id, text.join(" "))).map_err(err)?;
+            let d = core
+                .group_delivery(g.id.clone(), m.id.clone())
+                .map_err(err)?;
+            Ok(format!(
+                "Sent to {}: delivered to {} of {}{}\n",
+                g.name,
+                d.delivered,
+                d.of,
+                message_status(&m)
+            ))
+        }
+        [verb, which] if verb == "messages" => {
+            let g = find_group(core, which)?;
+            let mut out = String::new();
+            for m in core.group_messages(&g.id).map_err(err)? {
+                let mine = m.author_id == relay_core::device_chat::ME;
+                let who = if mine { "me" } else { m.author.as_str() };
+                let status = if mine {
+                    let d = core
+                        .group_delivery(g.id.clone(), m.id.clone())
+                        .map_err(err)?;
+                    format!("  (delivered to {} of {})", d.delivered, d.of)
+                } else {
+                    String::new()
+                };
+                out += &format!("{who}: {}{status}\n", message_line(&m));
+            }
+            Ok(out)
+        }
+        _ => Err(USAGE.into()),
+    }
+}
+
 fn find_device(core: &RelayCore, who: &str) -> Option<relay_core::Device> {
     core.devices()
         .into_iter()
@@ -1151,35 +1311,62 @@ fn advertise_device(
 
 /// Where the trusted device `endpoint_id` advertises itself on this network.
 fn find_device_addresses(endpoint_id: &str) -> Result<Vec<String>, String> {
-    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
-    let events = mdns.browse(&service_type()).map_err(|e| e.to_string())?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut found = Vec::new();
-    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
-        let Ok(event) = events.recv_timeout(left) else {
-            break;
-        };
-        if let mdns_sd::ServiceEvent::ServiceResolved(info) = event {
-            if info.get_property_val_str("d") == Some("1")
-                && info.get_property_val_str("id") == Some(endpoint_id)
-            {
-                let port = info.get_port();
-                found.extend(
-                    info.get_addresses()
-                        .iter()
-                        .map(|ip| std::net::SocketAddr::new(*ip, port).to_string()),
-                );
-                break;
-            }
-        }
-    }
-    let _ = mdns.shutdown();
+    let found = find_devices_addresses(&[endpoint_id.to_string()])
+        .into_iter()
+        .flat_map(|(_, addresses)| addresses)
+        .collect::<Vec<_>>();
     if found.is_empty() {
         return Err("that device isn't on this network (is Relay open on it?); \
                     or say where with --to host:port"
             .into());
     }
     Ok(found)
+}
+
+/// Where each of `endpoint_ids` is on this network, from one Bonjour
+/// browse of up to five seconds (it ends once all are found). Devices
+/// not found are left out.
+fn find_devices_addresses(endpoint_ids: &[String]) -> Vec<(String, Vec<String>)> {
+    let mut found: Vec<(String, Vec<String>)> = Vec::new();
+    if endpoint_ids.is_empty() {
+        return found;
+    }
+    let Ok(mdns) = mdns_sd::ServiceDaemon::new() else {
+        return found;
+    };
+    let Ok(events) = mdns.browse(&service_type()) else {
+        let _ = mdns.shutdown();
+        return found;
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while found.len() < endpoint_ids.len() {
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            break;
+        };
+        let Ok(event) = events.recv_timeout(left) else {
+            break;
+        };
+        if let mdns_sd::ServiceEvent::ServiceResolved(info) = event {
+            let Some(id) = info.get_property_val_str("id") else {
+                continue;
+            };
+            if info.get_property_val_str("d") != Some("1")
+                || !endpoint_ids.iter().any(|e| e == id)
+                || found.iter().any(|(f, _)| f == id)
+            {
+                continue;
+            }
+            let port = info.get_port();
+            let addresses = info
+                .get_addresses()
+                .iter()
+                .map(|ip| std::net::SocketAddr::new(*ip, port).to_string())
+                .collect();
+            found.push((id.to_string(), addresses));
+        }
+    }
+    let _ = mdns.shutdown();
+    found
 }
 
 /// Held by the terminal whose word-code send or receive is running.

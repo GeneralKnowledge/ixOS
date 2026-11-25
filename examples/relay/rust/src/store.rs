@@ -50,7 +50,8 @@ pub(crate) const JSON_FILE: &str = "relay.json";
 const MIGRATED: &str = "migrated";
 
 /// The schema, one step per version.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     -- What isn't a list: identity, policy, mode, servers, flags.
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     -- The record's lists, each row its saved JSON, in the order added.
@@ -77,10 +78,39 @@ const MIGRATIONS: &[&str] = &["
         path TEXT NOT NULL,
         PRIMARY KEY (conversation, id)
     );
-"];
+",
+    "
+    -- Group chats (N7): the groups this device is in, and which members
+    -- have each of our group messages.
+    CREATE TABLE groups (key TEXT PRIMARY KEY, seq INTEGER NOT NULL, body TEXT NOT NULL);
+    CREATE TABLE group_delivered (
+        conversation TEXT NOT NULL,
+        message TEXT NOT NULL,
+        member TEXT NOT NULL,
+        PRIMARY KEY (conversation, message, member)
+    );
+    -- Group messages that came before the admin's update that explains
+    -- them (the group, or their sender, not known here yet).
+    CREATE TABLE group_held (
+        grp TEXT NOT NULL,
+        sender TEXT NOT NULL,
+        id TEXT NOT NULL,
+        body TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        PRIMARY KEY (grp, sender, id)
+    );
+    -- How many members each of our group messages was for.
+    CREATE TABLE group_sent (
+        conversation TEXT NOT NULL,
+        message TEXT NOT NULL,
+        recipients INTEGER NOT NULL,
+        PRIMARY KEY (conversation, message)
+    );
+",
+];
 
 /// The record's lists, by table: each row's key, and its value.
-const LISTS: [&str; 4] = ["devices", "deliveries", "received", "history"];
+const LISTS: [&str; 5] = ["devices", "deliveries", "received", "history", "groups"];
 
 impl From<StorageError> for RelayError {
     fn from(err: StorageError) -> Self {
@@ -281,6 +311,7 @@ impl Store {
             record.deliveries = rows(c, "deliveries")?;
             record.received_ids = rows(c, "received")?;
             record.transfers = rows(c, "history")?;
+            record.groups = rows(c, "groups")?;
             Ok(Some(record))
         })
     }
@@ -313,6 +344,7 @@ pub(crate) fn save(c: &Connection, before: &Record, after: &Record) -> Result<()
         transfers: Vec::new(),
         deliveries: Vec::new(),
         received_ids: Vec::new(),
+        groups: Vec::new(),
         ..r.clone()
     };
     let meta = shell(after);
@@ -347,7 +379,109 @@ pub(crate) fn save(c: &Connection, before: &Record, after: &Record) -> Result<()
     sync(c, "history", &before.transfers, &after.transfers, |t| {
         t.id.to_string()
     })?;
+    sync(c, "groups", &before.groups, &after.groups, |g| g.id.clone())?;
     Ok(())
+}
+
+/// Remembers that group member `member` has our message `message`.
+pub(crate) fn set_group_delivered(
+    c: &Connection,
+    conversation: &str,
+    message: &str,
+    member: &str,
+) -> Result<(), RelayError> {
+    c.execute(
+        "INSERT OR IGNORE INTO group_delivered (conversation, message, member)
+         VALUES (?1, ?2, ?3)",
+        params![conversation, message, member],
+    )?;
+    Ok(())
+}
+
+/// Remembers that our group message `message` is for `recipients`
+/// members, the first time it is queued.
+pub(crate) fn set_group_sent(
+    c: &Connection,
+    conversation: &str,
+    message: &str,
+    recipients: u32,
+) -> Result<(), RelayError> {
+    c.execute(
+        "INSERT OR REPLACE INTO group_sent (conversation, message, recipients)
+         VALUES (?1, ?2, ?3)",
+        params![conversation, message, recipients],
+    )?;
+    Ok(())
+}
+
+/// How many members our group message `message` was for, if saved.
+pub(crate) fn group_sent(
+    c: &Connection,
+    conversation: &str,
+    message: &str,
+) -> Result<Option<u32>, RelayError> {
+    Ok(c.query_row(
+        "SELECT recipients FROM group_sent WHERE conversation = ?1 AND message = ?2",
+        params![conversation, message],
+        |r| r.get(0),
+    )
+    .optional()?)
+}
+
+/// Holds a group message from `sender` until the group's update explains
+/// it; false when `group` holds `most` already (it isn't kept).
+pub(crate) fn hold_group_message(
+    c: &Connection,
+    group: &str,
+    sender: &str,
+    id: &str,
+    body: &str,
+    at: i64,
+    most: usize,
+) -> Result<bool, RelayError> {
+    let held: i64 = c.query_row(
+        "SELECT COUNT(*) FROM group_held WHERE grp = ?1",
+        [group],
+        |r| r.get(0),
+    )?;
+    if held as usize >= most {
+        return Ok(false);
+    }
+    c.execute(
+        "INSERT OR IGNORE INTO group_held (grp, sender, id, body, at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![group, sender, id, body, at],
+    )?;
+    Ok(true)
+}
+
+/// Takes every message held for `group`: (sender, id, body, held at).
+pub(crate) fn take_held(
+    c: &Connection,
+    group: &str,
+) -> Result<Vec<(String, String, String, i64)>, RelayError> {
+    let mut statement =
+        c.prepare("SELECT sender, id, body, at FROM group_held WHERE grp = ?1 ORDER BY at")?;
+    let held = statement
+        .query_map([group], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    c.execute("DELETE FROM group_held WHERE grp = ?1", [group])?;
+    Ok(held)
+}
+
+/// The group members that have our message `message`.
+pub(crate) fn group_delivered(
+    c: &Connection,
+    conversation: &str,
+    message: &str,
+) -> Result<Vec<String>, RelayError> {
+    let mut statement = c.prepare(
+        "SELECT member FROM group_delivered WHERE conversation = ?1 AND message = ?2
+         ORDER BY member",
+    )?;
+    let members = statement.query_map(params![conversation, message], |r| r.get(0))?;
+    Ok(members.collect::<Result<_, _>>()?)
 }
 
 fn sync<T: Serialize + PartialEq>(

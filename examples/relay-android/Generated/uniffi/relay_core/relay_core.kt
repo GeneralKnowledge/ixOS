@@ -986,6 +986,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_relay_core_checksum_func_storage_engine(
     ): Int
+    external fun uniffi_relay_core_checksum_func_group_conversation_id(
+    ): Int
     external fun uniffi_relay_core_checksum_func_relay_error_kind(
     ): Int
     external fun uniffi_relay_core_checksum_func_deliver_notification_response(
@@ -1125,6 +1127,22 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_relay_core_checksum_method_relaycore_trust_device(
     ): Int
     external fun uniffi_relay_core_checksum_method_relaycore_trust_offer(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_add_group_members(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_create_group(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_group(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_group_delivery(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_groups(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_leave_group(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_remove_group_member(
+    ): Int
+    external fun uniffi_relay_core_checksum_method_relaycore_rename_group(
     ): Int
     external fun uniffi_relay_core_checksum_method_chatcore_account(
     ): Int
@@ -1464,6 +1482,22 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_relay_core_fn_method_relaycore_trust_offer(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_relay_core_fn_method_relaycore_add_group_members(`ptr`: Long,`id`: RustBuffer.ByValue,`members`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_relay_core_fn_method_relaycore_create_group(`ptr`: Long,`name`: RustBuffer.ByValue,`members`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_relay_core_fn_method_relaycore_group(`ptr`: Long,`id`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_relay_core_fn_method_relaycore_group_delivery(`ptr`: Long,`id`: RustBuffer.ByValue,`messageId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_relay_core_fn_method_relaycore_groups(`ptr`: Long,
+    ): Long
+    external fun uniffi_relay_core_fn_method_relaycore_leave_group(`ptr`: Long,`id`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_relay_core_fn_method_relaycore_remove_group_member(`ptr`: Long,`id`: RustBuffer.ByValue,`member`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_relay_core_fn_method_relaycore_rename_group(`ptr`: Long,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,
+    ): Long
     external fun uniffi_relay_core_fn_clone_chatcore(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_relay_core_fn_free_chatcore(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1752,6 +1786,8 @@ internal object UniffiLib {
     ): RustBufferErrorKind.ByValue
     external fun uniffi_relay_core_fn_func_storage_engine(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_relay_core_fn_func_group_conversation_id(`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_relay_core_fn_func_relay_error_kind(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBufferErrorKind.ByValue
     external fun uniffi_relay_core_fn_func_deliver_notification_response(`response`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1930,6 +1966,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_func_storage_engine() and 0xFFFF) != 50209) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_func_group_conversation_id() and 0xFFFF) != 38956) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_func_relay_error_kind() and 0xFFFF) != 51284) {
@@ -2140,6 +2179,30 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_relaycore_trust_offer() and 0xFFFF) != 46070) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_add_group_members() and 0xFFFF) != 41097) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_create_group() and 0xFFFF) != 45680) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_group() and 0xFFFF) != 62003) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_group_delivery() and 0xFFFF) != 17973) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_groups() and 0xFFFF) != 9431) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_leave_group() and 0xFFFF) != 61655) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_remove_group_member() and 0xFFFF) != 8900) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_relay_core_checksum_method_relaycore_rename_group() and 0xFFFF) != 52887) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_relay_core_checksum_method_chatcore_account() and 0xFFFF) != 28427) {
@@ -9832,6 +9895,45 @@ public interface RelayCoreInterface {
      */
     fun `trustOffer`(): TrustOffer?
     
+    /**
+     * Adds the trusted devices `members` (admin only).
+     */
+    suspend fun `addGroupMembers`(`id`: kotlin.String, `members`: List<kotlin.String>): RelayGroup
+    
+    /**
+     * Makes a group named `name` with this device as admin and the
+     * trusted devices `members`, and tells each of them.
+     */
+    suspend fun `createGroup`(`name`: kotlin.String, `members`: List<kotlin.String>): RelayGroup
+    
+    suspend fun `group`(`id`: kotlin.String): RelayGroup
+    
+    /**
+     * How many members have our message `message_id`.
+     */
+    fun `groupDelivery`(`id`: kotlin.String, `messageId`: kotlin.String): GroupDelivery
+    
+    /**
+     * The groups this device is in or was in, in the order made.
+     */
+    suspend fun `groups`(): List<RelayGroup>
+    
+    /**
+     * Leaves the group: every other member is told, and this device
+     * sends and takes nothing more in it. Its conversation stays.
+     */
+    suspend fun `leaveGroup`(`id`: kotlin.String)
+    
+    /**
+     * Removes `member` (admin only): it is told, and sent nothing after.
+     */
+    suspend fun `removeGroupMember`(`id`: kotlin.String, `member`: kotlin.String): RelayGroup
+    
+    /**
+     * Renames the group (admin only).
+     */
+    suspend fun `renameGroup`(`id`: kotlin.String, `name`: kotlin.String): RelayGroup
+    
     companion object
 }
 
@@ -11147,6 +11249,203 @@ open class RelayCore: Disposable, AutoCloseable, RelayCoreInterface
     )
     }
     
+
+    
+    /**
+     * Adds the trusted devices `members` (admin only).
+     */
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `addGroupMembers`(`id`: kotlin.String, `members`: List<kotlin.String>) : RelayGroup {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_add_group_members(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`id`),
+        FfiConverterSequenceString.lower(`members`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeRelayGroup.lift(it) },
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Makes a group named `name` with this device as admin and the
+     * trusted devices `members`, and tells each of them.
+     */
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `createGroup`(`name`: kotlin.String, `members`: List<kotlin.String>) : RelayGroup {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_create_group(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`name`),
+        FfiConverterSequenceString.lower(`members`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeRelayGroup.lift(it) },
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `group`(`id`: kotlin.String) : RelayGroup {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_group(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`id`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeRelayGroup.lift(it) },
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * How many members have our message `message_id`.
+     */
+    @Throws(RelayException::class)override fun `groupDelivery`(`id`: kotlin.String, `messageId`: kotlin.String): GroupDelivery {
+            return FfiConverterTypeGroupDelivery.lift(
+    callWithHandle {
+    uniffiRustCallWithError(RelayException) { _status ->
+    UniffiLib.uniffi_relay_core_fn_method_relaycore_group_delivery(
+        it,
+        
+        FfiConverterString.lower(`id`),
+        FfiConverterString.lower(`messageId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The groups this device is in or was in, in the order made.
+     */
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `groups`() : List<RelayGroup> {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_groups(
+                uniffiHandle,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceTypeRelayGroup.lift(it) },
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Leaves the group: every other member is told, and this device
+     * sends and takes nothing more in it. Its conversation stays.
+     */
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `leaveGroup`(`id`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_leave_group(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`id`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_void(future) },
+        // lift function
+        { },
+        
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Removes `member` (admin only): it is told, and sent nothing after.
+     */
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `removeGroupMember`(`id`: kotlin.String, `member`: kotlin.String) : RelayGroup {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_remove_group_member(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`id`),
+        FfiConverterString.lower(`member`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeRelayGroup.lift(it) },
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Renames the group (admin only).
+     */
+    @Throws(RelayException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `renameGroup`(`id`: kotlin.String, `name`: kotlin.String) : RelayGroup {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_relay_core_fn_method_relaycore_rename_group(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`id`),
+        FfiConverterString.lower(`name`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_relay_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_relay_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_relay_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeRelayGroup.lift(it) },
+        // Error FFI converter
+        RelayException.ErrorHandler,
+    )
+    }
 
     
 
@@ -13489,6 +13788,53 @@ public object FfiConverterTypeDevicesSynced: FfiConverterRustBuffer<DevicesSynce
 
 
 
+/**
+ * How far one of our group messages has got.
+ */
+data class GroupDelivery (
+    /**
+     * Members that have it.
+     */
+    var `delivered`: kotlin.UInt
+    , 
+    /**
+     * Members it was for (everyone but this device).
+     */
+    var `of`: kotlin.UInt
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeGroupDelivery: FfiConverterRustBuffer<GroupDelivery> {
+    override fun read(buf: ByteBuffer): GroupDelivery {
+        return GroupDelivery(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: GroupDelivery) = (
+            FfiConverterUInt.allocationSize(value.`delivered`) +
+            FfiConverterUInt.allocationSize(value.`of`)
+    )
+
+    override fun write(value: GroupDelivery, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`delivered`, buf)
+            FfiConverterUInt.write(value.`of`, buf)
+    }
+}
+
+
+
 data class HttpHeader (
     var `name`: kotlin.String
     , 
@@ -14112,6 +14458,136 @@ public object FfiConverterTypeQueryItem: FfiConverterRustBuffer<QueryItem> {
     override fun write(value: QueryItem, buf: ByteBuffer) {
             FfiConverterString.write(value.`name`, buf)
             FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * A group, for the app and the `relay` command.
+ */
+data class RelayGroup (
+    var `id`: kotlin.String
+    , 
+    /**
+     * Its conversation in Chats.
+     */
+    var `conversationId`: kotlin.String
+    , 
+    var `name`: kotlin.String
+    , 
+    var `admin`: kotlin.String
+    , 
+    /**
+     * Whether this device is the admin: it may add, remove and rename.
+     */
+    var `isAdmin`: kotlin.Boolean
+    , 
+    var `members`: List<RelayGroupMember>
+    , 
+    /**
+     * This device left or was removed: the conversation is read-only.
+     */
+    var `left`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRelayGroup: FfiConverterRustBuffer<RelayGroup> {
+    override fun read(buf: ByteBuffer): RelayGroup {
+        return RelayGroup(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeRelayGroupMember.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RelayGroup) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`conversationId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`admin`) +
+            FfiConverterBoolean.allocationSize(value.`isAdmin`) +
+            FfiConverterSequenceTypeRelayGroupMember.allocationSize(value.`members`) +
+            FfiConverterBoolean.allocationSize(value.`left`)
+    )
+
+    override fun write(value: RelayGroup, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`conversationId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`admin`, buf)
+            FfiConverterBoolean.write(value.`isAdmin`, buf)
+            FfiConverterSequenceTypeRelayGroupMember.write(value.`members`, buf)
+            FfiConverterBoolean.write(value.`left`, buf)
+    }
+}
+
+
+
+data class RelayGroupMember (
+    var `endpointId`: kotlin.String
+    , 
+    var `name`: kotlin.String
+    , 
+    /**
+     * This device.
+     */
+    var `isMe`: kotlin.Boolean
+    , 
+    /**
+     * A trusted device here: messages go to it. A member this device
+     * hasn't paired with is skipped for now.
+     */
+    var `trusted`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRelayGroupMember: FfiConverterRustBuffer<RelayGroupMember> {
+    override fun read(buf: ByteBuffer): RelayGroupMember {
+        return RelayGroupMember(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RelayGroupMember) = (
+            FfiConverterString.allocationSize(value.`endpointId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`isMe`) +
+            FfiConverterBoolean.allocationSize(value.`trusted`)
+    )
+
+    override fun write(value: RelayGroupMember, buf: ByteBuffer) {
+            FfiConverterString.write(value.`endpointId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`isMe`, buf)
+            FfiConverterBoolean.write(value.`trusted`, buf)
     }
 }
 
@@ -19324,6 +19800,62 @@ public object FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer<List<Que
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeRelayGroup: FfiConverterRustBuffer<List<RelayGroup>> {
+    override fun read(buf: ByteBuffer): List<RelayGroup> {
+        val len = buf.getInt()
+        return List<RelayGroup>(len) {
+            FfiConverterTypeRelayGroup.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RelayGroup>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRelayGroup.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RelayGroup>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRelayGroup.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeRelayGroupMember: FfiConverterRustBuffer<List<RelayGroupMember>> {
+    override fun read(buf: ByteBuffer): List<RelayGroupMember> {
+        val len = buf.getInt()
+        return List<RelayGroupMember>(len) {
+            FfiConverterTypeRelayGroupMember.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RelayGroupMember>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRelayGroupMember.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RelayGroupMember>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRelayGroupMember.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeSiteHeader: FfiConverterRustBuffer<List<SiteHeader>> {
     override fun read(buf: ByteBuffer): List<SiteHeader> {
         val len = buf.getInt()
@@ -19577,6 +20109,20 @@ public object FfiConverterSequenceTypeCapability: FfiConverterRustBuffer<List<Ca
     UniffiLib.uniffi_relay_core_fn_func_storage_engine(
     
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * The conversation id of group `group_id`, for the app.
+         */ fun `groupConversationId`(`groupId`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_relay_core_fn_func_group_conversation_id(
+    
+        
+        FfiConverterString.lower(`groupId`),_status)
 }
     )
     }

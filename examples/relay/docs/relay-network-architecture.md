@@ -213,7 +213,7 @@ messages over 5G, was run. N2's acceptance run covers them. The stages after the
 | N4 | One messaging security model | The chat server path on Relay's identities and encryption; plan: [relay-chat-on-relay.md](relay-chat-on-relay.md) |
 | N5 | Capabilities and permissions | Devices offer services safely, each behind its own right. Started 2026-11-22 with N6; plan: [relay-capabilities.md](relay-capabilities.md) |
 | N6 | The first capability | Sites: proof that new functions come from the layer. Plan: [relay-web.md](relay-web.md) |
-| N7 | Groups and people | Rooms and Spaces on MLS, people beyond your own devices |
+| N7 | Groups and people | Rooms and Spaces, people beyond your own devices. Started 2026-11-25 with group chats (fan-out over device connections, MLS when a group outgrows it): [relay-groups.md](relay-groups.md) |
 | N8 | Continuity and cooperation | Sync, handover, tasks (Workshop) |
 | N9 | Federation and other participants | Nostr interoperability; AI agents with restricted rights, last |
 

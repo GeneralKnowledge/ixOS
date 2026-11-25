@@ -30,6 +30,7 @@ struct ConversationListView: View {
     /// Opens a conversation (after creating one, or at a search result).
     let open: (ChatRoute) -> Void
     @State private var creating = false
+    @State private var creatingGroup = false
     @State private var query = ""
     @State private var results: [ChatMessage] = []
     /// The query `results` answer: "No Results" waits for the search of
@@ -62,6 +63,19 @@ struct ConversationListView: View {
                     Button("New Conversation", systemImage: "square.and.pencil") { creating = true }
                         .accessibilityIdentifier("chats.new")
                 }
+            }
+            // A group chat of trusted devices, with no server (N7).
+            if model.hasGroups {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("New Group", systemImage: "person.3") { creatingGroup = true }
+                        .accessibilityIdentifier("chats.newGroup")
+                }
+            }
+        }
+        .sheet(isPresented: $creatingGroup) {
+            NewGroupView(model: model) { id in
+                creatingGroup = false
+                open(ChatRoute(conversationId: id))
             }
         }
         .sheet(isPresented: $creating) {

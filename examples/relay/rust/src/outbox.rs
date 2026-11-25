@@ -103,6 +103,22 @@ pub enum Payload {
         size: u64,
         hashes: Vec<String>,
     },
+    /// One copy of a message in a group (`group`), for one member.
+    GroupMessage {
+        group: String,
+        id: String,
+        body: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_to: Option<String>,
+    },
+    /// The group as its admin (this device) now has it, for one member.
+    GroupUpdate {
+        group: crate::group::SavedGroup,
+    },
+    /// This device left the group, for one member.
+    GroupLeave {
+        group: String,
+    },
 }
 
 /// An item this device received from a trusted device, so a retry of it
@@ -158,7 +174,6 @@ impl Payload {
     /// What the blob store holds for it.
     fn content(&self) -> Option<HashAndFormat> {
         match self {
-            Payload::Note { .. } | Payload::Message { .. } => None,
             Payload::Files {
                 hash, collection, ..
             } => {
@@ -169,6 +184,7 @@ impl Payload {
                     HashAndFormat::raw(hash)
                 })
             }
+            _ => None,
         }
     }
 }
@@ -234,7 +250,7 @@ impl Record {
         self.deliveries.iter().find(|d| match &d.payload {
             Payload::Message { id, .. } => id == message_id,
             Payload::Files { .. } => crate::device_chat::files_message_id(&d.id) == message_id,
-            Payload::Note { .. } => false,
+            _ => false,
         })
     }
 
@@ -525,7 +541,7 @@ impl RelayCore {
                     }
                     let ended = r.end_delivery(&id, status);
                     if ended {
-                        message_ended(c, &d_for_end, delivered)?;
+                        message_ended(r, c, &d_for_end, delivered)?;
                     }
                     Ok(ended)
                 })
@@ -592,6 +608,12 @@ impl RelayCore {
                     reply_to: reply_to.clone(),
                 })
             }
+            group @ (Payload::GroupMessage { .. }
+            | Payload::GroupUpdate { .. }
+            | Payload::GroupLeave { .. }) => match crate::group::outgoing(group) {
+                Some(msg) => device::Outgoing::Group(msg),
+                None => return Outcome::Gone,
+            },
             files => match files.offer() {
                 Some(offer) => device::Outgoing::Stored(offer),
                 None => {
@@ -734,7 +756,7 @@ impl RelayCore {
                         },
                     );
                     if ended {
-                        message_ended(c, &ending, false)?;
+                        message_ended(r, c, &ending, false)?;
                     }
                     Ok(ended)
                 })
@@ -758,6 +780,7 @@ impl RelayCore {
 /// failed (the person can send a message again). In the transaction that
 /// ends the delivery.
 fn message_ended(
+    r: &Record,
     c: &mut Conversations<'_>,
     d: &SavedDelivery,
     delivered: bool,
@@ -765,7 +788,10 @@ fn message_ended(
     let id = match &d.payload {
         Payload::Message { id, .. } => id.clone(),
         Payload::Files { .. } => crate::device_chat::files_message_id(&d.id),
-        Payload::Note { .. } => return Ok(()),
+        Payload::GroupMessage { group, id, .. } => {
+            return crate::group::group_delivery_ended(r, c, group, id, &d.to, delivered);
+        }
+        _ => return Ok(()),
     };
     let status = if delivered {
         chat_core::MessageStatus::Sent
@@ -779,6 +805,7 @@ fn message_ended(
 /// hold failed, so the person can send it again. Since P3 the two are
 /// saved together; this settles what an older build left.
 pub(crate) fn settle_messages(r: &Record, c: &mut Conversations<'_>) {
+    crate::group::settle_group_messages(r, c);
     for to in r.devices.listed().map(|d| d.endpoint_id.clone()) {
         for m in c.queued(&to).unwrap_or_default() {
             if r.message_delivery(&m.id).is_none() {
@@ -1024,7 +1051,7 @@ impl RelayCore {
         let message = match &d.payload {
             Payload::Message { id, .. } => Some(id.clone()),
             Payload::Files { .. } => Some(crate::device_chat::files_message_id(&d.id)),
-            Payload::Note { .. } => None,
+            _ => None,
         };
         let saved = self
             .rt
@@ -1076,7 +1103,7 @@ impl RelayCore {
                 state.change_with(|r, c| {
                     let ended = r.end_delivery(&id, SavedStatus::Done);
                     if ended {
-                        message_ended(c, &d_for_end, true)?;
+                        message_ended(r, c, &d_for_end, true)?;
                     }
                     Ok(ended)
                 })
