@@ -962,11 +962,7 @@ private struct MessageBubble: View {
                                 .font(.caption2)
                                 .accessibilityIdentifier("chat.deleting")
                         } else if let delivery {
-                            DeliveryLabel(
-                                delivery: delivery,
-                                // A group says how many members have it.
-                                groupText: delivery == .sent || delivery == .sending
-                                    ? model.groupDelivery(message) : nil)
+                            DeliveryLabel(delivery: delivery, groupText: groupDeliveryText)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -1129,9 +1125,16 @@ private struct MessageBubble: View {
         if model.deleting.contains(message.id) {
             text += ", deleting"
         } else if let delivery {
-            text += ", \(DeliveryLabel.text(delivery))"
+            text += ", \(groupDeliveryText ?? DeliveryLabel.text(delivery))"
         }
         return text
+    }
+
+    /// In a group, how many members have it ("Delivered to 2 of 3"), for
+    /// the label and VoiceOver alike.
+    private var groupDeliveryText: String? {
+        guard delivery == .sent || delivery == .sending else { return nil }
+        return model.groupDelivery(message)
     }
 }
 

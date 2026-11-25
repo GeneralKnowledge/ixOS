@@ -358,7 +358,9 @@ public final class ChatModel {
 
     /// Re-lists rooms from the server (pull to refresh, and on resume).
     public func refresh() async {
-        guard let core, account != nil else { return }
+        // Relay alone (no server account) still lists its device and
+        // group conversations.
+        guard let core, account != nil || relay != nil else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         do {

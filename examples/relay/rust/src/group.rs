@@ -559,7 +559,7 @@ impl RelayCore {
             if g.left {
                 return Ok(());
             }
-            self.reachable_members(&record, g, &me)
+            reachable_members(&record, g, &me)
         };
         let group = id.clone();
         self.rt
@@ -650,21 +650,6 @@ impl RelayCore {
         message: Message,
     ) -> Result<(Message, Firsts), RelayError> {
         let me = self.me().await?;
-        let recipients = {
-            let record = self.record.get();
-            let g = record.group(id).ok_or_else(|| no_group(id))?;
-            if g.left {
-                return Err(RelayError::Declined {
-                    reason: "You're no longer in this group".into(),
-                });
-            }
-            self.reachable_members(&record, g, &me)
-        };
-        if recipients.is_empty() {
-            return Err(RelayError::Declined {
-                reason: "No one in this group is a trusted device here yet".into(),
-            });
-        }
         let group = id.to_string();
         let conversation = group_conversation(id);
         let waiters = Arc::clone(&self.outbox.waiters);
@@ -672,6 +657,20 @@ impl RelayCore {
             .rt
             .command("queue-group-message", move |state| {
                 state.change_with(|r, c| {
+                    // Chosen in the same change that queues the copies, so a
+                    // member removed meanwhile gets none.
+                    let g = r.group(&group).ok_or_else(|| no_group(&group))?;
+                    if g.left {
+                        return Err(RelayError::Declined {
+                            reason: "You're no longer in this group".into(),
+                        });
+                    }
+                    let recipients = reachable_members(r, g, &me);
+                    if recipients.is_empty() {
+                        return Err(RelayError::Declined {
+                            reason: "No one in this group is a trusted device here yet".into(),
+                        });
+                    }
                     let message = match c.get(&conversation, &message.id)? {
                         Some(found) if found.status == MessageStatus::Failed => {
                             c.set_status(&conversation, &found.id, MessageStatus::Queued)?;
@@ -728,19 +727,6 @@ impl RelayCore {
             self.wake(to);
         }
         Ok((message, firsts))
-    }
-
-    /// The members other than `me` that items go to: trusted devices here.
-    fn reachable_members(&self, record: &Record, g: &SavedGroup, me: &str) -> Vec<String> {
-        g.others(me)
-            .filter(|m| {
-                record
-                    .devices
-                    .get(&m.endpoint_id)
-                    .is_some_and(|d| d.trust == SavedTrust::Trusted)
-            })
-            .map(|m| m.endpoint_id.clone())
-            .collect()
     }
 
     /// The group `id` and this device's endpoint id, when this device is
@@ -801,7 +787,7 @@ impl RelayCore {
     ) -> Result<(SavedGroup, Firsts), RelayError> {
         let mut to: Vec<String> = {
             let record = self.record.get();
-            self.reachable_members(&record, &group, me)
+            reachable_members(&record, &group, me)
         };
         to.extend(removed.into_iter().map(|m| m.endpoint_id));
         let waiters = Arc::clone(&self.outbox.waiters);
@@ -1028,6 +1014,19 @@ impl ChatRepo for GroupRepo {
             reason: "the file is no longer on this device".into(),
         })
     }
+}
+
+/// The members other than `me` that items go to: trusted devices here.
+fn reachable_members(record: &Record, g: &SavedGroup, me: &str) -> Vec<String> {
+    g.others(me)
+        .filter(|m| {
+            record
+                .devices
+                .get(&m.endpoint_id)
+                .is_some_and(|d| d.trust == SavedTrust::Trusted)
+        })
+        .map(|m| m.endpoint_id.clone())
+        .collect()
 }
 
 #[cfg(test)]

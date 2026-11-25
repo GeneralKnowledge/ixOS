@@ -178,7 +178,7 @@ struct GroupInfoView: View {
                 } header: {
                     Text("\(group.members.count) Members")
                 } footer: {
-                    Text("Each message goes straight to each member's device, encrypted on the way. No server keeps it.")
+                    Text("Each message goes to each member's device over an encrypted connection. For a member who is away, an encrypted copy can wait in their mailbox, which can't read it.")
                 }
                 if group.isAdmin && !group.left {
                     Section {
