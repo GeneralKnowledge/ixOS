@@ -1067,12 +1067,27 @@ fn group_command(core: &RelayCore, rest: &[String]) -> Result<String, String> {
         }
         [verb, which, member] if verb == "remove" => {
             let g = find_group(core, which)?;
-            let id = g
-                .members
-                .iter()
-                .find(|m| m.endpoint_id == *member || m.name.eq_ignore_ascii_case(member))
-                .map(|m| m.endpoint_id.clone())
-                .ok_or_else(|| format!("{member} isn't in {}", g.name))?;
+            // Its endpoint id, or a name only one member has.
+            let id = match g.members.iter().find(|m| m.endpoint_id == *member) {
+                Some(m) => m.endpoint_id.clone(),
+                None => {
+                    let named: Vec<_> = g
+                        .members
+                        .iter()
+                        .filter(|m| m.name.eq_ignore_ascii_case(member))
+                        .collect();
+                    match named.as_slice() {
+                        [one] => one.endpoint_id.clone(),
+                        [] => return Err(format!("{member} isn't in {}", g.name)),
+                        _ => {
+                            return Err(format!(
+                            "more than one member of {} is called {member}: use its endpoint id",
+                            g.name
+                        ))
+                        }
+                    }
+                }
+            };
             let g = block_on(core.remove_group_member(g.id, id)).map_err(err)?;
             Ok(group_lines(&g))
         }
@@ -1088,6 +1103,24 @@ fn group_command(core: &RelayCore, rest: &[String]) -> Result<String, String> {
         }
         [verb, which, text @ ..] if verb == "send" && !text.is_empty() => {
             let g = find_group(core, which)?;
+            // Where the members are on this network now, looked up once
+            // for all of them, as `relay send` does for one device.
+            let others: Vec<String> = g
+                .members
+                .iter()
+                .filter(|m| !m.is_me && m.trusted)
+                .map(|m| m.endpoint_id.clone())
+                .collect();
+            let nearby: Vec<relay_core::NearbyDevice> = find_devices_addresses(&others)
+                .into_iter()
+                .map(|(endpoint_id, addresses)| relay_core::NearbyDevice {
+                    endpoint_id,
+                    addresses,
+                })
+                .collect();
+            if !nearby.is_empty() {
+                core.devices_nearby(nearby);
+            }
             let m = block_on(core.send_group_message(&g.id, text.join(" "))).map_err(err)?;
             let d = core
                 .group_delivery(g.id.clone(), m.id.clone())
@@ -1278,35 +1311,62 @@ fn advertise_device(
 
 /// Where the trusted device `endpoint_id` advertises itself on this network.
 fn find_device_addresses(endpoint_id: &str) -> Result<Vec<String>, String> {
-    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| e.to_string())?;
-    let events = mdns.browse(&service_type()).map_err(|e| e.to_string())?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut found = Vec::new();
-    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
-        let Ok(event) = events.recv_timeout(left) else {
-            break;
-        };
-        if let mdns_sd::ServiceEvent::ServiceResolved(info) = event {
-            if info.get_property_val_str("d") == Some("1")
-                && info.get_property_val_str("id") == Some(endpoint_id)
-            {
-                let port = info.get_port();
-                found.extend(
-                    info.get_addresses()
-                        .iter()
-                        .map(|ip| std::net::SocketAddr::new(*ip, port).to_string()),
-                );
-                break;
-            }
-        }
-    }
-    let _ = mdns.shutdown();
+    let found = find_devices_addresses(&[endpoint_id.to_string()])
+        .into_iter()
+        .flat_map(|(_, addresses)| addresses)
+        .collect::<Vec<_>>();
     if found.is_empty() {
         return Err("that device isn't on this network (is Relay open on it?); \
                     or say where with --to host:port"
             .into());
     }
     Ok(found)
+}
+
+/// Where each of `endpoint_ids` is on this network, from one Bonjour
+/// browse of up to five seconds (it ends once all are found). Devices
+/// not found are left out.
+fn find_devices_addresses(endpoint_ids: &[String]) -> Vec<(String, Vec<String>)> {
+    let mut found: Vec<(String, Vec<String>)> = Vec::new();
+    if endpoint_ids.is_empty() {
+        return found;
+    }
+    let Ok(mdns) = mdns_sd::ServiceDaemon::new() else {
+        return found;
+    };
+    let Ok(events) = mdns.browse(&service_type()) else {
+        let _ = mdns.shutdown();
+        return found;
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while found.len() < endpoint_ids.len() {
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            break;
+        };
+        let Ok(event) = events.recv_timeout(left) else {
+            break;
+        };
+        if let mdns_sd::ServiceEvent::ServiceResolved(info) = event {
+            let Some(id) = info.get_property_val_str("id") else {
+                continue;
+            };
+            if info.get_property_val_str("d") != Some("1")
+                || !endpoint_ids.iter().any(|e| e == id)
+                || found.iter().any(|(f, _)| f == id)
+            {
+                continue;
+            }
+            let port = info.get_port();
+            let addresses = info
+                .get_addresses()
+                .iter()
+                .map(|ip| std::net::SocketAddr::new(*ip, port).to_string())
+                .collect();
+            found.push((id.to_string(), addresses));
+        }
+    }
+    let _ = mdns.shutdown();
+    found
 }
 
 /// Held by the terminal whose word-code send or receive is running.

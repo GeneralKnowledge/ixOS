@@ -166,6 +166,22 @@ fn a_group_message_reaches_every_member_and_only_the_admin_changes_the_group() {
         block_on(tablet.group(id.clone())).unwrap().name == "Family dinners"
     });
 
+    // Two changes at once: neither is lost. One made from a version
+    // that changed meanwhile is refused.
+    let (one, two) = block_on(async {
+        tokio::join!(
+            phone.rename_group(id.clone(), "One".into()),
+            phone.rename_group(id.clone(), "Two".into())
+        )
+    });
+    let worked = [&one, &two].iter().filter(|r| r.is_ok()).count() as u64;
+    assert!(worked >= 1);
+    let version = |core: &RelayCore| block_on(core.groups()).unwrap()[0].clone();
+    let before = version(&phone);
+    eventually("the same name on the tablet", || {
+        block_on(tablet.group(id.clone())).unwrap().name == before.name
+    });
+
     // Removed: the tablet learns it's out, and gets nothing after.
     block_on(phone.remove_group_member(id.clone(), tablet_id.clone())).unwrap();
     eventually("the tablet out", || !in_group(&tablet, &id));

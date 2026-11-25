@@ -1,6 +1,6 @@
 # Group chats
 
-Status: design, 2026-11-25. Reuben asked for group chats in Relay
+Status: design, 2026-11-25; delivery decided (fan-out now, MLS later). Reuben asked for group chats in Relay
 ("Relay group chats should be added"). This is the first part of stage N7
 in the [network architecture](relay-network-architecture.md) (groups and
 people). It goes ahead as recommended below unless he says otherwise; the
@@ -37,8 +37,10 @@ in their mailbox.
 This needs no new cryptography and no new transport, and it already has
 what groups need:
 
-- **Removal is immediate.** There is no shared group key to rotate: a
-  removed member is simply no longer sent to.
+- **Removal needs no rekeying.** There is no shared group key to rotate: a
+  removed member is no longer sent to. The admin stops at once; each other
+  member stops as soon as it has the admin's update, so a copy sent in
+  that short gap can still reach the removed member.
 - **Offline and retries** are the outbox's: per-recipient order, exactly
   once on the receiver by message id, the mailbox while a member is away.
 - **Delivery status per member** falls out of it ("Delivered to 3 of 4").
@@ -105,7 +107,18 @@ versions: the admin can't add them until they update.
 
 Each member orders the conversation by when messages reached it, as device
 conversations do. Two members can see two messages sent at the same moment
-in a different order; each sender's own messages are always in order.
+in a different order. Copies that came straight and copies that waited in
+a mailbox can interleave, so even one sender's messages are not promised
+in order.
+
+A message can arrive before the update that tells the device about its
+group or its sender (the update went by mailbox, the message straight).
+It is held, at most 200 for a week, and shown once the admin's update
+makes the sender a member; otherwise it is dropped unseen.
+
+**How long a copy waits.** A member away for long doesn't get everything:
+the sender's outbox gives up on a copy after 30 days, and a copy in the
+member's mailbox expires after 7. Such a copy counts as not delivered.
 
 ### 4. How it fits Chats
 
@@ -141,7 +154,10 @@ Each step is a PR, Linux-tested before the phone sees it.
    sender names, delivery counts. Edits, reactions and taking back a
    delivered message aren't offered in groups, as in device
    conversations.
-4. Members introduced by the admin (a group-only right on
+4. Members introduced by the admin. This needs each member's mailbox key
+   passed on by the admin inside its group update, which arrives over the admin's authenticated connection or sealed mailbox (so a copy can be
+   sealed to a member the sender never paired with), and acceptance scoped
+   to the group: a group-only right on
    `relay/device/1`, dialled by key, deposit passes for their mailbox),
    and photos and files in groups (one blob, offered to each member).
 5. One phone run: the phone and two laptop instances ("create" and
@@ -152,7 +168,7 @@ Each step is a PR, Linux-tested before the phone sees it.
 
 These go ahead as recommended unless he says otherwise:
 
-1. **Fan-out now, MLS later** (recommended), or MLS from the start.
+1. **Fan-out now, MLS later.** Decided by Reuben, 2026-11-25.
 2. **Members who haven't paired with each other can talk inside the
    group, introduced by the admin** (recommended), or every member must
    have paired with every other first.

@@ -414,6 +414,9 @@ impl RelayCore {
                 .take_files(from, id, hash, collection, &name, size, blobs)
                 .await;
         }
+        if let Posted::Group { msg } = posted {
+            return self.take_group(host, from, &msg).await;
+        }
         let from = from.to_string();
         let saved = tokio::task::spawn_blocking(move || match posted {
             Posted::Note { text } => {
@@ -426,25 +429,7 @@ impl RelayCore {
                 &from,
                 crate::device_chat::PeerMessage { id, body, reply_to },
             ),
-            Posted::Group { msg } => {
-                let item = crate::device::DeviceMsg::decode(&msg)
-                    .ok()
-                    .and_then(crate::group::incoming);
-                match item {
-                    Some(item) => match host.group(&from, item) {
-                        // Refused (not a member, or no longer): dropped,
-                        // as a direct send would be.
-                        Err(crate::model::RelayError::Declined { reason }) => {
-                            forge_runtime::logging::info!(
-                                "relay: a group item from the mailbox wasn't taken: {reason}"
-                            );
-                            Ok(())
-                        }
-                        other => other,
-                    },
-                    None => Ok(()),
-                }
-            }
+            Posted::Group { .. } => unreachable!("taken above"),
             Posted::Files { .. } => unreachable!("taken above"),
         })
         .await;
@@ -460,6 +445,38 @@ impl RelayCore {
 }
 
 impl RelayCore {
+    /// Saves a group item from the mailbox once, as a direct delivery
+    /// would. One that is refused (not a member, the group left) or can't
+    /// be read is dropped, so no receipt says it was saved; a storage
+    /// failure is tried again next round.
+    async fn take_group(&self, host: crate::CoreDevices, from: &str, msg: &[u8]) -> Taken {
+        use crate::device::DeviceInbound as _;
+        let Some(item) = crate::device::DeviceMsg::decode(msg)
+            .ok()
+            .and_then(crate::group::incoming)
+        else {
+            forge_runtime::logging::info!("relay: a group item from the mailbox couldn't be read");
+            return Taken::Dropped;
+        };
+        let from = from.to_string();
+        match tokio::task::spawn_blocking(move || host.group(&from, item)).await {
+            Ok(Ok(())) => Taken::Saved,
+            Ok(Err(crate::model::RelayError::Declined { reason })) => {
+                forge_runtime::logging::info!(
+                    "relay: a group item from the mailbox wasn't taken: {reason}"
+                );
+                Taken::Dropped
+            }
+            Ok(Err(e)) => {
+                forge_runtime::logging::warn!(
+                    "relay: a group item from the mailbox wasn't saved: {e}"
+                );
+                Taken::Retry
+            }
+            Err(_) => Taken::Retry,
+        }
+    }
+
     /// Saves files from the mailbox once, as a direct delivery would: the
     /// blobs go into the store (each named by its own hash), and only the
     /// content `hash` names is placed in the received folder.

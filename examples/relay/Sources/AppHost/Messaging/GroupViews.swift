@@ -81,7 +81,7 @@ struct NewGroupView: View {
     }
 }
 
-/// A device to pick, with a checkmark when picked.
+/// A device to pick, as a ForgeUI choice tile.
 private struct MemberPickRow: View {
     let name: String
     let person: String?
@@ -90,21 +90,16 @@ private struct MemberPickRow: View {
 
     var body: some View {
         Button(action: toggle) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(name).foregroundStyle(.primary)
-                    if let person {
-                        Text("\(person)'s").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                if picked {
-                    Image(systemName: "checkmark").foregroundStyle(.tint)
+            VStack(alignment: .leading) {
+                Text(name)
+                if let person {
+                    Text("\(person)'s").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityAddTraits(picked ? .isSelected : [])
+        // ForgeUI's choice: the chosen look, a 44-point tap, "Selected".
+        .buttonStyle(.forgeChoice(isSelected: picked, shape: .tile))
     }
 }
 
@@ -118,7 +113,6 @@ struct GroupInfoView: View {
     @State private var loaded = false
     @State private var adding = false
     @State private var renaming = false
-    @State private var newName = ""
     @State private var confirmingLeave = false
 
     var body: some View {
@@ -143,12 +137,10 @@ struct GroupInfoView: View {
                         }
                     }
                 }
-                .alert("Rename Group", isPresented: $renaming) {
-                    TextField("Group Name", text: $newName)
-                        .accessibilityIdentifier("groupInfo.renameField")
-                    Button("Cancel", role: .cancel) {}
-                    Button("Rename") { rename() }
-                        .accessibilityIdentifier("groupInfo.renameConfirm")
+                .forgeRename(
+                    "Rename Group", isPresented: $renaming, name: group?.name ?? "", id: "groupInfo.rename"
+                ) { name in
+                    await rename(to: name)
                 }
                 .confirmationDialog(
                     "Leave this group?", isPresented: $confirmingLeave, titleVisibility: .visible
@@ -174,10 +166,12 @@ struct GroupInfoView: View {
                     ForEach(group.members, id: \.endpointId) { member in
                         MemberRow(member: member, isAdmin: member.endpointId == group.admin)
                             .accessibilityIdentifier("groupInfo.member.\(member.endpointId)")
-                            .swipeActions {
+                            .forgeRowActions {
                                 if group.isAdmin && !group.left && !member.isMe {
-                                    Button("Remove", role: .destructive) { remove(member) }
-                                        .accessibilityIdentifier("groupInfo.remove.\(member.endpointId)")
+                                    Button("Remove", systemImage: "person.badge.minus", role: .destructive) {
+                                        remove(member)
+                                    }
+                                    .accessibilityIdentifier("groupInfo.remove.\(member.endpointId)")
                                 }
                             }
                     }
@@ -190,11 +184,8 @@ struct GroupInfoView: View {
                     Section {
                         Button("Add Members", systemImage: "person.badge.plus") { adding = true }
                             .accessibilityIdentifier("groupInfo.add")
-                        Button("Rename Group", systemImage: "pencil") {
-                            newName = group.name
-                            renaming = true
-                        }
-                        .accessibilityIdentifier("groupInfo.rename")
+                        Button("Rename Group", systemImage: "pencil") { renaming = true }
+                            .accessibilityIdentifier("groupInfo.renameButton")
                     }
                 }
                 if !group.left {
@@ -227,14 +218,17 @@ struct GroupInfoView: View {
         }
     }
 
-    private func rename() {
-        guard let group else { return }
-        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        Task {
-            if let updated = await model.renameGroup(group, name) {
-                self.group = updated
-            }
+    /// Nil once renamed; otherwise why not, shown under the field.
+    private func rename(to name: String) async -> String? {
+        guard let group else { return nil }
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return String(localized: "Give the group a name.") }
+        switch await model.renameGroup(group, name) {
+        case .success(let updated):
+            self.group = updated
+            return nil
+        case .failure(let reason):
+            return reason.message
         }
     }
 

@@ -44,6 +44,10 @@ use crate::RelayCore;
 /// The most members a group has, the admin included, while each message
 /// goes once to each member.
 pub const MAX_MEMBERS: usize = 32;
+/// The most messages held for one group while its update is on the way.
+const MOST_HELD: usize = 200;
+/// How long a held message waits for the update that explains it.
+const HELD_FOR_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 const PREFIX: &str = "group:";
 
 /// The conversation id of group `id` (32 hex characters).
@@ -97,6 +101,10 @@ pub struct SavedGroup {
     /// This device left, or was removed: the conversation stays, read-only.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
+    /// This device left by itself (Leave Group): an update from the admin
+    /// that still lists it, sent before it heard, doesn't bring it back.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub left_by_me: bool,
 }
 
 impl SavedGroup {
@@ -113,6 +121,7 @@ impl SavedGroup {
     fn shared(&self) -> SavedGroup {
         SavedGroup {
             left: false,
+            left_by_me: false,
             ..self.clone()
         }
     }
@@ -141,6 +150,7 @@ impl SavedGroup {
         }
         self.name = crate::device::clean_offered_name(&self.name, "Group");
         self.left = false;
+        self.left_by_me = false;
         Ok(self)
     }
 }
@@ -179,21 +189,36 @@ impl Record {
         };
         match item {
             GroupItem::Message { group, message } => {
-                let Some(g) = self.group(&group) else {
-                    return refuse("This device isn't in that group");
-                };
-                if g.left {
-                    return refuse("This device has left the group");
-                }
-                let Some(member) = g.member(from) else {
-                    return refuse("You aren't a member of that group here");
-                };
                 if message.id.is_empty()
                     || message.id.chars().count() > crate::device_chat::MAX_ID_CHARS
                 {
                     return refuse("A message id that isn't usable");
                 }
                 let body = crate::model::clean_note(&message.body)?;
+                let member = match self.group(&group) {
+                    Some(g) if g.left => return refuse("This device has left the group"),
+                    Some(g) => g.member(from).cloned(),
+                    None => None,
+                };
+                let Some(member) = member else {
+                    // The admin's update that adds the group or the sender
+                    // may not have arrived yet (it travels separately):
+                    // the message waits here for it, so the sender's copy
+                    // isn't lost. One the update never explains expires.
+                    let kept = serde_json::json!({ "body": body, "reply_to": message.reply_to });
+                    if crate::store::hold_group_message(
+                        c.connection(),
+                        &group,
+                        from,
+                        &message.id,
+                        &kept.to_string(),
+                        now_ms(),
+                        MOST_HELD,
+                    )? {
+                        return Ok(());
+                    }
+                    return refuse("You aren't a member of that group here");
+                };
                 // A trusted device's own name here wins over the admin's.
                 let author = self
                     .devices
@@ -220,6 +245,7 @@ impl Record {
                     return refuse("Only the group's admin changes it");
                 }
                 let mine = update.member(me).is_some();
+                let id = update.id.clone();
                 match self.group_mut(&update.id) {
                     Some(g) => {
                         if g.admin != from {
@@ -229,8 +255,12 @@ impl Record {
                             // Already here, or older: a retry.
                             return Ok(());
                         }
+                        // Leaving is this device's own choice: an update
+                        // the admin sent before it heard doesn't undo it.
+                        let left_by_me = g.left_by_me && mine;
                         *g = SavedGroup {
-                            left: !mine,
+                            left: !mine || left_by_me,
+                            left_by_me,
                             ..update
                         };
                     }
@@ -239,7 +269,7 @@ impl Record {
                     None if !mine => {}
                     None => self.groups.push(update),
                 }
-                Ok(())
+                self.release_held(c, me, &id)
             }
             GroupItem::Leave { group } => {
                 if let Some(g) = self.group_mut(&group) {
@@ -250,6 +280,46 @@ impl Record {
                 Ok(())
             }
         }
+    }
+
+    /// Takes the messages held for group `id` now that an update came:
+    /// those from a member are added, the rest dropped (expired ones too).
+    fn release_held(
+        &mut self,
+        c: &mut Conversations<'_>,
+        me: &str,
+        id: &str,
+    ) -> Result<(), RelayError> {
+        let held = crate::store::take_held(c.connection(), id)?;
+        let now = now_ms();
+        for (sender, message, kept, at) in held {
+            if now - at > HELD_FOR_MS {
+                continue;
+            }
+            let Ok(kept) = serde_json::from_str::<serde_json::Value>(&kept) else {
+                continue;
+            };
+            let message = PeerMessage {
+                id: message,
+                body: kept["body"].as_str().unwrap_or_default().to_string(),
+                reply_to: kept["reply_to"].as_str().map(String::from),
+            };
+            let known = self
+                .group(id)
+                .is_some_and(|g| !g.left && g.member(&sender).is_some());
+            if known {
+                self.take_group_item(
+                    c,
+                    me,
+                    &sender,
+                    GroupItem::Message {
+                        group: id.to_string(),
+                        message,
+                    },
+                )?;
+            }
+        }
+        Ok(())
     }
 
     /// Pending deliveries of group message `id` in group `group`.
@@ -422,6 +492,7 @@ impl RelayCore {
             }],
             version: 1,
             left: false,
+            left_by_me: false,
         };
         self.add_trusted(&mut group, &me, &members)?;
         if group.members.len() < 2 {
@@ -496,6 +567,7 @@ impl RelayCore {
                 state.change(|r| {
                     if let Some(g) = r.group_mut(&group) {
                         g.left = true;
+                        g.left_by_me = true;
                     }
                     for to in &others {
                         r.queue_message(
@@ -525,13 +597,17 @@ impl RelayCore {
         let record = self.record.get();
         let g = record.group(&id).ok_or_else(|| no_group(&id))?;
         let conversation = group_conversation(&id);
-        let delivered = self
-            .peer_logs
-            .store()
-            .read(|c| crate::store::group_delivered(c, &conversation, &message_id))?;
+        let (delivered, sent) = self.peer_logs.store().read(|c| {
+            Ok::<_, RelayError>((
+                crate::store::group_delivered(c, &conversation, &message_id)?,
+                crate::store::group_sent(c, &conversation, &message_id)?,
+            ))
+        })?;
         Ok(GroupDelivery {
             delivered: delivered.len() as u32,
-            of: g.members.len().saturating_sub(1) as u32,
+            // Who it was for when sent; a message from before that was
+            // saved counts the members now.
+            of: sent.unwrap_or(g.members.len().saturating_sub(1) as u32),
         })
     }
 }
@@ -610,6 +686,14 @@ impl RelayCore {
                             },
                         )?,
                     };
+                    // Who it was for when first sent: its "of N" stays the
+                    // same when members change later.
+                    crate::store::set_group_sent(
+                        c.connection(),
+                        &conversation,
+                        &message.id,
+                        recipients.len() as u32,
+                    )?;
                     let have =
                         crate::store::group_delivered(c.connection(), &conversation, &message.id)?;
                     let mut firsts = Vec::new();
@@ -727,6 +811,14 @@ impl RelayCore {
             .command("change-group", move |state| {
                 state.change(|r| {
                     match r.group_mut(&saved.id) {
+                        // Made from the group as it was read: another
+                        // change since then would be lost, so this one is
+                        // refused instead.
+                        Some(g) if g.version + 1 != saved.version || g.left => {
+                            return Err(RelayError::Declined {
+                                reason: "The group changed meanwhile: try again".into(),
+                            });
+                        }
                         Some(g) => *g = saved.clone(),
                         None => r.groups.push(saved.clone()),
                     }
@@ -836,6 +928,7 @@ pub(crate) fn incoming(msg: crate::device::DeviceMsg) -> Option<GroupItem> {
                 .collect(),
             version,
             left: false,
+            left_by_me: false,
         }),
         DeviceMsg::GroupLeave { group } => GroupItem::Leave { group: hex(&group) },
         _ => return None,
@@ -955,6 +1048,7 @@ mod tests {
                 .collect(),
             version,
             left: false,
+            left_by_me: false,
         }
     }
 
@@ -1069,11 +1163,11 @@ mod tests {
                 let mut cs = Conversations::new(c);
                 r.take_group_item(&mut cs, "me", "a", GroupItem::Update(g.clone()))?;
                 r.take_group_item(&mut cs, "me", "b", msg("hello"))?;
-                assert!(r
-                    .take_group_item(&mut cs, "me", "stranger", msg("x"))
-                    .is_err());
+                // Not members (any more): held for an update that would
+                // explain them, never shown without one.
+                r.take_group_item(&mut cs, "me", "stranger", msg("x"))?;
                 r.take_group_item(&mut cs, "me", "b", GroupItem::Leave { group: id.clone() })?;
-                assert!(r.take_group_item(&mut cs, "me", "b", msg("again")).is_err());
+                r.take_group_item(&mut cs, "me", "b", msg("again"))?;
                 Ok::<_, RelayError>(())
             })
             .unwrap();
@@ -1083,6 +1177,83 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].body, "hello");
         assert_eq!(messages[0].author_id, "b");
+    }
+
+    #[test]
+    fn a_message_before_its_update_waits_for_it() {
+        let mut r = Record::default();
+        let store = crate::store::Store::in_memory();
+        let g = group("a", &["a", "b", "me"], 1);
+        let id = g.id.clone();
+        let msg = |from_text: &str| GroupItem::Message {
+            group: id.clone(),
+            message: PeerMessage {
+                id: from_text.into(),
+                body: from_text.into(),
+                reply_to: None,
+            },
+        };
+        store
+            .write(|c| {
+                let mut cs = Conversations::new(c);
+                // b's message comes before a's update: held, not refused.
+                r.take_group_item(&mut cs, "me", "b", msg("early"))?;
+                // So does one from a stranger, which the update won't explain.
+                r.take_group_item(&mut cs, "me", "stranger", msg("spam"))?;
+                r.take_group_item(&mut cs, "me", "a", GroupItem::Update(g.clone()))?;
+                Ok::<_, RelayError>(())
+            })
+            .unwrap();
+        let messages = store
+            .read(|c| crate::store::since(c, &group_conversation(&id), None))
+            .unwrap();
+        let bodies: Vec<&str> = messages.iter().map(|m| m.body.as_str()).collect();
+        assert_eq!(bodies, ["early"]);
+        assert!(store
+            .read(|c| crate::store::take_held(c, &id))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn an_update_sent_before_a_leave_doesnt_undo_it() {
+        let mut r = Record::default();
+        take(
+            &mut r,
+            "me",
+            "a",
+            GroupItem::Update(group("a", &["a", "b", "me"], 1)),
+        )
+        .unwrap();
+        r.groups[0].left = true;
+        r.groups[0].left_by_me = true;
+        take(
+            &mut r,
+            "me",
+            "a",
+            GroupItem::Update(group("a", &["a", "me"], 2)),
+        )
+        .unwrap();
+        assert!(r.groups[0].left, "still left");
+        // Removed by the admin and added again: back in.
+        let mut r = Record::default();
+        take(
+            &mut r,
+            "me",
+            "a",
+            GroupItem::Update(group("a", &["a", "me"], 1)),
+        )
+        .unwrap();
+        take(&mut r, "me", "a", GroupItem::Update(group("a", &["a"], 2))).unwrap();
+        assert!(r.groups[0].left);
+        take(
+            &mut r,
+            "me",
+            "a",
+            GroupItem::Update(group("a", &["a", "me"], 3)),
+        )
+        .unwrap();
+        assert!(!r.groups[0].left);
     }
 
     #[test]

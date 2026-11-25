@@ -256,6 +256,12 @@ public final class ChatModel {
 
     // MARK: Group chats (N7, docs/relay-groups.md)
 
+    /// Why a group change was refused, in words.
+    public struct GroupRefusal: Error, Equatable {
+        public let message: String
+        public init(_ message: String) { self.message = message }
+    }
+
     /// What every group chat's conversation id starts with (Rust's
     /// `group_conversation`).
     nonisolated public static let groupConversationPrefix =
@@ -317,16 +323,16 @@ public final class ChatModel {
         }
     }
 
-    /// Renames a group (its admin only).
-    public func renameGroup(_ group: RelayGroup, _ name: String) async -> RelayGroup? {
-        guard let relay else { return nil }
+    /// Renames a group (its admin only): the group, or why not in words
+    /// for the rename sheet to show under its field.
+    public func renameGroup(_ group: RelayGroup, _ name: String) async -> Result<RelayGroup, GroupRefusal> {
+        guard let relay else { return .failure(GroupRefusal(String(localized: "Relay isn't open."))) }
         do {
             let renamed = try await relay.renameGroup(id: group.id, name: name)
             await refresh()
-            return renamed
+            return .success(renamed)
         } catch {
-            actionError = Self.failure(error)
-            return nil
+            return .failure(GroupRefusal(Self.failure(error).message))
         }
     }
 
