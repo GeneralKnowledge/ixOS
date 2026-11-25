@@ -3317,11 +3317,9 @@ fn a_tests_first_plan_keeps_its_review_through_replans_and_failures() {
         model_ms: 2,
     });
     let view = plan::PlanView::read(&entries).unwrap();
-    let tests = view
-        .tasks
-        .iter()
-        .find(|t| t.id == plan::TESTS_TASK)
-        .unwrap();
+    // It also moves first, so restart_point() reads the tasks in run order.
+    let tests = &view.tasks[0];
+    assert_eq!(tests.id, plan::TESTS_TASK);
     assert!(tests.after.is_empty());
     assert_eq!(
         tests.criteria,
