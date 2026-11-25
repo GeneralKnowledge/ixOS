@@ -3363,7 +3363,7 @@ fn a_tests_first_plan_keeps_its_review_through_replans_and_failures() {
 
     // Approved: the request itself needs the tests passing, unchanged.
     entries.push(Entry::TestsApproved {
-        plan: plan_id,
+        plan: plan_id.clone(),
         file: plan::TESTS_FILE.into(),
         content: "tests".into(),
         at_ms: 0,
@@ -3375,6 +3375,27 @@ fn a_tests_first_plan_keeps_its_review_through_replans_and_failures() {
         path: plan::TESTS_FILE.into(),
         content: "tests".into(),
     }));
+
+    // The tests stay first after approval, so once the code passes a
+    // resume starts from the code's checkpoint, not the tests'.
+    assert_eq!(view.tasks[0].id, plan::TESTS_TASK);
+    entries.push(Entry::Task {
+        task: "task-2".into(),
+        description: "d".into(),
+        criteria: Vec::new(),
+        model: "m".into(),
+        at_ms: 0,
+        plan: Some(plan_id),
+        plan_task: Some("code".into()),
+    });
+    entries.push(Entry::Status {
+        task: "task-2".into(),
+        status: TaskStatus::Completed,
+        reason: None,
+        at_ms: 0,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert_eq!(view.restart_point(), "task-2");
 }
 
 #[test]

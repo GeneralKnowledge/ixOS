@@ -723,6 +723,18 @@ impl PlanView {
                     task.after.push(TESTS_TASK.into());
                 }
             }
+        } else if view.tests_file.is_some() {
+            // Approved: the tests ran first, so they stay first (put back
+            // if a replan left them out), and restart_point() picks their
+            // checkpoint only until a later task is verified: never one
+            // that rolls back the tests or a later task's work.
+            let task = match view.tasks.iter().position(|t| t.id == TESTS_TASK) {
+                Some(index) => view.tasks.remove(index),
+                None => {
+                    tests_first_tasks(view.tests_file.as_deref().unwrap_or(TESTS_FILE)).remove(0)
+                }
+            };
+            view.tasks.insert(0, task);
         }
         // Approved tests bind every task after the tests task, and the
         // request itself, whatever a revision or replan wrote since.
