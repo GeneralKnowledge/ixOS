@@ -707,10 +707,14 @@ impl PlanView {
             // The tests task keeps its own checks and waits for nothing
             // (a revision or replan can't swap them, or make a cycle).
             let tests = tests_first_tasks(&file).remove(0);
+            // It also moves first, so the task list stays in the order the
+            // tasks run (restart_point() reads it that way).
             match view.tasks.iter().position(|t| t.id == TESTS_TASK) {
                 Some(index) => {
-                    view.tasks[index].criteria = tests.criteria;
-                    view.tasks[index].after.clear();
+                    let mut task = view.tasks.remove(index);
+                    task.criteria = tests.criteria;
+                    task.after.clear();
+                    view.tasks.insert(0, task);
                 }
                 None => view.tasks.insert(0, tests),
             }
