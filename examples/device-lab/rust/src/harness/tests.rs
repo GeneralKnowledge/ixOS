@@ -3296,6 +3296,41 @@ fn a_tests_first_plan_keeps_its_review_through_replans_and_failures() {
             model_ms: 1,
         },
     ];
+    // A replan whose tests task waits for another task and checks less.
+    entries.push(Entry::Plan {
+        plan: plan_id.clone(),
+        thought: "t".into(),
+        tasks: vec![
+            plan::PlanTask {
+                id: "code".into(),
+                description: "Just code.".into(),
+                after: Vec::new(),
+                criteria: vec![Criterion::WorkRuns],
+            },
+            plan::PlanTask {
+                id: plan::TESTS_TASK.into(),
+                description: "Tests later.".into(),
+                after: vec!["code".into()],
+                criteria: vec![Criterion::WorkRuns],
+            },
+        ],
+        model_ms: 2,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    let tests = view
+        .tasks
+        .iter()
+        .find(|t| t.id == plan::TESTS_TASK)
+        .unwrap();
+    assert!(tests.after.is_empty());
+    assert_eq!(
+        tests.criteria,
+        vec![Criterion::TestsWritten {
+            path: plan::TESTS_FILE.into()
+        }]
+    );
+    assert_eq!(view.next().unwrap().id, plan::TESTS_TASK);
+    entries.pop();
     let view = plan::PlanView::read(&entries).unwrap();
     assert_eq!(view.tasks[0].id, plan::TESTS_TASK);
     assert_eq!(view.next().unwrap().id, plan::TESTS_TASK);

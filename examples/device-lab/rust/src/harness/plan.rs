@@ -704,9 +704,15 @@ impl PlanView {
         // tests task first and every other task after it, whatever a
         // replan wrote, so nothing can run past the review.
         if let (Some(file), None) = (view.tests_file.clone(), &view.tests_approved) {
-            if !view.tasks.iter().any(|t| t.id == TESTS_TASK) {
-                let tests = tests_first_tasks(&file).remove(0);
-                view.tasks.insert(0, tests);
+            // The tests task keeps its own checks and waits for nothing
+            // (a revision or replan can't swap them, or make a cycle).
+            let tests = tests_first_tasks(&file).remove(0);
+            match view.tasks.iter().position(|t| t.id == TESTS_TASK) {
+                Some(index) => {
+                    view.tasks[index].criteria = tests.criteria;
+                    view.tasks[index].after.clear();
+                }
+                None => view.tasks.insert(0, tests),
             }
             for task in view.tasks.iter_mut().filter(|t| t.id != TESTS_TASK) {
                 if !task.after.iter().any(|a| a == TESTS_TASK) {
