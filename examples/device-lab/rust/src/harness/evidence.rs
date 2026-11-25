@@ -230,11 +230,17 @@ impl Criterion {
                 let Some(text) = read(path) else {
                     return Err(format!("{path} is missing: write the tests there"));
                 };
+                // A cheap check, not a parse: the person reads the tests
+                // before any code is written. Test methods are indented
+                // inside a class, and the file needs a TestCase.
                 let tests = text
                     .lines()
-                    .filter(|line| line.trim_start().starts_with("def test"))
+                    .filter(|line| {
+                        line.starts_with(char::is_whitespace)
+                            && line.trim_start().starts_with("def test")
+                    })
                     .count();
-                if tests == 0 || !text.contains("unittest") {
+                if tests == 0 || !text.contains("unittest") || !text.contains("TestCase") {
                     return Err(format!(
                         "{path} has no unittest tests yet (a unittest.TestCase with methods named test_...)"
                     ));

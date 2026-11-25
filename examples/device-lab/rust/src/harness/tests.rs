@@ -3261,3 +3261,96 @@ fn tests_written_needs_a_unittest_test() {
     };
     assert_eq!(check.check(&[], &two).unwrap(), "test_app.py has 2 tests");
 }
+
+#[test]
+fn a_tests_first_plan_keeps_its_review_through_replans_and_failures() {
+    let plan_id = "plan-1".to_string();
+    let mut entries = vec![
+        Entry::PlanRequest {
+            plan: plan_id.clone(),
+            request: "r".into(),
+            criteria: Vec::new(),
+            model: "m".into(),
+            at_ms: 0,
+        },
+        Entry::TestsFirst {
+            plan: plan_id.clone(),
+            file: plan::TESTS_FILE.into(),
+        },
+        Entry::Plan {
+            plan: plan_id.clone(),
+            thought: "t".into(),
+            tasks: plan::tests_first_tasks(plan::TESTS_FILE),
+            model_ms: 0,
+        },
+        // A replan that leaves the tests out.
+        Entry::Plan {
+            plan: plan_id.clone(),
+            thought: "t".into(),
+            tasks: vec![plan::PlanTask {
+                id: "code".into(),
+                description: "Just code.".into(),
+                after: Vec::new(),
+                criteria: vec![Criterion::WorkRuns],
+            }],
+            model_ms: 1,
+        },
+    ];
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert_eq!(view.tasks[0].id, plan::TESTS_TASK);
+    assert_eq!(view.next().unwrap().id, plan::TESTS_TASK);
+    assert!(view.tasks[1].after.contains(&plan::TESTS_TASK.to_string()));
+
+    // The tests task passes, then the approval fails and the plan fails:
+    // it still waits for the review.
+    entries.push(Entry::Task {
+        task: "task-1".into(),
+        description: "d".into(),
+        criteria: Vec::new(),
+        model: "m".into(),
+        at_ms: 0,
+        plan: Some(plan_id.clone()),
+        plan_task: Some(plan::TESTS_TASK.into()),
+    });
+    entries.push(Entry::Status {
+        task: "task-1".into(),
+        status: TaskStatus::Completed,
+        reason: None,
+        at_ms: 0,
+    });
+    entries.push(Entry::PlanStatus {
+        plan: plan_id.clone(),
+        status: PlanState::Failed,
+        reason: Some("Could not save a checkpoint".into()),
+        at_ms: 0,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert!(view.awaiting_test_review());
+    assert!(view.can_continue());
+
+    // Approved: the request itself needs the tests passing, unchanged.
+    entries.push(Entry::TestsApproved {
+        plan: plan_id,
+        file: plan::TESTS_FILE.into(),
+        content: "tests".into(),
+        at_ms: 0,
+    });
+    let view = plan::PlanView::read(&entries).unwrap();
+    assert!(!view.awaiting_test_review());
+    assert!(view.criteria.contains(&Criterion::TestsPass));
+    assert!(view.criteria.contains(&Criterion::FileUnchanged {
+        path: plan::TESTS_FILE.into(),
+        content: "tests".into(),
+    }));
+}
+
+#[test]
+fn tests_written_ignores_a_test_inside_a_string() {
+    let check = Criterion::TestsWritten {
+        path: "test_app.py".into(),
+    };
+    let fake = |_: &str| {
+        Some("import unittest\nexample = \"\"\"\ndef test_x(self): pass\n\"\"\"\n".to_string())
+    };
+    assert!(check.check(&[], &fake).is_err());
+}

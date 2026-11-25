@@ -700,10 +700,33 @@ impl PlanView {
                 _ => {}
             }
         }
-        // Approved tests bind every task after the tests task, whatever a
-        // revision or replan wrote since.
+        // Until the person approves the tests, a tests-first plan keeps its
+        // tests task first and every other task after it, whatever a
+        // replan wrote, so nothing can run past the review.
+        if let (Some(file), None) = (view.tests_file.clone(), &view.tests_approved) {
+            if !view.tasks.iter().any(|t| t.id == TESTS_TASK) {
+                let tests = tests_first_tasks(&file).remove(0);
+                view.tasks.insert(0, tests);
+            }
+            for task in view.tasks.iter_mut().filter(|t| t.id != TESTS_TASK) {
+                if !task.after.iter().any(|a| a == TESTS_TASK) {
+                    task.after.push(TESTS_TASK.into());
+                }
+            }
+        }
+        // Approved tests bind every task after the tests task, and the
+        // request itself, whatever a revision or replan wrote since.
         if let (Some(file), Some(content)) = (view.tests_file.clone(), view.tests_approved.clone())
         {
+            let unchanged = Criterion::FileUnchanged {
+                path: file.clone(),
+                content: content.clone(),
+            };
+            for check in [Criterion::TestsPass, unchanged] {
+                if !view.criteria.contains(&check) {
+                    view.criteria.push(check);
+                }
+            }
             for task in view.tasks.iter_mut().filter(|t| t.id != TESTS_TASK) {
                 if !task
                     .criteria
@@ -733,7 +756,9 @@ impl PlanView {
         self.tests_file.is_some()
             && self.tests_approved.is_none()
             && self.status_of(TESTS_TASK) == TaskStatus::Completed
-            && !self.state.is_final()
+            // A plan that failed or stopped before the approval was saved
+            // still waits for it: Resume approves before anything else.
+            && self.state != PlanState::Discarded
     }
 
     /// Whether it can be approved or resumed: waiting for approval, ended

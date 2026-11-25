@@ -73,12 +73,7 @@ struct BonsaiHarnessView: View {
                             handOff(snapshot.project ?? model.project)
                             model.answerPlan()
                         },
-                        editTests: pythonLab.map { lab in
-                            {
-                                lab.open(project: snapshot.project ?? model.project)
-                                showPythonLab = true
-                            }
-                        }
+                        editTests: editTests(in: snapshot.project ?? model.project)
                     )
                 }
                 if let snapshot = model.snapshot, let task = snapshot.task {
@@ -310,6 +305,16 @@ struct BonsaiHarnessView: View {
             Text("Project \(snapshot.project ?? "")")
         }
         .onAppear { model.loadFiles() }
+    }
+
+    /// Opens `project` in Python Lab, to fix a test before approving it;
+    /// nil when this build has no Python Lab.
+    private func editTests(in project: String) -> (@MainActor () -> Void)? {
+        guard let pythonLab else { return nil }
+        return {
+            pythonLab.open(project: project)
+            showPythonLab = true
+        }
     }
 
     /// Python Lab's last second of typing is saved before Bonsai reads or

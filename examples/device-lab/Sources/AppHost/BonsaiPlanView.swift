@@ -21,7 +21,7 @@ struct BonsaiPlanSection: View {
 
     /// The tests wait for the person to check them.
     private var reviewingTests: Bool {
-        plan.status == .awaitingApproval && plan.testsToCheck != nil
+        plan.testsToCheck != nil && plan.canContinue
     }
 
     var body: some View {
