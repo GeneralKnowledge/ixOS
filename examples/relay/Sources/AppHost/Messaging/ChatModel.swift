@@ -326,7 +326,7 @@ public final class ChatModel {
     /// Renames a group (its admin only): the group, or why not in words
     /// for the rename sheet to show under its field.
     public func renameGroup(_ group: RelayGroup, _ name: String) async -> Result<RelayGroup, GroupRefusal> {
-        guard let relay else { return .failure(GroupRefusal(String(localized: "Relay isn't open."))) }
+        guard let relay else { return .failure(GroupRefusal("Relay isn't open.")) }
         do {
             let renamed = try await relay.renameGroup(id: group.id, name: name)
             await refresh()
@@ -351,7 +351,7 @@ public final class ChatModel {
         guard message.isMine, let relay, let id = Self.groupId(message.conversationId),
             let d = try? relay.groupDelivery(id: id, messageId: message.id), d.of > 1
         else { return nil }
-        return String(localized: "Delivered to \(d.delivered) of \(d.of)")
+        return "Delivered to \(d.delivered) of \(d.of)"
     }
 
     // MARK: Conversation list
