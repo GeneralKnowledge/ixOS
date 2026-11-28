@@ -172,12 +172,12 @@ AntennaPod's own documentation lists three ways out:
 - **gPodder sync** (gpodder.net, or the gPodder Sync app on a Nextcloud server): subscriptions and episode actions (played, position). Its API is public, so Soundscape can talk to the same server, and a person can use AntennaPod on Android and Soundscape on an iPhone against one Nextcloud. This is the strongest proof of compatibility. AntennaPod's docs say the queue, favourites and settings don't sync, and users report that history syncs only as episodes are played, so we promise subscriptions and positions only.
 - **Database export**: an SQLite file tied to the AntennaPod version that wrote it. Reading it would carry played state and favourites, but its layout changes between versions and we would be reverse-engineering it. Not planned unless sync proves not enough.
 
-Episode feeds are RSS with enclosures, and Commonplace already parses RSS. Apps may not depend on each other, so this is the framework's second real use for feed parsing: when P1 is built, the parser moves out of Commonplace into a framework crate in its own PR, after Commonplace's feed work has passed on the phone (the [extraction rule](../architecture.md#framework-principles)). Until then Soundscape doesn't copy Commonplace's code.
+Episode feeds are RSS with enclosures, and Commonplace already parses RSS. Apps may not depend on each other, so this is the framework's second real use for feed parsing. Revised 28 November ([podcasts-and-radio.md](../../examples/soundscape/docs/podcasts-and-radio.md)): Soundscape builds its own feed handling on the same `feed-rs` crate, with Commonplace's as the behavioural reference, and the shared part moves into a framework crate in its own PR only after both apps' feed work has passed on the phone (the [extraction rule](../architecture.md#framework-principles)). Soundscape doesn't copy Commonplace's code.
 
 ### Phases
 
 1. **P0: player features music needs too**: playback speed, configurable skip amounts, a saved position per item. Soundscape benefits even if podcasts never land.
-2. **P1: podcasts**: subscribe by address or search, the episode list, played state, streaming and downloading an episode, OPML import and export. The feed parser extraction above.
+2. **P1: podcasts**: subscribe by address or search, the episode list, played state, streaming and downloading an episode, OPML import and export.
 3. **P2: download rules**: new episodes downloaded in the background (the background transfers work from the roadmap), deleted after playing, limits per podcast.
 4. **P3: gPodder sync** with a Nextcloud server, tested against AntennaPod on the emulator using the same server.
 5. **P4: chapters and transcripts**, then skip silence and statistics.
