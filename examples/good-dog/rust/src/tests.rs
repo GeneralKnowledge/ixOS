@@ -930,6 +930,62 @@ fn a_guided_session_shows_get_ready_then_each_step_then_the_outcome() {
     assert_eq!(last.step_number, Some(detail.steps.len() as u32));
 }
 
+/// A guided session started from Today's plan just before midnight and
+/// finished just after is recorded against that activity, and one started
+/// after midnight from the screen still showing yesterday's plan can start
+/// and be recorded too (defect hunt finding 2, the guided path; review of
+/// #389).
+#[test]
+fn a_guided_session_that_crosses_midnight_is_recorded() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let ten_to_midnight = NINE_AM + 14 * 3_600_000 + 50 * 60_000;
+    let plan = block_on(app.today(at(ten_to_midnight))).unwrap();
+    let after_midnight = at(ten_to_midnight + 15 * 60_000);
+
+    // Started before midnight, recorded after it.
+    let first = &plan.activities[0];
+    let session = app
+        .start_guided_session(
+            first.exercise_id.clone(),
+            Some(first.id),
+            at(ten_to_midnight),
+        )
+        .unwrap();
+    to_outcome(&session);
+    block_on(app.record_guided_session(session, SessionResult::Easy, false, after_midnight))
+        .unwrap();
+    assert_eq!(app.history(10).len(), 1);
+    assert_eq!(
+        block_on(app.record_session(
+            first.exercise_id.clone(),
+            Some(first.id),
+            SessionResult::Easy,
+            false,
+            after_midnight,
+        )),
+        Err(AppError::InvalidInput {
+            reason: "that activity has already been recorded".into()
+        }),
+        "it counted for the activity it was started from"
+    );
+
+    // Started after midnight from yesterday's plan, still on screen.
+    let second = &plan.activities[1];
+    let session = app
+        .start_guided_session(second.exercise_id.clone(), Some(second.id), after_midnight)
+        .unwrap();
+    to_outcome(&session);
+    block_on(app.record_guided_session(
+        session,
+        SessionResult::GettingThere,
+        false,
+        at(ten_to_midnight + 30 * 60_000),
+    ))
+    .unwrap();
+    assert_eq!(app.history(10).len(), 2);
+}
+
 #[test]
 fn recording_a_guided_session_matches_recording_from_the_exercise_screen() {
     let guided_dir = tempfile::tempdir().unwrap();
