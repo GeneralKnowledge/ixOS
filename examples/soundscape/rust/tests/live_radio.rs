@@ -5,10 +5,10 @@
 
 use std::sync::Arc;
 
-use forge_net::{CancelHandle, Method, NetError, Response, StaticClient};
+use forge_net::{CancelHandle, Header, Method, NetError, Response, StaticClient};
 use soundscape_core::live_radio::{
-    categories_path, parse_categories, parse_servers, parse_stations, station_path, stations_path,
-    Directory, LiveRadioFile, MAX_RECENTS, STALE_MS,
+    categories_path, parse_categories, parse_servers, parse_stations, rest_for, station_path,
+    stations_path, Directory, LiveRadioFile, BUSY_REST, MAX_RECENTS, MAX_REST, STALE_MS,
 };
 use soundscape_core::{LiveAsk, LiveCategoryKind, SoundscapeCore, SoundscapeError};
 
@@ -196,6 +196,94 @@ fn servers_are_learnt_once_and_a_failing_one_is_skipped() {
     let urls: Vec<String> = client.received().iter().map(|r| r.url.clone()).collect();
     assert_eq!(urls.len(), asked + 1);
     assert!(urls[asked].starts_with("https://at1."), "{urls:?}");
+}
+
+/// Like `directory_client`, but nl1 is too busy (429) and says when to
+/// come back; at1 answers with `top`.
+fn busy_client(top: Result<Response, NetError>) -> StaticClient {
+    let top_path = stations_path(&LiveAsk::Top).unwrap();
+    StaticClient::new()
+        .route(
+            Method::Get,
+            "https://de1.api.radio-browser.info/json/servers",
+            Ok(Response::new(200, SERVERS)),
+        )
+        .route(
+            Method::Get,
+            format!("https://nl1.api.radio-browser.info{top_path}"),
+            Ok(Response {
+                status: 429,
+                headers: vec![Header {
+                    name: "Retry-After".into(),
+                    value: "120".into(),
+                }],
+                body: Vec::new(),
+            }),
+        )
+        .route(
+            Method::Get,
+            format!("https://at1.api.radio-browser.info{top_path}"),
+            top,
+        )
+}
+
+#[test]
+fn a_busy_server_is_skipped_until_its_retry_after() {
+    let client = busy_client(Ok(Response::new(
+        200,
+        stations_json("http://london.example/live"),
+    )));
+    let directory = Directory::default();
+    let cancel = CancelHandle::new();
+    assert_eq!(
+        directory
+            .stations(&client, &LiveAsk::Top, &cancel)
+            .unwrap()
+            .len(),
+        2,
+        "the next mirror answered"
+    );
+    let asked = client.received().len();
+    assert_eq!(asked, 3, "de1 (list), nl1 (429), at1");
+
+    // nl1 asked for two minutes' rest: it isn't asked again meanwhile.
+    directory.stations(&client, &LiveAsk::Top, &cancel).unwrap();
+    let urls: Vec<String> = client.received().iter().map(|r| r.url.clone()).collect();
+    assert_eq!(urls.len(), asked + 1, "{urls:?}");
+    assert!(urls[asked].starts_with("https://at1."), "{urls:?}");
+}
+
+#[test]
+fn every_server_busy_says_so_and_asks_none_again() {
+    let client = busy_client(Ok(Response::new(429, "")));
+    let directory = Directory::default();
+    let cancel = CancelHandle::new();
+    let busy = SoundscapeError::Server {
+        reason: "Radio Browser is busy; try again in a minute".into(),
+    };
+    assert_eq!(
+        directory
+            .stations(&client, &LiveAsk::Top, &cancel)
+            .unwrap_err(),
+        busy
+    );
+    let asked = client.received().len();
+    assert_eq!(
+        directory
+            .stations(&client, &LiveAsk::Top, &cancel)
+            .unwrap_err(),
+        busy
+    );
+    assert_eq!(client.received().len(), asked, "both still resting");
+}
+
+#[test]
+fn retry_after_is_followed_within_limits() {
+    assert_eq!(rest_for(Some("120")).as_secs(), 120);
+    assert_eq!(rest_for(Some(" 5 ")).as_secs(), 5);
+    assert_eq!(rest_for(Some("86400")), MAX_REST);
+    assert_eq!(rest_for(Some("Wed, 21 Oct 2026 07:28:00 GMT")), BUSY_REST);
+    assert_eq!(rest_for(None), BUSY_REST);
 }
 
 #[test]

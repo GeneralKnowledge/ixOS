@@ -17,8 +17,9 @@
 //! servers (asked for once, then reused, moving to another when one fails),
 //! with the app's plain User-Agent. Search terms are never logged.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use forge_net::{CancelHandle, HttpClient, NetError, Request};
 use serde::{Deserialize, Serialize};
@@ -515,11 +516,29 @@ fn server(reason: &str) -> SoundscapeError {
 }
 
 /// Radio Browser's servers: which to ask, moving to the next when one
-/// can't be reached or answers with a server error.
+/// can't be reached, answers with a server error, or says it is too busy
+/// (429). A busy server isn't asked again until its `Retry-After` passes.
 #[derive(Default)]
 pub struct Directory {
     /// The published list once known; until then [`SEED_SERVERS`].
     servers: Mutex<Option<Vec<String>>>,
+    /// Servers that asked to be left alone, and until when.
+    resting: Mutex<HashMap<String, Instant>>,
+}
+
+/// How long a busy server rests when it doesn't say.
+pub const BUSY_REST: Duration = Duration::from_secs(30);
+/// The longest rest a server's `Retry-After` is followed for.
+pub const MAX_REST: Duration = Duration::from_secs(300);
+
+/// How long a server that answered 429 (or 503 with `Retry-After`) asked
+/// to rest: its `Retry-After` in seconds, up to [`MAX_REST`], or
+/// [`BUSY_REST`] when it gives none or gives a date.
+pub fn rest_for(retry_after: Option<&str>) -> Duration {
+    retry_after
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|seconds| Duration::from_secs(seconds).min(MAX_REST))
+        .unwrap_or(BUSY_REST)
 }
 
 impl Directory {
@@ -598,10 +617,22 @@ impl Directory {
     ) -> Result<Vec<u8>, SoundscapeError> {
         let servers = self.servers(http, cancel);
         let mut last = server("can't reach Radio Browser");
+        let mut asked = false;
         for name in &servers {
+            if self.is_resting(name) {
+                continue;
+            }
+            asked = true;
             let request = Request::get(format!("https://{name}{path}")).timeout(TIMEOUT);
             match http.send_cancellable(&request, cancel) {
                 Ok(response) if (200..300).contains(&response.status) => return Ok(response.body),
+                Ok(response)
+                    if response.status == 429
+                        || (response.status == 503 && response.header("Retry-After").is_some()) =>
+                {
+                    self.rest(name, rest_for(response.header("Retry-After")));
+                    last = server("Radio Browser is busy; try again in a minute");
+                }
                 Ok(response) if response.status < 500 => {
                     return Err(server(&format!(
                         "Radio Browser answered {}",
@@ -622,7 +653,25 @@ impl Directory {
             forge_runtime::logging::warn!("Radio Browser server failed; trying the next");
             self.demote(name);
         }
+        if !asked {
+            return Err(server("Radio Browser is busy; try again in a minute"));
+        }
         Err(last)
+    }
+
+    fn is_resting(&self, name: &str) -> bool {
+        let mut resting = self.resting.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        resting.retain(|_, until| *until > now);
+        resting.contains_key(name)
+    }
+
+    fn rest(&self, name: &str, rest: Duration) {
+        let until = Instant::now() + rest;
+        self.resting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(name.to_string(), until);
     }
 
     fn demote(&self, name: &str) {
