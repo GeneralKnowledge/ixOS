@@ -24,6 +24,11 @@ struct LiveRadioHome: View {
         List {
             if query.isEmpty {
                 Section {
+                    NavigationLink(value: ListenRoute.liveMap) {
+                        ForgeRow("Radio Map", systemImage: "globe", accent: .purple) { EmptyView() }
+                    }
+                    .accessibilityHint("Stations on a globe, where they broadcast from")
+                    .accessibilityIdentifier("live.map.open")
                     browse(.country, "Countries", systemImage: "globe.europe.africa", identifier: "live.countries")
                     browse(.language, "Languages", systemImage: "character.bubble", identifier: "live.languages")
                     browse(.genre, "Genres", systemImage: "music.quarternote.3", identifier: "live.genres")
@@ -88,6 +93,9 @@ struct LiveRadioHome: View {
 struct LiveStationsView: View {
     let ask: LiveAsk
     let title: String
+    /// Stations already found (the map's): shown as they are; pulling to
+    /// refresh asks again.
+    var given: [LiveStation]?
 
     @Environment(LiveRadioModel.self) private var live
     @State private var stations: [LiveStation]?
@@ -121,6 +129,10 @@ struct LiveStationsView: View {
             }
         }
         .task(id: attempt) {
+            if attempt == 0, let given {
+                stations = given
+                return
+            }
             problem = nil
             switch await live.stations(ask) {
             case .success(let found): stations = found

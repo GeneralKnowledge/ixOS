@@ -7,10 +7,11 @@ use std::sync::Arc;
 
 use forge_net::{CancelHandle, Header, Method, NetError, Response, StaticClient};
 use soundscape_core::live_radio::{
-    categories_path, parse_categories, parse_servers, parse_stations, rest_for, station_path,
-    stations_path, Directory, LiveRadioFile, BUSY_REST, MAX_RECENTS, MAX_REST, STALE_MS,
+    categories_path, for_map, parse_categories, parse_servers, parse_stations, rest_for,
+    station_path, stations_path, Directory, LiveLocation, LiveRadioFile, BUSY_REST, MAX_RECENTS,
+    MAX_REST, STALE_MS,
 };
-use soundscape_core::{LiveAsk, LiveCategoryKind, SoundscapeCore, SoundscapeError};
+use soundscape_core::{LiveAsk, LiveCategoryKind, LiveStation, SoundscapeCore, SoundscapeError};
 
 const KYOTO: &str = "11111111-2222-3333-4444-555555555555";
 const LONDON: &str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -483,4 +484,147 @@ fn an_unreachable_directory_still_plays_what_was_given() {
     let tuned = block(core.tune_live_station(london.clone(), None)).unwrap();
     assert_eq!(tuned, london);
     assert!(block(core.live_station_failed(LONDON.into(), None)).is_err());
+}
+
+const MAPPED: &str = r#"[
+  {"stationuuid": "11111111-2222-3333-4444-555555555555", "name": "Kyoto Jazz FM", "url": "https://kyoto.example/s",
+   "geo_lat": 35.0116, "geo_long": 135.7681, "clickcount": 812},
+  {"stationuuid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "name": "London Talk", "url": "https://london.example/s",
+   "geo_lat": "51.5072", "geo_long": "-0.1276", "clickcount": 90},
+  {"stationuuid": "22222222-2222-2222-2222-222222222222", "name": "Edinburgh Folk", "url": "https://edi.example/s",
+   "geo_lat": 55.9533, "geo_long": -3.1883, "clickcount": 40},
+  {"stationuuid": "33333333-3333-3333-3333-333333333333", "name": "Null Island", "url": "https://zero.example/s",
+   "geo_lat": 0, "geo_long": 0},
+  {"stationuuid": "44444444-4444-4444-4444-444444444444", "name": "Off The Globe", "url": "https://off.example/s",
+   "geo_lat": 123.0, "geo_long": 10.0},
+  {"stationuuid": "55555555-5555-5555-5555-555555555555", "name": "Nowhere Known", "url": "https://none.example/s",
+   "geo_lat": null}
+]"#;
+
+#[test]
+fn stations_keep_a_real_location_or_none() {
+    let stations = parse_stations(MAPPED.as_bytes()).unwrap();
+    assert_eq!(
+        stations.len(),
+        6,
+        "a missing location never drops a station"
+    );
+    let at = |name: &str| stations.iter().find(|s| s.name == name).unwrap().location;
+    let kyoto = at("Kyoto Jazz FM").unwrap();
+    assert!((kyoto.latitude - 35.0116).abs() < 1e-9 && (kyoto.longitude - 135.7681).abs() < 1e-9);
+    assert!(
+        at("London Talk").is_some(),
+        "numbers written as text are read"
+    );
+    assert_eq!(at("Null Island"), None, "0, 0 means no location");
+    assert_eq!(at("Off The Globe"), None);
+    assert_eq!(at("Nowhere Known"), None);
+}
+
+#[test]
+fn distances_are_great_circle_kilometres() {
+    let london = LiveLocation::new(51.5072, -0.1276).unwrap();
+    let edinburgh = LiveLocation::new(55.9533, -3.1883).unwrap();
+    let d = london.distance_km(&edinburgh);
+    assert!((520.0..545.0).contains(&d), "{d}");
+    assert!(london.distance_km(&london) < 1e-6);
+}
+
+#[test]
+fn map_requests_ask_only_for_placed_stations_around_a_checked_place() {
+    let mapped = stations_path(&LiveAsk::Mapped).unwrap();
+    assert!(
+        mapped.contains("has_geo_info=true") && mapped.contains("limit=300"),
+        "{mapped}"
+    );
+    let near = stations_path(&LiveAsk::Near {
+        latitude: 55.95,
+        longitude: -3.19,
+        radius_km: 50.0,
+    })
+    .unwrap();
+    assert!(
+        near.contains("geo_lat=55.9500")
+            && near.contains("geo_long=-3.1900")
+            && near.contains("geo_distance=50000"),
+        "{near}"
+    );
+    let wide = stations_path(&LiveAsk::Near {
+        latitude: 0.0,
+        longitude: 0.0,
+        radius_km: 1e9,
+    })
+    .unwrap();
+    assert!(
+        wide.contains("geo_distance=3000000"),
+        "the radius is capped and 0, 0 is a place: {wide}"
+    );
+    let tight = stations_path(&LiveAsk::Near {
+        latitude: 1.0,
+        longitude: 1.0,
+        radius_km: 0.0,
+    })
+    .unwrap();
+    assert!(tight.contains("geo_distance=5000"), "{tight}");
+    assert!(stations_path(&LiveAsk::Near {
+        latitude: 91.0,
+        longitude: 0.0,
+        radius_km: 10.0
+    })
+    .is_err());
+    assert!(stations_path(&LiveAsk::Near {
+        latitude: f64::NAN,
+        longitude: 0.0,
+        radius_km: 10.0
+    })
+    .is_err());
+}
+
+#[test]
+fn a_map_keeps_only_stations_it_can_place_inside_its_circle() {
+    let stations = parse_stations(MAPPED.as_bytes()).unwrap();
+    let names = |found: Vec<LiveStation>| found.into_iter().map(|s| s.name).collect::<Vec<_>>();
+    assert_eq!(
+        names(for_map(&LiveAsk::Mapped, stations.clone())),
+        ["Kyoto Jazz FM", "London Talk", "Edinburgh Folk"]
+    );
+    // A server that ignored the area still yields only what is inside it.
+    let around_edinburgh = LiveAsk::Near {
+        latitude: 55.95,
+        longitude: -3.19,
+        radius_km: 100.0,
+    };
+    assert_eq!(
+        names(for_map(&around_edinburgh, stations.clone())),
+        ["Edinburgh Folk"]
+    );
+    let around_britain = LiveAsk::Near {
+        latitude: 54.0,
+        longitude: -2.0,
+        radius_km: 600.0,
+    };
+    assert_eq!(
+        names(for_map(&around_britain, stations.clone())),
+        ["London Talk", "Edinburgh Folk"]
+    );
+    // Other lists are left as they are, located or not.
+    assert_eq!(
+        for_map(&LiveAsk::Top, stations.clone()).len(),
+        stations.len()
+    );
+}
+
+#[test]
+fn a_map_never_draws_more_pins_than_it_asked_for() {
+    let many: String = (0..400)
+        .map(|i| {
+            format!(
+                r#"{{"stationuuid": "00000000-0000-0000-0000-{i:012}", "name": "S{i}", "url": "https://s.example/{i}", "geo_lat": 10.0, "geo_long": 10.0}}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let stations = parse_stations(format!("[{many}]").as_bytes()).unwrap();
+    assert_eq!(stations.len(), 400);
+    assert_eq!(for_map(&LiveAsk::Mapped, stations).len(), 300);
 }

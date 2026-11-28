@@ -66,7 +66,9 @@ pub use listen::{
     Take, TakeMark,
 };
 use live_radio::LiveRadioFile;
-pub use live_radio::{LiveAsk, LiveCategory, LiveCategoryKind, LiveRadio, LiveStation};
+pub use live_radio::{
+    LiveAsk, LiveCategory, LiveCategoryKind, LiveLocation, LiveRadio, LiveStation,
+};
 pub use lyrics::{lyric_line_at, lyric_lines, lyric_word_at, LyricKind, LyricLine, LyricWord};
 pub use model::{soundscape_error_kind, SoundscapeError, MAX_NAME_CHARS};
 pub use musicbrainz::MusicBrainzMatch;
