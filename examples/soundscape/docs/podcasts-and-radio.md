@@ -10,14 +10,18 @@ against what Soundscape already is and what has already been decided about it.
   *discovering* things you didn't know (24 November), not playing mainstream catalogues. "Listen to the world"
   is a good extension of that, not a new product.
 - **Live radio first, and small.** It was already planned as step 2 of Radio in [design.md](design.md); it needs no
-  subscriptions, no downloads and no new player features. Two PRs (Rust, then screens).
+  subscriptions and no downloads. Three PRs: a small lock-screen change in the shared Now Playing helper, then
+  Rust, then screens. It is a new *source*, which your 18 November rule ("player features before more sources")
+  puts after player work; I recommend it anyway, because it was already planned and asks almost nothing of the
+  player, but that is your call (decision 1).
 - **Podcasts second, on the plan already approved on 20 November** ([android-ports.md](../../../docs/research/android-ports.md#3-antennapod--soundscape),
   P0 to P4), with three changes below. P0 (speed, skip amounts, saved position) comes first because it improves music too.
 - **Not before the owed checks.** Soundscape has Jamendo pages (#444, #445) and seamless switching (#447)
   merged but not yet checked on the phone, and you narrowed its scope on 22 and 24 November. Live radio starts
   once those checks pass; it should not overtake them.
 - **Three things in the original idea I'd change:** the Dart and Flutter packages don't fit a Rust and Swift app;
-  AntennaPod's, RadioDroid's and MusicPod's source must not be studied (clean-room rule); and five source tabs
+  AntennaPod's source must not be studied, and RadioDroid's and MusicPod's not before their licences are checked
+  (clean-room rule); and five source tabs
   would undo the redesign. Details follow.
 
 ## What already exists or is already decided
@@ -56,15 +60,18 @@ rule working as intended.
 ### 2. Study behaviour, not source
 
 AntennaPod is GPL-3.0, and the rule you approved on 20 November is a strict clean room: we learn from the
-running app, its documentation and public specs (RSS, OPML, gPodder API), never its code. RadioDroid and
-MusicPod are GPL-3.0 too, as far as I can tell, so the same rule applies to them. Radio Browser's data is
+running app, its documentation and public specs (RSS, OPML, gPodder API), never its code. I believe RadioDroid
+and MusicPod are GPL-3.0 too but couldn't confirm it from this session, so check each licence before anyone
+opens their code, and treat them the same way if they are. Their running apps, store pages and docs are fair
+game either way. Radio Browser's data is
 public domain and its API is free to use, so that one is fine to integrate directly.
 
 ### 3. Keep four tabs; give live radio and podcasts a place inside them
 
 Five tabs by source (Home, Music, Radio, Podcasts, Library) turns Soundscape into three apps sharing a
 mini-player, and throws away the Listen / Library / Discover / Search shape the redesign just built. Apple Music
-and Apple Podcasts are separate apps for a reason; Soundscape's advantage is that one place holds all three.
+itself puts live radio inside its existing tabs rather than in a tab per kind of audio; Soundscape's advantage is
+that one place holds all three.
 Organising by *what you're doing* rather than *where it comes from* keeps that:
 
 | Tab | Gains |
@@ -92,13 +99,25 @@ Three kinds of thing to play, as you said, and kept apart in the data:
   the queue. Playing one sets the music queue aside (saved, as today), and the player shows a **Live** state:
   no scrubber, no skip, no Like, no repeat; pause means stop-and-rejoin-live. Stopping returns to the queue
   where it was. Lock screen marks it as live.
-- **Episode:** a seekable file with a saved position and playback speed. Episodes *do* go in the queue, so the
-  queue gains an item kind (song or episode) rather than a second "Up Next". Downloads reuse `offline.rs`;
-  episodes are always downloadable (publishers put them in feeds to be downloaded), unlike Jamendo tracks whose
-  rights decide.
+  Starting a live station also stops a generated station's top-up (`Radio.swift` owns it today), so the two
+  never fight over the player.
+- **Episode:** a seekable file with a saved position and playback speed. Episodes *do* go in the queue, rather
+  than a second "Up Next". The cheapest way: a queue entry already carries a `Recording` with an `AudioSource`,
+  so an episode becomes a new `AudioSource::Podcast { feed }` (and `RecordingKind::Episode`) and the queue itself
+  is unchanged. Saved queues (`playback.json`) from before keep loading, because the new cases are additions.
+  Downloads reuse `offline.rs`; episodes are always downloadable (publishers put them in feeds to be
+  downloaded), unlike Jamendo tracks whose rights decide.
 
-Rust owns the directories, subscriptions, episode state and station favourites (new JSON documents beside
-`collection.json`, as the rest of Soundscape does); SwiftUI draws them with ForgeUI; AVPlayer plays them.
+Rust owns the directories, subscriptions, episode state and station favourites; SwiftUI draws them with ForgeUI;
+AVPlayer plays them. Storage needs care: a feed can list over a thousand episodes, so the episode list is a cache
+refetched from the feed, and only what the person did (subscribed, played, position, downloaded) is kept in a new
+`podcasts.json`, never in `collection.json`. If that grows too large, `forge-storage` already offers SQLite.
+
+**One framework change is needed early.** The shared lock-screen helper
+(`crates/forge-services/swift/helpers/ForgeNowPlaying.swift`) always reports a playback rate of 1 and has no
+"live" flag. Live radio needs the live flag (no scrubber on the lock screen) and P0 needs the real rate. That is a
+small, additive change in its own PR, copied into every app by binding generation; no other app changes
+behaviour.
 
 ## Live radio, practically
 
@@ -111,14 +130,17 @@ Things that decide whether this feels solid or flaky:
   streams, which Radio Browser mostly doesn't; I won't promise more than that.
 - **Codecs.** AVPlayer plays MP3, AAC/HE-AAC and HLS, which is most stations. Ogg Vorbis and Opus streams it
   doesn't play reliably, so those are filtered out rather than adding a decoder. To confirm on the phone.
-- **Being a good citizen of Radio Browser.** It's volunteer-run: pick a server from its list rather than
-  hard-coding one, send a descriptive User-Agent, and report a play through its click endpoint (that's what
+- **Being a good citizen of Radio Browser.** It's volunteer-run: pick a server from its published server list
+  (and move to another when one fails) rather than hard-coding one, send a descriptive User-Agent, and report a play through its click endpoint (that's what
   drives its popularity ranking).
 - **Reconnection.** After a network drop or an interruption (a call), rejoin live rather than resume a stale
   buffer. The existing interruption handling is the place for it.
 - **Now-playing titles.** Many Icecast and Shoutcast stations send the current song (ICY metadata). AVPlayer
   exposes it on some streams and not others, so it's shown when present and never relied on.
 - **No recording.** Soundscape plays broadcasts; it never records, stores or rebroadcasts them.
+- **Privacy.** Searches and plays reach Radio Browser (and later a podcast directory) from the phone, and each
+  play is counted there by station, not by person. Favourites and history stay on the phone, as the roadmap's
+  "private insights" principle asks.
 
 ## Podcasts, practically
 
@@ -129,16 +151,21 @@ Things that decide whether this feels solid or flaky:
   background time is limited, so "new episodes are there when I open the app" is the honest promise).
 - **Transcripts** reuse the lyrics view; **chapters** come in P4 as planned.
 - **Portability:** OPML in and out from P1; gPodder sync with a Nextcloud server stays P3.
+- **Benchmark.** android-ports.md asks each port for a benchmark folder (AntennaPod's features with Expected and
+  Seen columns, walked on the Android emulator). That starts with P1, at `examples/soundscape/docs/benchmark/`.
+- **A gate outside Soundscape.** The feed parser moves out of Commonplace only after Commonplace's feed work
+  (#345, folders, OPML and full articles) has passed on the phone, and that check was deferred on 21 November.
+  So P1 waits on a Commonplace phone check too; worth doing it in the same sitting as the Soundscape checks.
 
 ## Milestones
 
 | Order | Milestone | What it delivers | Phone check |
 |---|---|---|---|
 | Gate | Owed Soundscape checks | Jamendo pages and functional albums (#444/#445), seamless switching (#447) | Already written |
-| 1 | **L1 Live Radio** | Radio Browser client in Rust (search; browse by country, language, genre; top stations), live-station play state, favourites and recents. Rust PR, then a screens PR (Discover section, Search results, Library "Stations", Live state in mini-player and Now Playing) | Find and play a station from Japan, one from the UK, one by genre; save one; lock screen; walk out of Wi-Fi and back |
+| 1 | **L1 Live Radio** | Now Playing helper gets a live flag (framework PR). Radio Browser client in Rust (search; browse by country, language, genre; top stations), live-station play state, favourites and recents. Rust PR, then a screens PR (Discover section, Search results, Library "Stations", Live state in mini-player and Now Playing) | Find and play a station from Japan, one from the UK, one by genre; save one; lock screen; walk out of Wi-Fi and back |
 | 2 | **L2 Live Radio, finished** | Failure memory, dead-stream message, now-playing titles where sent, "Around the World" shelf, sleep timer on live, rejoin after a call | A dead station, a call during playback |
-| 3 | **P0 player features** | Speed, skip amounts, saved position per item (music benefits too) | Short listening check |
-| 4 | **P1 Podcasts** | First the feed-parser extraction PR (framework), then subscriptions, episodes, stream and download, played state, OPML. Tab review here | Subscribe to a fixture feed from the laptop and one real show; download, play offline, resume |
+| 3 | **P0 player features** | Speed (and the real rate on the lock screen), skip amounts, saved position per item (music benefits too) | Short listening check |
+| 4 | **P1 Podcasts** | Needs Commonplace's #345 phone pass. First the feed-parser extraction PR (framework), then subscriptions, episodes, stream and download, played state, OPML. Tab review here | Subscribe to a fixture feed from the laptop and one real show; download, play offline, resume |
 | 5 | P2 to P4 | Download rules, gPodder sync, chapters and transcripts, as approved | As in android-ports.md |
 
 Each Rust PR is tested on Linux with fixture responses (no live network in tests); screens follow in their own PR,
@@ -146,10 +173,10 @@ as the design programme asks.
 
 ## My honest recommendation on sequencing
 
-1. Run the owed Soundscape phone checks first. Live radio adds a new way for playback to fail; it's much easier
+1. Run the owed Soundscape phone checks first, with Commonplace's deferred feed check in the same sitting. Live radio adds a new way for playback to fail; it's much easier
    to judge once the music player is known to be good.
-2. Then **L1 + L2 Live Radio**. It's cheap, immediately fun, and the "listen to the world" idea shows up in a
-   week rather than a month.
+2. Then **L1 + L2 Live Radio**. It's the cheapest way to make "listen to the world" real, and it tests the new
+   Live player state before podcasts add more to the player.
 3. Then **P0**, then **P1 Podcasts**. Podcasts are the larger build (subscriptions, refresh, downloads, the parser
    extraction), so they come once the player work they depend on is done.
 4. The M12 to M18 roadmap stays as it is; I'd slot L1/L2 between the Jamendo work and M12, and podcasts after M13
@@ -157,14 +184,15 @@ as the design programme asks.
 
 ## Decisions for Reuben
 
-1. **Order:** live radio after the owed checks, then podcasts (recommended), or podcasts first.
+1. **Order:** live radio after the owed checks, then P0, then podcasts (recommended, though live radio is a new
+   source ahead of player features); or P0 first, then live radio, then podcasts (strictly "player before sources").
 2. **Names:** "Stations" for generated mixes and "Live Radio" for broadcasts (recommended), or something else.
 3. **Podcast Index key:** register for a free one (recommended, for independent shows), or Apple search only.
 4. **Tabs:** keep four and review at P1 (recommended), or add a Podcasts tab from the start.
 
 ## Sources
 
-- [Radio Browser API documentation](https://api.radio-browser.info)
+- [Radio Browser API documentation](https://api.radio-browser.info), [RadioDroid](https://www.github.com/segler-alex/RadioDroid), [MusicPod releases](https://www.github.com/ubuntu-flutter-community/musicpod/releases)
 - [Podcast Index API documentation](https://github.com/Podcastindex-org/example-code) and [API docs mirror](https://github.com/jamescridland/docs-api)
 - [Apple developer forums: AVPlayer and ICY metadata](https://developer.apple.com/forums/thread/102200), [Shoutcast metadata in Swift](https://developer.apple.com/forums/thread/650170)
 - Earlier plans in this repository: [android-ports.md](../../../docs/research/android-ports.md), [design.md](design.md), [roadmap.md](roadmap.md), [app-plan.md](../../../docs/app-plan.md)
