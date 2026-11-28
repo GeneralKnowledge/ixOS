@@ -262,7 +262,7 @@ struct LiveStationRow: View {
                     HStack(spacing: 4) {
                         Text(station.name).lineLimit(1)
                         if live.isSaved(station.uuid) {
-                            Image(systemName: "star.fill")
+                            Image(systemName: "bookmark.fill")
                                 .font(.caption2)
                                 .foregroundStyle(.tint)
                                 .accessibilityLabel("Saved")
@@ -293,8 +293,8 @@ struct LiveStationRow: View {
                 Task { await live.toggleSaved(station) }
             } label: {
                 live.isSaved(station.uuid)
-                    ? Label("Remove", systemImage: "star.slash")
-                    : Label("Save", systemImage: "star")
+                    ? Label("Remove", systemImage: "bookmark.slash")
+                    : Label("Save", systemImage: "bookmark")
             }
             .tint(.purple)
         }
@@ -312,8 +312,8 @@ struct LiveStationMenu: View {
             Task { await live.toggleSaved(station) }
         } label: {
             live.isSaved(station.uuid)
-                ? Label("Remove from Your Stations", systemImage: "star.slash")
-                : Label("Save to Your Stations", systemImage: "star")
+                ? Label("Remove from Your Stations", systemImage: "bookmark.slash")
+                : Label("Save to Your Stations", systemImage: "bookmark")
         }
         .accessibilityIdentifier("live.save")
         if let homepage = station.homepage, let url = URL(string: homepage) {
@@ -364,7 +364,7 @@ struct LiveNowPlayingView: View {
                             Button {
                                 Task { await live.toggleSaved(station) }
                             } label: {
-                                Image(systemName: live.isSaved(station.uuid) ? "star.fill" : "star")
+                                Image(systemName: live.isSaved(station.uuid) ? "bookmark.fill" : "bookmark")
                                     .font(.title2)
                                     .frame(width: 52, height: 52)
                             }
