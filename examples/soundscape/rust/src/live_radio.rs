@@ -201,7 +201,20 @@ impl LiveRadioFile {
     /// time already known for it is kept (none: never checked), so playing
     /// unchecked details never makes them count as fresh.
     pub fn played(&mut self, station: LiveStation, now: i64, checked_ms: Option<i64>) {
-        let checked_ms = checked_ms.unwrap_or_else(|| self.checked_ms(&station.uuid).unwrap_or(0));
+        // Unchecked details inherit a check time only from a copy with the
+        // same stream address: a lookup of another address says nothing
+        // about this one.
+        let checked_ms = checked_ms.unwrap_or_else(|| {
+            self.saved
+                .iter()
+                .chain(self.recent.iter())
+                .filter(|k| {
+                    k.station.uuid == station.uuid && k.station.stream_url == station.stream_url
+                })
+                .map(|k| k.checked_ms)
+                .max()
+                .unwrap_or(0)
+        });
         self.recent.retain(|k| k.station.uuid != station.uuid);
         self.recent.insert(
             0,

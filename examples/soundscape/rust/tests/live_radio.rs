@@ -337,6 +337,16 @@ fn saved_and_recent_stations_are_kept_by_uuid() {
     // Saving again keeps the lookup's time.
     file.save(kyoto.clone(), 300_000).unwrap();
     assert!(!file.is_stale(KYOTO, 200_000 + STALE_MS));
+    // Details with another stream address don't inherit that lookup's time.
+    let mut moved = kyoto.clone();
+    moved.stream_url = "https://kyoto.example/elsewhere".into();
+    let mut other = LiveRadioFile::default();
+    other.played(kyoto.clone(), 1, Some(200_000));
+    other.played(moved, 2, None);
+    assert!(
+        other.is_stale(KYOTO, 200_001),
+        "the moved address was never checked"
+    );
     // A failed stream makes every copy stale.
     file.mark_stale(KYOTO);
     assert!(
