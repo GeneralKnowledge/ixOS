@@ -1105,6 +1105,8 @@ impl SoundscapeCore {
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<LiveStation, SoundscapeError> {
         let uuid = live_radio::clean_uuid(&station.uuid)?;
+        let mut station = station;
+        station.uuid = uuid.clone();
         let kept = self.live_radio.get();
         let (station, checked) = if kept.is_stale(&uuid, now_ms()) {
             match self.look_up(&uuid, cancellation).await {
