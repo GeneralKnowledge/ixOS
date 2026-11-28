@@ -441,7 +441,7 @@ fn near(
 /// location and, around one place, those inside the circle (whatever the
 /// server did with the area it was asked about).
 pub fn for_map(ask: &LiveAsk, stations: Vec<LiveStation>) -> Vec<LiveStation> {
-    match ask {
+    let placed: Vec<LiveStation> = match ask {
         LiveAsk::Mapped => stations
             .into_iter()
             .filter(|s| s.location.is_some())
@@ -462,8 +462,13 @@ pub fn for_map(ask: &LiveAsk, stations: Vec<LiveStation>) -> Vec<LiveStation> {
                 })
                 .collect()
         }
-        _ => stations,
-    }
+        _ => return stations,
+    };
+    placed
+        .into_iter()
+        // cut: a server that sends more than it was asked for; the map draws at most MAP_PAGE pins
+        .take(MAP_PAGE as usize)
+        .collect()
 }
 
 /// The path listing countries, languages or genres, those with the most

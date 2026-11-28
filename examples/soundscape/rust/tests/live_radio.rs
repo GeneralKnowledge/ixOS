@@ -613,3 +613,18 @@ fn a_map_keeps_only_stations_it_can_place_inside_its_circle() {
         stations.len()
     );
 }
+
+#[test]
+fn a_map_never_draws_more_pins_than_it_asked_for() {
+    let many: String = (0..400)
+        .map(|i| {
+            format!(
+                r#"{{"stationuuid": "00000000-0000-0000-0000-{i:012}", "name": "S{i}", "url": "https://s.example/{i}", "geo_lat": 10.0, "geo_long": 10.0}}"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let stations = parse_stations(format!("[{many}]").as_bytes()).unwrap();
+    assert_eq!(stations.len(), 400);
+    assert_eq!(for_map(&LiveAsk::Mapped, stations).len(), 300);
+}
