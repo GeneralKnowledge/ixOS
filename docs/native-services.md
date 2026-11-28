@@ -402,9 +402,11 @@ forge_services::native_services!(http);
 // created before `ForgeServices.install()` runs.
 let http = native::http::HttpService::prefer_installed(
     Arc::new(UreqClient::with_user_agent(USER_AGENT)),
-    |client| client.max_body_bytes(8 * 1024 * 1024),
+    |client| client.max_body_bytes(8 * 1024 * 1024).user_agent(USER_AGENT),
 );
 ```
+
+Name the app on both clients. `UreqClient::with_user_agent` only reaches requests sent through ureq; `.user_agent(..)` adds the same `User-Agent` to host requests that don't set their own, which otherwise go out with the platform's default (on iOS, `<App>/<build> CFNetwork/… Darwin/…`). The parity rule `user-agent` checks it.
 
 Cancelling a `CancelHandle` cancels the `URLSessionTask`. The response body is limited (8 MiB unless `configure` changes it): the adapter stops a response that announces or grows past the limit. Errors map to `NetError` the way ureq's do (`Offline`, `Certificate`, `Timeout`, `Cancelled`, `Transport`). A stream returns once its status and headers arrive (within the request's timeout); its body is then read as it comes in, with no size limit and no idle timeout (URLSession's idle timeout is set to a day, since an event stream may be quiet). Cancelling, or dropping the body before its end, cancels the task, and a read blocked on a silent server fails at once with `forge_net::cancelled_io_error`. Commonplace fetches its feeds this way, and Chat sends its requests and its live event stream this way.
 

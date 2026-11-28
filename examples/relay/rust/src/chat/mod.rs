@@ -339,6 +339,18 @@ impl ChatCore {
         let devices = self.device_clients();
         let alerts = self.alerts();
         let result = background("chat-list", move || {
+            // Devices and groups first: a server that can't be reached
+            // mustn't keep them from being listed (and cached, for
+            // `cached_conversations`).
+            let mut on_relay = Vec::new();
+            for (client, user_id) in devices {
+                match client.list_conversations() {
+                    Ok(list) => {
+                        on_relay.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
+                    }
+                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
+                }
+            }
             let mut out = Vec::new();
             if let Some((client, user_id)) = server {
                 let list = client.list_conversations().map_err(ChatError::from)?;
@@ -347,14 +359,7 @@ impl ChatCore {
                 }
                 out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)));
             }
-            for (client, user_id) in devices {
-                match client.list_conversations() {
-                    Ok(list) => {
-                        out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
-                    }
-                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
-                }
-            }
+            out.extend(on_relay);
             Ok(out)
         })
         .await;
@@ -1515,16 +1520,16 @@ fn server_repo(server_url: impl Into<String>) -> HttpRepo {
     HttpRepo::new(http_client(), server_url)
 }
 
+/// Who the chat path says it is to the chat server, through either client.
+const CHAT_USER_AGENT: &str = concat!("forge-chat-example/", env!("CARGO_PKG_VERSION"));
+
 fn http_client() -> Arc<dyn forge_net::HttpClient> {
     static CLIENT: std::sync::OnceLock<Arc<native::http::PreferInstalled>> =
         std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         Arc::new(native::http::HttpService::prefer_installed(
-            Arc::new(forge_net::UreqClient::with_user_agent(concat!(
-                "forge-chat-example/",
-                env!("CARGO_PKG_VERSION")
-            ))),
-            |client| client,
+            Arc::new(forge_net::UreqClient::with_user_agent(CHAT_USER_AGENT)),
+            |client| client.user_agent(CHAT_USER_AGENT),
         ))
     });
     Arc::clone(client) as Arc<dyn forge_net::HttpClient>

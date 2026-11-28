@@ -143,6 +143,17 @@ pub enum Entry {
         text: String,
         at_ms: i64,
     },
+    /// The plan is a tests-first request: Bonsai writes the tests in
+    /// `file`, the person checks them, then Bonsai writes the code.
+    TestsFirst { plan: String, file: String },
+    /// The person approved the tests as `content` (their edits included);
+    /// the code must leave them as they are.
+    TestsApproved {
+        plan: String,
+        file: String,
+        content: String,
+        at_ms: i64,
+    },
 }
 
 impl Entry {
@@ -161,7 +172,9 @@ impl Entry {
             | Entry::PlanStatus { plan, .. }
             | Entry::Recovery { plan, .. }
             | Entry::RecoveryInvalid { plan, .. }
-            | Entry::PersonAnswer { plan, .. } => plan,
+            | Entry::PersonAnswer { plan, .. }
+            | Entry::TestsFirst { plan, .. }
+            | Entry::TestsApproved { plan, .. } => plan,
         }
     }
 }

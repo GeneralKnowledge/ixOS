@@ -190,6 +190,17 @@ public final class BonsaiHarnessModel {
         }
     }
 
+    /// The person's own task, tests first: Bonsai writes the tests, the
+    /// plan waits while the person checks them, then Bonsai writes the code.
+    public func runTestsFirst() {
+        if snapshot?.project != project, !isRunning {
+            try? harness?.openProject(name: project)
+        }
+        perform { [request, project] harness, model in
+            try harness.startCustomTestsFirst(model: model, request: request, project: project)
+        }
+    }
+
     /// Whether a plan is shown for approval before it runs (Rust keeps it).
     public var approvePlans: Bool {
         get { snapshot?.approvePlans ?? true }

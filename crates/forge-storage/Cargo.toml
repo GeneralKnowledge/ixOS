@@ -46,3 +46,6 @@ required-features = ["sqlite", "csv", "backup"]
 [package.metadata.forge]
 # Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
 area = "framework"
+
+[lints]
+workspace = true

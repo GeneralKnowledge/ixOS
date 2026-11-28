@@ -347,8 +347,9 @@ impl Devices {
     /// Devices it trusts that aren't trusted here are offered, never
     /// trusted by themselves: a recommendation, which the person decides.
     /// A device revoked here is never offered again. Devices it revoked
-    /// are revoked here, marked with who did it, so the person can see and
-    /// undo it; it can't revoke itself or this device (`me`).
+    /// are revoked here, trusted or forgotten, marked with who did it, so
+    /// the person can see and undo it; it can't revoke itself or this
+    /// device (`me`).
     pub fn introduced(&mut self, introducer: &str, me: &str, list: &DeviceList) -> Introduced {
         let mut done = Introduced::default();
         if !self
@@ -362,7 +363,9 @@ impl Devices {
                 continue;
             }
             if let Some(d) = self.get_mut(id) {
-                if d.trust == SavedTrust::Trusted {
+                // A forgotten device is revoked too: otherwise Pair
+                // Automatically would trust it again after a code transfer.
+                if matches!(d.trust, SavedTrust::Trusted | SavedTrust::Forgotten) {
                     d.trust = SavedTrust::Revoked;
                     d.addresses.clear();
                     d.revoked_by = Some(introducer.to_string());
@@ -616,6 +619,35 @@ mod tests {
         let given = devices.list_for("tablet");
         assert!(given.trusted.iter().all(|(id, _)| id != "tablet"));
         assert!(!given.revoked.contains(&"tablet".to_string()));
+    }
+
+    /// A device forgotten here and revoked by an introducer is revoked here
+    /// too, so Pair Automatically can't trust it again after a code
+    /// transfer (found while planning the trust model,
+    /// docs/research/unsafe-and-verification.md).
+    #[test]
+    fn an_introducers_revoke_reaches_a_forgotten_device() {
+        let mut devices = Devices {
+            policy: PairingPolicy::PairAutomatically,
+            ..Devices::default()
+        };
+        devices.trust("laptop", "Laptop", 1);
+        assert!(devices.set_introduces("laptop", true));
+        devices.trust("old", "Old", 1);
+        assert!(devices.forget("old"));
+        let list = DeviceList {
+            trusted: vec![],
+            revoked: vec!["old".into()],
+        };
+        let done = devices.introduced("laptop", "me", &list);
+        assert_eq!(done.revoked, ["old"]);
+        assert_eq!(devices.standing("old"), Some(SavedTrust::Revoked));
+        assert_eq!(
+            devices.get("old").unwrap().revoked_by.as_deref(),
+            Some("laptop")
+        );
+        assert_eq!(devices.after_code("old", "Old", 5), AfterCode::Nothing);
+        assert_eq!(devices.standing("old"), Some(SavedTrust::Revoked));
     }
 
     #[test]

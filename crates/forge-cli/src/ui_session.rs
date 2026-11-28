@@ -25,6 +25,7 @@ extern "C" fn on_signal(_: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
 }
 
+#[allow(unsafe_code)]
 fn catch_stop_signals() {
     #[cfg(unix)]
     // SAFETY: the handler only stores to an atomic, which is
@@ -35,6 +36,27 @@ fn catch_stop_signals() {
         libc::signal(libc::SIGTERM, handler);
         libc::signal(libc::SIGHUP, handler);
     }
+}
+
+/// Starts `cmd` in its own session: no terminal hang-up, and a caller that
+/// kills its process group (forge mcp on a timeout) doesn't take it along.
+#[allow(unsafe_code)]
+fn own_session(cmd: &mut std::process::Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: the hook runs between fork and exec, where only
+        // async-signal-safe calls are allowed; setsid is one, and the hook
+        // allocates nothing.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = cmd;
 }
 
 fn idle(minutes: u64) -> Option<Duration> {
@@ -116,19 +138,7 @@ pub fn start(
     if let Some(pid) = exit_with {
         cmd.arg("--exit-with").arg(pid.to_string());
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        // Its own session: no terminal hang-up, and a caller that kills its
-        // process group (forge mcp on a timeout) doesn't take it along.
-        // SAFETY: setsid is async-signal-safe.
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
-    }
+    own_session(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("could not start `forge ui serve`: {e}"))?;
@@ -208,6 +218,7 @@ pub fn stop(udid: Option<&str>, out: &mut dyn Write) -> Result<(), String> {
 
 /// SIGTERM, then SIGKILL if it hasn't gone after 20 s (it shuts WDA down
 /// first, which takes at most a few seconds).
+#[allow(unsafe_code)]
 fn end(pid: u32) -> &'static str {
     #[cfg(unix)]
     {
@@ -223,6 +234,7 @@ fn end(pid: u32) -> &'static str {
             }
             std::thread::sleep(Duration::from_millis(200));
         }
+        // SAFETY: as above.
         unsafe { libc::kill(p, libc::SIGKILL) };
         ", killed after 20 s"
     }

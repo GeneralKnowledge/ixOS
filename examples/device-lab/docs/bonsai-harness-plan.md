@@ -221,6 +221,18 @@ What was built, tested on Linux against python3; Swift unchanged:
 - **Ladder:** T11 seeds T4's finished project with the journal of the task that made it, and asks to add `square_area` and print a 4 by 4 square while keeping the rest; done when `main.py` prints 16, 15 and 12.57. Scripted T11 reads `circle_area` with `read_symbol`, then edits.
 - **Still to do on the phone:** 8,192 tokens of context if memory allows (measured with the 9B loaded and Python running); T10 (end the app mid-plan from the app switcher, reopen, Resume from Last Verified Task; the resume logic is tested on Linux by H4's tests); a low-memory warning unloading the model.
 
+### Tests first, checked by the person (built 2026-11-25)
+
+The 1060 lab ran the agent loop off the phone first (C0: Bonsai on the laptop's GPU through llama-server, the same JSON-action loop, small build-with-tests tasks scored by hidden tests). Bonsai 4B passed 1 of 8; the 9B passed 1 or 2 of 3 easy tasks across three variants. The failures had one cause: Bonsai writes a wrong test in about two tasks of three (a wrong expected value, `cache.len()` for `len(cache)`), then rewrites correct code against it until it runs out of steps. Told that its own test might be wrong, it switched between test and code without settling. Writing the tests first and locking them, it passed the task whose tests were right and failed the two whose tests were wrong. With correct tests it writes passing code.
+
+So the person checks the tests. **Tests First, Then Code** (Bonsai Harness, beside Plan My Task) runs a two-task plan the harness writes itself, no planner turn:
+
+1. `tests`: Bonsai writes only `test_app.py`, a unittest test of what the request states. Done when the file has unittest tests (`tests_written`).
+2. The plan stops (Waiting for your approval) and shows the tests. The person reads them, fixes a wrong one in Python Lab if needed (**Edit Tests in Python Lab**), and taps **Tests Are Right, Write the Code**. The tests as they are then are journaled (`tests_approved`) and saved into the checkpoint the code task starts from, so a recovery's rollback keeps the person's edits.
+3. `code`: Bonsai writes the module. Done when the tests pass and `test_app.py` is unchanged (`file_unchanged`, added to every task still to run, whatever a revision or replan writes).
+
+Tested on Linux against python3 (the gate, the person's edit, a code task that bends the test is refused). **Phone check (next combined build):** a small request on the 9B, e.g. "Write roman.py with to_roman(n) and from_roman(s) for 1 to 3999, raising ValueError for anything else", recording whether the tests needed an edit and whether the code task passed.
+
 ### H7: a small multi-file project in Python Lab
 
 Projects listed in Python Lab; browse, edit and run their files yourself, and the harness sees your edits; a per-project network switch, off by default, asked for explicitly. Ladder: T12 a three-file program with tests, built from one request.

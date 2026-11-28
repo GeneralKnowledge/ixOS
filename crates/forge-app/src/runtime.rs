@@ -74,6 +74,7 @@ fn try_lock(file: &File) -> Result<(), TryLockError> {
 }
 
 #[cfg(target_os = "android")]
+#[allow(unsafe_code)]
 fn try_lock(file: &File) -> Result<(), TryLockError> {
     use std::os::fd::AsRawFd;
     // SAFETY: `flock` only reads the descriptor, which `file` keeps open for

@@ -368,6 +368,9 @@ public final class ChatModel {
             listError = nil
         } catch {
             listError = Self.describe(error)
+            // What Rust kept, which includes devices and groups listed
+            // just now even when the server couldn't be reached.
+            conversations = core.cachedConversations()
         }
         hasListed = true
     }
