@@ -1,6 +1,6 @@
 # A shared API layer: audit and proposal
 
-Status: proposal (2026-11-28). Nothing here is built; each step below needs Reuben's approval.
+Status: proposal (2026-11-28). Step 1 approved by Reuben on 2026-11-28 and built in its own PR; steps 2 and 3 are not built.
 
 The question: ixOS apps now talk to a lot of web APIs (Open-Meteo, Open Library, Jamendo, the Internet Archive, MusicBrainz, feeds, and soon Radio Browser and Podcast Index). Is a shared "API handler" worth having in the framework?
 
@@ -13,8 +13,8 @@ The question: ixOS apps now talk to a lot of web APIs (Open-Meteo, Open Library,
 | One request interface, test doubles | `HttpClient` trait, `Request`/`Response`, `StaticClient`, `NoopClient` | `crates/forge-net` |
 | Native networking on iPhone (VPN, proxy, HTTP/2 and 3, Low Data Mode, system trust store) | The `http` service: `HttpService::prefer_installed` sends through `URLSession` once the host has installed its services, ureq before that and on Linux | `crates/forge-services/src/http.rs`, `swift/optional/ForgeServices+Http.swift` |
 | The same on Android | `ForgeHttpTransport` on `HttpURLConnection` behind the same `HostHttp` trait (Pocket Library A4, #359) | Pocket Library's Android host |
-| Timeouts | `Request::timeout`, 15 s default in both transports | `forge-net`, `http.rs` |
-| Response size limits | `max_body_bytes` on both transports (8 MiB default), stopped as the body grows | same |
+| Timeouts | `Request::timeout`, 15 s default in both transports. For a stream it bounds only the wait for the headers, not the body | `forge-net`, `http.rs` |
+| Response size limits | `max_body_bytes` on both transports (8 MiB default), stopped as the body grows. Buffered responses only: streams have no limit | same |
 | Cancellation | `CancelHandle`, `send_cancellable`; cancelling stops the `URLSessionTask` | `forge-net`, `http.rs` |
 | Retry spacing | `Backoff` (exponential, capped, jitter, cancel-aware wait) | `crates/forge-net/src/backoff.rs` |
 | Offline and network errors | `NetError` (`Offline`, `Timeout`, `Certificate`, `Transport`, `Cancelled`), and `forge_app::app_error_conversions!(MyError: NetError)` | `forge-net`, `crates/forge-app/src/conversions.rs` |
@@ -43,7 +43,7 @@ Swift barely calls web APIs directly. Apart from Device Lab's own model and pack
 3. **Retrying a busy server: one use.** Only MusicBrainz retries, and it does it well. Pocket Library gives up on Open Library's 429, which is fine for a search the person can repeat. The foundation review already lists this as N2 (`RetryPolicy` beside `Backoff`: attempt limit, `Retry-After`, which errors are worth retrying), deferred until a second use. Radio Browser's mirrors (L1 Live Radio in #460) would be that second use.
 4. **Caching answers for offline: one generic use.** `JamendoAnswers` is already shaped like a framework piece (it wraps any `HttpClient`), but it is the only one. Weather's cache is about forecasts, not HTTP answers, and Commonplace's conditional GET is a different mechanism. Radio Browser station lists or podcast search would be the second use.
 5. **Conditional GET (`ETag`, `Last-Modified`, `304`): one use,** Commonplace. Soundscape podcasts will need exactly this. `docs/app-plan.md` already gates feed handling: build it in Soundscape first, extract only after both apps pass on the phone. The validators travel with that extraction.
-6. **Rate limiting: no use.** Every request today is one the person asked for, one at a time, so MusicBrainz's one-a-second rule holds by design. A limiter would only be needed for batch work, such as identifying a whole library against MusicBrainz in the background. Not planned.
+6. **Rate limiting: no use.** Every request today is one the person asked for, one at a time, so MusicBrainz's one-a-second rule mostly holds. The exception is the retry after a 503: it waits what `Retry-After` says but at least only 500 ms (`musicbrainz.rs:170`), so two searches can fall within a second. Raising that floor to one second is a one-line Soundscape fix, and step 2's policy should take a minimum spacing for MusicBrainz. A limiter would only be needed for batch work, such as identifying a whole library against MusicBrainz in the background. Not planned.
 7. **Keys: nothing missing.** Jamendo's client ID is a public identifier, kept in Soundscape's settings and left out of cache keys; that is fine. Podcast Index's secret goes in the Keychain through the existing secure storage, as #460 already says.
 8. **A generic API client, endpoint descriptions or code generation (OpenAPI and the like): no.** Each service client is 100 to 400 lines and almost all of it is that service's quirks (Jamendo's empty answers, MusicBrainz ranking, Open Library's shapes). A shared abstraction would hide those without saving code.
 
@@ -64,20 +64,20 @@ let http = native::http::HttpService::prefer_installed(
 
 The exact shape is for the PR; one option is a small settings value passed once instead of setting both clients. Then:
 
-- Move Weather, Soundscape, Pocket Library, Commonplace and Relay's chat path onto it in the same PR (rule 12), and drop the per-request headers that become redundant. MusicBrainz keeps its own, since its User-Agent format is MusicBrainz's rule.
+- Move Weather, Soundscape, Pocket Library, Commonplace and Relay's chat path onto it in the same PR (rule 12), Per-request headers that set the same value can stay. MusicBrainz keeps its own, since its User-Agent format is MusicBrainz's rule.
 - Add a parity rule (`user-agent`) so an app that uses the `http` service names its User-Agent there.
 - Fix the example in `native-services.md`.
 - Test: a `FakeHost` test that a request without a User-Agent gets the app's, and one with its own keeps it. Phone check (short): one Weather refresh and one Jamendo search still work in Device Lab. The User-Agent itself can be confirmed from the take server's log on the laptop, which Soundscape already talks to.
 
 Size: a few dozen lines in `forge-services` plus a line or two per app. Rust only, so both iOS and Android get it.
 
-### Step 2, with Live Radio (L1 in #460): retry policy
+### Step 2, with Live Radio (L1 in #460): retry policy, in Soundscape first
 
-When Radio Browser is built, add N2's `RetryPolicy` to `forge-net` beside `Backoff`, with the status classification from point 2: attempts, a deadline, `Retry-After` for 429 and 503 (capped), cancel-aware waits, and `NetError`s classified as worth retrying or not. Move MusicBrainz onto it in the same PR, so there are two users from day one. Mirror failover stays Radio Browser's own code in Soundscape.
+MusicBrainz and Radio Browser are both Soundscape, so by `docs/app-plan.md`'s rule (a second app, and both apps' features passed on the phone) this is not yet a framework piece. When Radio Browser is built, write one retry helper inside Soundscape that both use, shaped like N2's `RetryPolicy` with the status classification from point 2: attempts, a deadline, `Retry-After` for 429 and 503 (capped, with a minimum spacing), cancel-aware waits, and `NetError`s classified as worth retrying or not. It moves into `forge-net` beside `Backoff` only when a second app needs it (the likely one is Pocket Library retrying Open Library's 429) and both have passed on the phone. Mirror failover stays Radio Browser's own code.
 
-### Step 3, after Live Radio passes on the phone: cached answers, if a second user appears
+### Step 3: cached answers, only with a second app
 
-If Radio Browser (or podcast search) wants offline answers, move `JamendoAnswers` into `forge-net` as a generic caching client (fresh time, keep time, a key function that can leave secrets out, only successful non-empty answers kept) and put both on it. If nothing else needs it by then, it stays in Soundscape.
+If Radio Browser (or podcast search) wants offline answers, generalise `JamendoAnswers` inside Soundscape (fresh time, keep time, a key function that can leave secrets out, only successful non-empty answers kept) and put both on it. That is still one app. It moves into `forge-net` only when another app needs the same thing and both have passed on the phone; until then it stays in Soundscape.
 
 ### Not proposed
 
@@ -86,6 +86,6 @@ A new crate, a separate "API handler" module, a rate limiter, a Swift-side API l
 ## Decisions for Reuben
 
 1. Do step 1 now as a small framework PR (recommended), or leave it until the next Soundscape work.
-2. Agree that steps 2 and 3 wait for Live Radio, as gated above.
+2. Agree that steps 2 and 3 are built inside Soundscape with Live Radio and move into the framework only with a second app, as gated above.
 
 Related: [foundation review](../foundation-review.md) (N1, N2, F4), [native services: http](../native-services.md#http-through-urlsession-http), [framework candidates](framework-candidates.md), [app plan](../app-plan.md), Soundscape's podcasts and radio proposal (#460).
