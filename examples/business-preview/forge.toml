@@ -1,0 +1,62 @@
+[app]
+name = "Business Preview"
+bundle_id = "org.forgemobile.agentlab"
+minimum_ios = "17.0"
+# display_name = "Business Preview"   # home-screen name (default: name)
+version = "1.0.0"                   # CFBundleShortVersionString
+build_number = "1"                  # CFBundleVersion; raise it for every upload
+
+[rust]
+# This app's own Rust crate: logic, state, persistence, networking.
+path = "rust"
+
+[build]
+ios_device = true
+ios_simulator = false
+
+# The app's Swift module names: its bindings (Generated/ForgeFFI) and its
+# views and models (Sources/AppHost). Named after the app, so another app
+# can host this one (docs/app-crate.md).
+[swift]
+bindings_module = "BusinessPreviewFFI"
+app_module = "BusinessPreviewApp"
+
+# iOS settings. Forge writes Info.plist, App.entitlements and xtool.yml from
+# this section on every `forge build ios` / `forge run ios` (or `forge config
+# sync`), so edit them here, not in those files. All keys: docs/app-config.md.
+[ios]
+# The SwiftPM product xtool builds (Package.swift). It is the app's executable,
+# so it names the process in `forge device logs --process` and crash reports.
+xtool_product = "BusinessPreviewXtool"
+# icon = "Resources/AppIcon.png"    # 1024x1024 PNG
+# Where it runs as a native app: ["iphone"], or ["iphone", "ipad"] once its
+# screens adapt to a wide window (docs/app-config.md). iPhone-only apps
+# still run on an iPad, scaled.
+devices = ["iphone"]
+orientations = ["portrait"]
+# url_schemes = ["myapp"]           # opens myapp://... links
+# background_modes = ["remote-notification"]
+
+# The text iOS shows when the app asks for a permission.
+[ios.permissions]
+# camera = "Scan barcodes to add items."
+# photo_library = "Attach photos to your notes."
+# location_when_in_use = "Show places near you."
+
+[ios.entitlements]
+# app_groups = ["group.org.forgemobile.agentlab"]
+# associated_domains = ["applinks:example.com"]   # paid team
+# push_notifications = "development"              # paid team
+
+[ios.signing]
+# team_type = "free"                # "free" (Apple ID) or "paid" (Developer Program)
+# team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
+
+# Plain http (no TLS) is off. iOS's App Transport Security refuses it for
+# requests through URLSession (the `http` service, AVPlayer, web views), and
+# numeric addresses such as a Tailscale 100.x are refused too. To talk to a
+# server you run yourself on a private network, uncomment these two lines
+# (docs/app-config.md#plain-http-app-transport-security). The Settings check
+# sends its request from Rust's own client, which ATS doesn't cover.
+# [ios.info.NSAppTransportSecurity]
+# NSAllowsArbitraryLoads = true

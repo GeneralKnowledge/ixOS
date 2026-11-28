@@ -35,6 +35,7 @@ uniffi::setup_scaffolding!("forge_ffi");
 // The showcase's other apps (Cargo.toml). Naming them links their Rust cores,
 // and so their UniFFI exports, into this library; `forge bindings generate`
 // gives each its own Swift module, which ForgeFFI re-exports.
+use business_preview_core as _;
 use checklist_core as _;
 use commonplace_core as _;
 use fieldkit_core as _;

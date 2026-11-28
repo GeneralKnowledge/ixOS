@@ -1,0 +1,32 @@
+# Business Preview opens on its prospects list with both ways to import.
+# Showing a business needs a pack on the phone: the full check is the
+# person's (docs/research/business-to-app.md, M1 phone check).
+# Run with the phone plugged in:  forge ui run examples/business-preview/uitests/smoke.toml
+# Format: docs/forge-ui-testing.md.
+
+name = "Smoke: the prospects list and its import menu"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-launchApp", "businessPreview", "-ForgeTemporaryData"] }
+
+[[step]]
+expect = { id = "prospects.empty.import" }
+
+[[step]]
+screenshot = "1-no-prospects"
+
+[[step]]
+tap = { id = "prospects.import" }
+
+[[step]]
+expect = { id = "prospects.import.files" }
+
+[[step]]
+expect = { id = "prospects.import.address" }
+
+[[step]]
+screenshot = "2-import-menu"

@@ -299,7 +299,8 @@ LAB_KEYS = {
     "weather": "weather", "checklist": "checklist", "pocket-library": "library",
     "good-dog": "goodDog", "commonplace": "commonplace", "fieldkit": "fieldKit",
     "sketchbook": "sketchbook", "soundscape": "soundscape", "relay": "relay",
-    "sums": "sums", "urdu-naturally": "urdu", "forgeui-showcase": "forgeUI",
+    "sums": "sums", "urdu-naturally": "urdu", "business-preview": "businessPreview",
+    "forgeui-showcase": "forgeUI",
 }
 
 
