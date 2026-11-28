@@ -23,6 +23,7 @@
 //! device of the sender; members it hasn't paired with are skipped (and
 //! shown so). Members introduced by the admin come next.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
 
 use chat_core::{
@@ -105,12 +106,16 @@ pub struct SavedGroup {
     /// that still lists it, sent before it heard, doesn't bring it back.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left_by_me: bool,
-    /// When this device took this version (ms; kept here, never sent).
-    /// A message held from a sender this version leaves out, that came
-    /// before it, may still be explained by an older update on its way
-    /// (by mailbox, say), which names the sender.
+    /// When this device first took the group (ms; kept here, never
+    /// sent), and when each member it saw go was dropped. A message held
+    /// from a sender the current version leaves out may still be
+    /// explained by an older update on its way (by mailbox, say) that
+    /// names the sender, but only if it came before the sender went: a
+    /// later change, a rename say, doesn't move that line.
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub taken_at: i64,
+    pub joined_at: i64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub removed_at: BTreeMap<String, i64>,
 }
 
 fn is_zero(n: &i64) -> bool {
@@ -255,8 +260,7 @@ impl Record {
                             // Older, arriving late (by mailbox, say): it
                             // may explain a message held before the
                             // version this device has left its sender out.
-                            let before = g.taken_at;
-                            return self.release_held(c, &id, Some((&update.members, before)));
+                            return self.release_held(c, &id, Some(&update.members));
                         }
                         if update.version == g.version {
                             // Already here: a retry.
@@ -265,10 +269,19 @@ impl Record {
                         // Leaving is this device's own choice: an update
                         // the admin sent before it heard doesn't undo it.
                         let left_by_me = g.left_by_me && mine;
+                        let mut removed_at = std::mem::take(&mut g.removed_at);
+                        let now = now_ms();
+                        for m in &g.members {
+                            if update.member(&m.endpoint_id).is_none() {
+                                removed_at.entry(m.endpoint_id.clone()).or_insert(now);
+                            }
+                        }
+                        removed_at.retain(|e, _| update.member(e).is_none());
                         *g = SavedGroup {
                             left: !mine || left_by_me,
                             left_by_me,
-                            taken_at: now_ms(),
+                            joined_at: g.joined_at,
+                            removed_at,
                             ..update
                         };
                     }
@@ -276,7 +289,7 @@ impl Record {
                     // nothing to keep.
                     None if !mine => {}
                     None => self.groups.push(SavedGroup {
-                        taken_at: now_ms(),
+                        joined_at: now_ms(),
                         ..update
                     }),
                 }
@@ -284,8 +297,9 @@ impl Record {
             }
             GroupItem::Leave { group } => {
                 if let Some(g) = self.group_mut(&group) {
-                    if from != me {
+                    if from != me && g.member(from).is_some() {
                         g.members.retain(|m| m.endpoint_id != from);
+                        g.removed_at.insert(from.to_string(), now_ms());
                     }
                 }
                 Ok(())
@@ -298,12 +312,13 @@ impl Record {
     /// update (one in between needn't name their sender) until they
     /// expire, or this device is out of the group. With `earlier`, an
     /// older update that came late: a sender it names counts too, for a
-    /// message held before this device took its current version.
+    /// message held before that sender went (or, for one this device
+    /// never saw in the group, before it took the group).
     fn release_held(
         &mut self,
         c: &mut Conversations<'_>,
         id: &str,
-        earlier: Option<(&[GroupMember], i64)>,
+        earlier: Option<&[GroupMember]>,
     ) -> Result<(), RelayError> {
         let held = crate::store::take_held(c.connection(), id)?;
         let now = now_ms();
@@ -317,10 +332,17 @@ impl Record {
             let Some(g) = self.group(id).filter(|g| !g.left) else {
                 continue;
             };
+            // A group saved before these were kept has no line: an older
+            // update is trusted to explain the message.
+            let went = match (g.removed_at.get(&sender), g.joined_at) {
+                (Some(at), _) => *at,
+                (None, 0) => i64::MAX,
+                (None, joined) => joined,
+            };
             let name = g.member(&sender).map(|m| m.name.clone()).or_else(|| {
                 earlier
-                    .filter(|(_, before)| at < *before)
-                    .and_then(|(roster, _)| roster.iter().find(|m| m.endpoint_id == sender))
+                    .filter(|_| at < went)
+                    .and_then(|roster| roster.iter().find(|m| m.endpoint_id == sender))
                     .map(|m| m.name.clone())
             });
             let Some(name) = name else {
@@ -549,7 +571,8 @@ impl RelayCore {
             version: 1,
             left: false,
             left_by_me: false,
-            taken_at: 0,
+            joined_at: 0,
+            removed_at: BTreeMap::new(),
         };
         self.add_trusted(&mut group, &me, &members)?;
         if group.members.len() < 2 {
@@ -974,7 +997,8 @@ pub(crate) fn incoming(msg: crate::device::DeviceMsg) -> Option<GroupItem> {
             version,
             left: false,
             left_by_me: false,
-            taken_at: 0,
+            joined_at: 0,
+            removed_at: BTreeMap::new(),
         }),
         DeviceMsg::GroupLeave { group } => GroupItem::Leave { group: hex(&group) },
         _ => return None,
@@ -1108,7 +1132,8 @@ mod tests {
             version,
             left: false,
             left_by_me: false,
-            taken_at: 0,
+            joined_at: 0,
+            removed_at: BTreeMap::new(),
         }
     }
 
@@ -1361,6 +1386,56 @@ mod tests {
             2,
             "the late update changes nothing else"
         );
+    }
+
+    #[test]
+    fn a_rename_after_a_removal_doesnt_move_the_line() {
+        let mut r = Record::default();
+        let store = crate::store::Store::in_memory();
+        let v1 = group("a", &["a", "b", "me"], 1);
+        let id = v1.id.clone();
+        let at = |members: &[&str], version: u64, name: &str| {
+            let mut g = group("a", members, version);
+            g.id = id.clone();
+            g.name = name.into();
+            g
+        };
+        let write = |r: &mut Record, from: &str, item: GroupItem| {
+            store
+                .write(|c| {
+                    let mut cs = Conversations::new(c);
+                    r.take_group_item(&mut cs, "me", from, item)
+                })
+                .unwrap()
+        };
+        write(&mut r, "a", GroupItem::Update(v1));
+        // Version 3 removes b (version 2, a rename, is still on its way).
+        write(&mut r, "a", GroupItem::Update(at(&["a", "me"], 3, "G")));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        write(
+            &mut r,
+            "b",
+            GroupItem::Message {
+                group: id.clone(),
+                message: PeerMessage {
+                    id: "m".into(),
+                    body: "after removal".into(),
+                    reply_to: None,
+                },
+            },
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        // A later rename, then the late version 2 that still names b.
+        write(&mut r, "a", GroupItem::Update(at(&["a", "me"], 4, "H")));
+        write(
+            &mut r,
+            "a",
+            GroupItem::Update(at(&["a", "b", "me"], 2, "F")),
+        );
+        let shown = store
+            .read(|c| crate::store::since(c, &group_conversation(&id), None))
+            .unwrap();
+        assert!(shown.is_empty(), "sent after b went: never shown");
     }
 
     #[test]

@@ -117,8 +117,11 @@ It is held, at most 200 for a week, and shown once the admin's update
 makes the sender a member; one that no update explains is dropped unseen
 when it expires. Updates can overtake each other too (one waits in a
 mailbox, the next comes straight): an older update that arrives late still
-explains a message held before this device took the newer one, so a
-member's message sent before their removal isn't lost.
+explains a message held from a sender it names, if it arrived before this
+device saw that sender go (or, for a sender it never saw in the group,
+before it took the group), so a member's message sent before their removal
+isn't lost. A later change, a rename say, doesn't move that line, and a
+message that arrived after the removal stays unseen.
 
 **How long a copy waits.** A member away for long doesn't get everything:
 the sender's outbox gives up on a copy after 30 days, and a copy in the
