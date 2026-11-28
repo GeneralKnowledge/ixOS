@@ -95,7 +95,7 @@ Done, and all run in CI except where noted:
 
 | Step | Where | What it checks | Shown to work by |
 |---|---|---|---|
-| V1 | `.github/workflows/lean.yml`, `verification/relay/lean-toolchain` | Every `.lean` file in `verification/relay/` checks, with no `sorry`, whenever a model changes | Its first run on the PR that added it |
+| V1 | `.github/workflows/lean.yml`, `verification/relay/lean-toolchain` | Every `.lean` file under `verification/relay/` (subfolders included) checks, with no `sorry`, whenever a model changes | Its first run on the PR that added it |
 | V2 | `examples/relay/rust/src/trust_props.rs` | 2,000 random sequences of up to 60 steps over five devices: trust (by the person, or from an introducer's offer), revoke, forget, code transfers under each policy, introducer lists, grants, person marks, rights and Hellos. After every step, every rule listed in the plan above | Undoing the forgotten-device fix fails it, with a short counterexample; so does a revoke that keeps the grants |
 | V3 | `examples/relay/rust/src/mailbox_props.rs` | The real `MailboxStore` (SQLite and files) against an in-memory model: 500 mixed sequences of register, deregister, deposits (right and wrong sender, any pass, sizes up to past the limit, any life), acks, sweeps and the clock moving, plus 500 sequences that fill one mailbox. Every answer must match the model, and so must what is listed and counted | Dropping the per-pass quota, the per-recipient quota or the "pass belongs to this recipient" check each fails it |
 | V4 | `examples/relay/rust/src/parser_props.rs` | Random and CBOR-shaped bytes as mailbox server requests (decoded ones run against a real store) and as `relay/device/1` messages; sealed items with bytes changed, or made of random parts; mailbox intros with bytes changed. Nothing panics, no damaged item opens, and a damaged intro never yields a different key | A 50,000-case run (`PROPTEST_CASES=50000`) was clean |
@@ -105,7 +105,7 @@ Two things the tests made precise:
 - **The hourly deposit cap (200 a pass) isn't reached** by these sequences. The model has the rule, and it is unit-tested in `mailbox_server.rs`, but V3 alone wouldn't notice it breaking.
 - **A mailbox intro signs only the key and its date.** The pass and the server in it are taken on trust from the connection, which is fine because an intro only ever arrives inside an authenticated `relay/device/1` Hello. If intros ever travel any other way (through the mailbox itself, say), sign the whole intro first.
 
-For longer runs on the laptop, `PROPTEST_CASES=<n> cargo test --lib parser_props` takes the place of a separate `cargo-fuzz` setup. Add cargo-fuzz only if a parser grows beyond CBOR and serde.
+For longer runs on the laptop, `PROPTEST_CASES=<n> cargo test --manifest-path examples/relay/rust/Cargo.toml --lib parser_props` takes the place of a separate `cargo-fuzz` setup. Add cargo-fuzz only if a parser grows beyond CBOR and serde.
 
 ## Recommendation
 

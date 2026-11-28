@@ -6,8 +6,9 @@
 //!   whatever decodes is run against a real store;
 //! - a `relay/device/1` message of any bytes decodes or is refused;
 //! - a sealed item with any byte changed, or made of random parts, never
-//!   opens; an announcement or mailbox intro with any byte changed never
-//!   verifies.
+//!   opens; a mailbox intro with any byte changed never yields a different
+//!   key or issue date (its pass and server aren't signed: the
+//!   authenticated Hello carries them).
 //!
 //! Longer runs: `PROPTEST_CASES=100000 cargo test --lib parser_props`.
 
@@ -71,7 +72,11 @@ fn any_request_to_the_mailbox_server_is_refused_or_answered() {
     let dir = tempfile::tempdir().unwrap();
     let store = MailboxStore::open(dir.path()).unwrap();
     let caller = [1u8; 32];
-    let mut runner = TestRunner::new(Config::with_cases(cases(3000)));
+    let mut runner = TestRunner::new(Config {
+        cases: cases(3000),
+        source_file: Some(file!()),
+        ..Config::default()
+    });
     runner
         .run(&wire(), |bytes| {
             let Ok(request) = ciborium::from_reader::<Request, _>(bytes.as_slice()) else {
@@ -98,7 +103,7 @@ proptest! {
     fn any_device_message_decodes_or_is_refused(bytes in wire()) {
         if let Ok(msg) = DeviceMsg::decode(&bytes) {
             // Whatever decodes encodes again without trouble.
-            let _ = DeviceMsg::decode(&msg.encode());
+            prop_assert!(DeviceMsg::decode(&msg.encode()).is_ok());
         }
     }
 
@@ -144,7 +149,7 @@ proptest! {
     }
 
     #[test]
-    fn a_damaged_mailbox_intro_never_verifies(f in flips()) {
+    fn a_damaged_mailbox_intro_never_yields_another_key(f in flips()) {
         let laptop = key(2);
         let intro = MailboxIntro::new(&laptop, &key(1).public(), &key(9).public(), NOW);
         let bytes = cbor(&intro);

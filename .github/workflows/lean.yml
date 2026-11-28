@@ -36,7 +36,7 @@ jobs:
       - name: Check every model
         working-directory: verification/relay
         run: |
-          for f in *.lean; do
+          find . -name '*.lean' -print0 | sort -z | while IFS= read -r -d '' f; do
             echo "lean $f"
             out="$(lean "$f" 2>&1)" || { echo "$out"; exit 1; }
             echo "$out"

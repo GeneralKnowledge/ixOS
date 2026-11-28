@@ -207,6 +207,17 @@ fn check_step(
                 "{id} became trusted ({was:?}) by {op:?}"
             );
         }
+        if matches!(*op, Op::AfterCode(d) if IDS[d] == id)
+            && was == Some(SavedTrust::Forgotten)
+            && before.policy == PairingPolicy::PairAutomatically
+        {
+            prop_assert_eq!(
+                now,
+                Some(SavedTrust::Trusted),
+                "{} not paired automatically",
+                id
+            );
+        }
         if was == Some(SavedTrust::Revoked) && !by_person {
             prop_assert_eq!(
                 now,
