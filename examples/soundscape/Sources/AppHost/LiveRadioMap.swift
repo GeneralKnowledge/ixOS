@@ -26,6 +26,9 @@ struct LiveRadioMap: View {
     @State private var attempt = 0
     /// Which request owns `loading` (a superseded one mustn't clear it).
     @State private var request = 0
+    /// Whether `stations` is the answer to `ask` (not the empty start, or
+    /// what an earlier ask found before this one failed).
+    @State private var answered = false
     /// The area in view once the map stops moving, when it is small enough
     /// to ask about on its own.
     @State private var area: LiveAsk?
@@ -74,7 +77,9 @@ struct LiveRadioMap: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                NavigationLink(value: ListenRoute.liveMapList(ask, stations)) {
+                NavigationLink(value: answered
+                    ? ListenRoute.liveMapList(ask, stations)
+                    : ListenRoute.liveStations(ask, title: "On the Map")) {
                     Label("Show as List", systemImage: "list.bullet")
                 }
                 .accessibilityIdentifier("live.map.list")
@@ -87,7 +92,15 @@ struct LiveRadioMap: View {
     /// Asks about the area in view, once the map has moved somewhere new;
     /// back to the worldwide stations once it shows the globe again; and
     /// why the last ask failed while earlier pins stay.
-    @ViewBuilder private var searchHere: some View {
+    private var searchHere: some View {
+        VStack(spacing: 6) {
+            failedHere
+            moveHere
+        }
+    }
+
+    /// Why the last ask failed, with Try Again, while earlier pins stay.
+    @ViewBuilder private var failedHere: some View {
         if let problem, !stations.isEmpty, !loading {
             Button {
                 attempt += 1
@@ -103,7 +116,12 @@ struct LiveRadioMap: View {
             .background(.regularMaterial, in: Capsule())
             .accessibilityIdentifier("live.map.retry")
             .padding(.top, 8)
-        } else if let area, area != ask {
+        }
+    }
+
+    /// Stations Here, Stations Worldwide, or that an ask is under way.
+    @ViewBuilder private var moveHere: some View {
+        if let area, area != ask {
             pill("Stations Here", systemImage: "magnifyingglass",
                  hint: "Shows the most played stations in this part of the map",
                  identifier: "live.map.searchHere") { ask = area }
@@ -186,11 +204,13 @@ struct LiveRadioMap: View {
         loading = true
         defer { if request == mine { loading = false } }
         problem = nil
+        answered = false
         let result = await live.stations(ask)
         // A newer ask replaced this one: its answer is out of date.
         guard !Task.isCancelled, request == mine else { return }
         switch result {
         case .success(let found):
+            answered = true
             stations = found
             if let selected, !found.contains(where: { $0.uuid == selected }) { self.selected = nil }
         case .failure(let failure):
