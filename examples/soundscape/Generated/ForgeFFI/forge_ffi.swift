@@ -6955,6 +6955,63 @@ public func FfiConverterTypeLiveCategory_lower(_ value: LiveCategory) -> RustBuf
 
 
 /**
+ * Where a station is, as Radio Browser records it (degrees, WGS 84).
+ */
+public struct LiveLocation: Equatable, Hashable {
+    public var latitude: Double
+    public var longitude: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LiveLocation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveLocation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveLocation {
+        return
+            try LiveLocation(
+                latitude: FfiConverterDouble.read(from: &buf), 
+                longitude: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LiveLocation, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.latitude, into: &buf)
+        FfiConverterDouble.write(value.longitude, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveLocation_lift(_ buf: RustBuffer) throws -> LiveLocation {
+    return try FfiConverterTypeLiveLocation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveLocation_lower(_ value: LiveLocation) -> RustBuffer {
+    return FfiConverterTypeLiveLocation.lower(value)
+}
+
+
+/**
  * What Swift shows: saved and recent stations, and whether each one's
  * stream address should be looked up again before playing.
  */
@@ -7057,6 +7114,11 @@ public struct LiveStation: Equatable, Hashable {
      * Radio Browser's play count (its popularity ranking).
      */
     public var plays: UInt64
+    /**
+     * Where the station is, when Radio Browser knows: what puts it on the
+     * map. (Saved before locations were kept: none until looked up again.)
+     */
+    public var location: LiveLocation?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -7086,7 +7148,11 @@ public struct LiveStation: Equatable, Hashable {
          */secure: Bool, 
         /**
          * Radio Browser's play count (its popularity ranking).
-         */plays: UInt64) {
+         */plays: UInt64, 
+        /**
+         * Where the station is, when Radio Browser knows: what puts it on the
+         * map. (Saved before locations were kept: none until looked up again.)
+         */location: LiveLocation?) {
         self.uuid = uuid
         self.name = name
         self.streamUrl = streamUrl
@@ -7102,6 +7168,7 @@ public struct LiveStation: Equatable, Hashable {
         self.hls = hls
         self.secure = secure
         self.plays = plays
+        self.location = location
     }
 
     
@@ -7134,7 +7201,8 @@ public struct FfiConverterTypeLiveStation: FfiConverterRustBuffer {
                 bitrateKbps: FfiConverterUInt32.read(from: &buf), 
                 hls: FfiConverterBool.read(from: &buf), 
                 secure: FfiConverterBool.read(from: &buf), 
-                plays: FfiConverterUInt64.read(from: &buf)
+                plays: FfiConverterUInt64.read(from: &buf), 
+                location: FfiConverterOptionTypeLiveLocation.read(from: &buf)
         )
     }
 
@@ -7154,6 +7222,7 @@ public struct FfiConverterTypeLiveStation: FfiConverterRustBuffer {
         FfiConverterBool.write(value.hls, into: &buf)
         FfiConverterBool.write(value.secure, into: &buf)
         FfiConverterUInt64.write(value.plays, into: &buf)
+        FfiConverterOptionTypeLiveLocation.write(value.location, into: &buf)
     }
 }
 
@@ -11201,6 +11270,18 @@ public enum LiveAsk: Equatable, Hashable {
      */
     case genre(tag: String
     )
+    /**
+     * For the map: the most played stations whose location is known,
+     * worldwide.
+     */
+    case mapped
+    /**
+     * For the map: the most played stations within `radius_km` of a place
+     * (the radius is kept between 5 and 3000 km). Only stations with a
+     * location, and only those inside the circle, are returned.
+     */
+    case near(latitude: Double, longitude: Double, radiusKm: Double
+    )
 
 
 
@@ -11236,6 +11317,11 @@ public struct FfiConverterTypeLiveAsk: FfiConverterRustBuffer {
         case 5: return .genre(tag: try FfiConverterString.read(from: &buf)
         )
         
+        case 6: return .mapped
+        
+        case 7: return .near(latitude: try FfiConverterDouble.read(from: &buf), longitude: try FfiConverterDouble.read(from: &buf), radiusKm: try FfiConverterDouble.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -11266,6 +11352,17 @@ public struct FfiConverterTypeLiveAsk: FfiConverterRustBuffer {
         case let .genre(tag):
             writeInt(&buf, Int32(5))
             FfiConverterString.write(tag, into: &buf)
+            
+        
+        case .mapped:
+            writeInt(&buf, Int32(6))
+        
+        
+        case let .near(latitude,longitude,radiusKm):
+            writeInt(&buf, Int32(7))
+            FfiConverterDouble.write(latitude, into: &buf)
+            FfiConverterDouble.write(longitude, into: &buf)
+            FfiConverterDouble.write(radiusKm, into: &buf)
             
         }
     }
@@ -13628,6 +13725,30 @@ fileprivate struct FfiConverterOptionTypeJamendoBecause: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeJamendoBecause.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeLiveLocation: FfiConverterRustBuffer {
+    typealias SwiftType = LiveLocation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLiveLocation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLiveLocation.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }

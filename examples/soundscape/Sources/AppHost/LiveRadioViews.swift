@@ -24,6 +24,11 @@ struct LiveRadioHome: View {
         List {
             if query.isEmpty {
                 Section {
+                    NavigationLink(value: ListenRoute.liveMap) {
+                        ForgeRow("Radio Map", systemImage: "globe", accent: .purple) { EmptyView() }
+                    }
+                    .accessibilityHint("Stations on a globe, where they broadcast from")
+                    .accessibilityIdentifier("live.map.open")
                     browse(.country, "Countries", systemImage: "globe.europe.africa", identifier: "live.countries")
                     browse(.language, "Languages", systemImage: "character.bubble", identifier: "live.languages")
                     browse(.genre, "Genres", systemImage: "music.quarternote.3", identifier: "live.genres")

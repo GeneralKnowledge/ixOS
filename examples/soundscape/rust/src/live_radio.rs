@@ -39,6 +39,12 @@ pub const SEED_SERVERS: &[&str] = &[
 ];
 /// Stations asked for in one list.
 pub const PAGE: u32 = 60;
+/// Stations asked for to fill the map, worldwide or around one place.
+pub const MAP_PAGE: u32 = 300;
+/// The widest area asked about around one place, in kilometres.
+pub const MAX_RADIUS_KM: f64 = 3000.0;
+/// The narrowest, in kilometres.
+pub const MIN_RADIUS_KM: f64 = 5.0;
 /// Categories (countries, languages, genres) asked for in one list.
 pub const CATEGORY_PAGE: u32 = 200;
 /// The most recently played stations kept.
@@ -63,8 +69,41 @@ const MAX_ANSWER_BYTES: usize = 4 * 1024 * 1024;
 /// when it connects, in L2.)
 const UNPLAYABLE_CODECS: &[&str] = &["OGG", "VORBIS", "OPUS", "FLAC", "WMA", "ASF", "FLV"];
 
+/// Where a station is, as Radio Browser records it (degrees, WGS 84).
+#[derive(uniffi::Record, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct LiveLocation {
+    pub latitude: f64,
+    pub longitude: f64,
+}
+
+impl LiveLocation {
+    /// A real place on Earth; `None` for out-of-range numbers and for 0, 0
+    /// (what a missing location is often filled in as).
+    pub fn new(latitude: f64, longitude: f64) -> Option<Self> {
+        let fits = latitude.is_finite()
+            && longitude.is_finite()
+            && (-90.0..=90.0).contains(&latitude)
+            && (-180.0..=180.0).contains(&longitude)
+            && !(latitude == 0.0 && longitude == 0.0);
+        fits.then_some(Self {
+            latitude,
+            longitude,
+        })
+    }
+
+    /// The great-circle distance to `other`, in kilometres.
+    pub fn distance_km(&self, other: &LiveLocation) -> f64 {
+        const EARTH_RADIUS_KM: f64 = 6371.0;
+        let (a, b) = (self.latitude.to_radians(), other.latitude.to_radians());
+        let dlat = b - a;
+        let dlon = (other.longitude - self.longitude).to_radians();
+        let h = (dlat / 2.0).sin().powi(2) + a.cos() * b.cos() * (dlon / 2.0).sin().powi(2);
+        2.0 * EARTH_RADIUS_KM * h.sqrt().min(1.0).asin()
+    }
+}
+
 /// One live station, as Radio Browser lists it.
-#[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LiveStation {
     /// Radio Browser's station UUID: what identifies the station for good.
     pub uuid: String,
@@ -91,6 +130,10 @@ pub struct LiveStation {
     pub secure: bool,
     /// Radio Browser's play count (its popularity ranking).
     pub plays: u64,
+    /// Where the station is, when Radio Browser knows: what puts it on the
+    /// map. (Saved before locations were kept: none until looked up again.)
+    #[serde(default)]
+    pub location: Option<LiveLocation>,
 }
 
 /// What kind of list to browse.
@@ -114,7 +157,7 @@ pub struct LiveCategory {
 }
 
 /// Which stations to list.
-#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
+#[derive(uniffi::Enum, Clone, Debug, PartialEq)]
 pub enum LiveAsk {
     /// The most played stations everywhere.
     Top,
@@ -126,6 +169,17 @@ pub enum LiveAsk {
     Language { name: String },
     /// Stations with one tag (a genre such as `jazz`), most played first.
     Genre { tag: String },
+    /// For the map: the most played stations whose location is known,
+    /// worldwide.
+    Mapped,
+    /// For the map: the most played stations within `radius_km` of a place
+    /// (the radius is kept between 5 and 3000 km). Only stations with a
+    /// location, and only those inside the circle, are returned.
+    Near {
+        latitude: f64,
+        longitude: f64,
+        radius_km: f64,
+    },
 }
 
 /// `live_radio.json`: only what the person did.
@@ -335,7 +389,81 @@ pub fn stations_path(ask: &LiveAsk) -> Result<String, SoundscapeError> {
             "/json/stations/search?tag={}&tagExact=true&{common}",
             encode(&category_key(tag)?, false)
         ),
+        LiveAsk::Mapped => format!(
+            "/json/stations/search?has_geo_info=true&hidebroken=true&order=clickcount&reverse=true&limit={MAP_PAGE}"
+        ),
+        LiveAsk::Near {
+            latitude,
+            longitude,
+            radius_km,
+        } => {
+            let (place, radius_km) = near(*latitude, *longitude, *radius_km)?;
+            format!(
+                "/json/stations/search?has_geo_info=true&geo_lat={:.4}&geo_long={:.4}&geo_distance={}&hidebroken=true&order=clickcount&reverse=true&limit={MAP_PAGE}",
+                place.latitude,
+                place.longitude,
+                (radius_km * 1000.0).round() as u64
+            )
+        }
     })
+}
+
+/// The place and radius of a [`LiveAsk::Near`], checked: a real place, and
+/// the radius kept between [`MIN_RADIUS_KM`] and [`MAX_RADIUS_KM`].
+fn near(
+    latitude: f64,
+    longitude: f64,
+    radius_km: f64,
+) -> Result<(LiveLocation, f64), SoundscapeError> {
+    // The map's centre may be 0, 0, unlike a station's location.
+    let fits = latitude.is_finite()
+        && longitude.is_finite()
+        && (-90.0..=90.0).contains(&latitude)
+        && (-180.0..=180.0).contains(&longitude);
+    if !fits {
+        return Err(SoundscapeError::BadAddress {
+            reason: "that isn't a place on the map".into(),
+        });
+    }
+    let place = LiveLocation {
+        latitude,
+        longitude,
+    };
+    let radius_km = if radius_km.is_finite() {
+        radius_km
+    } else {
+        MAX_RADIUS_KM
+    };
+    Ok((place, radius_km.clamp(MIN_RADIUS_KM, MAX_RADIUS_KM)))
+}
+
+/// What a map asks for keeps only stations it can place: those with a
+/// location and, around one place, those inside the circle (whatever the
+/// server did with the area it was asked about).
+pub fn for_map(ask: &LiveAsk, stations: Vec<LiveStation>) -> Vec<LiveStation> {
+    match ask {
+        LiveAsk::Mapped => stations
+            .into_iter()
+            .filter(|s| s.location.is_some())
+            .collect(),
+        LiveAsk::Near {
+            latitude,
+            longitude,
+            radius_km,
+        } => {
+            let Ok((place, radius_km)) = near(*latitude, *longitude, *radius_km) else {
+                return Vec::new();
+            };
+            stations
+                .into_iter()
+                .filter(|s| {
+                    s.location
+                        .is_some_and(|at| at.distance_km(&place) <= radius_km)
+                })
+                .collect()
+        }
+        _ => stations,
+    }
 }
 
 /// The path listing countries, languages or genres, those with the most
@@ -476,7 +604,17 @@ fn station(item: &Value) -> Option<LiveStation> {
             .unwrap_or(0),
         hls,
         plays: item["clickcount"].as_u64().unwrap_or(0),
+        location: number(&item["geo_lat"])
+            .zip(number(&item["geo_long"]))
+            .and_then(|(latitude, longitude)| LiveLocation::new(latitude, longitude)),
     })
+}
+
+/// A number, or a number written as text; `None` otherwise.
+fn number(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str()?.trim().parse().ok())
 }
 
 fn flag(value: &Value) -> bool {
@@ -578,7 +716,10 @@ impl Directory {
         cancel: &CancelHandle,
     ) -> Result<Vec<LiveStation>, SoundscapeError> {
         let path = stations_path(ask)?;
-        parse_stations(&self.get(http, &path, cancel)?)
+        Ok(for_map(
+            ask,
+            parse_stations(&self.get(http, &path, cancel)?)?,
+        ))
     }
 
     /// Countries, languages or genres, those with most stations first.

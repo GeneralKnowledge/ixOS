@@ -52,6 +52,8 @@ enum ListenRoute: ForgeSurfaceRoute {
     case liveStations(LiveAsk, title: String)
     /// Library > Stations: saved and recently played live stations.
     case liveSaved
+    /// Live stations on the map (the globe when zoomed out).
+    case liveMap
 }
 
 extension ListenRoute {
@@ -93,6 +95,7 @@ extension ListenRoute {
         case .liveCategories(let kind): "liveCategories:\(kind)"
         case .liveStations(let ask, _): "liveStations:\(ask)"
         case .liveSaved: "liveSaved"
+        case .liveMap: "liveMap"
         }
     }
 
@@ -348,6 +351,7 @@ struct ListenDestination: View {
         case .liveCategories(let kind): LiveCategoriesView(kind: kind)
         case .liveStations(let ask, let title): LiveStationsView(ask: ask, title: title)
         case .liveSaved: LiveSavedView()
+        case .liveMap: LiveRadioMap()
         }
     }
 }

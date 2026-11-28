@@ -237,6 +237,36 @@ waits 20 seconds for data is rejoined once (again only after a minute of steady 
 A failed stream goes to the station's listed address, then a lookup by UUID, then a message. A stream that ends
 (a live stream shouldn't) is treated as a stall.
 
+L1 on the phone: Reuben, 28 November, Device Lab 1.29931236: "live radio in Soundscape is working good" (a
+general pass, not itemised; the stall checks in 8 not yet seen on the phone).
+
+## Radio Map (Reuben's idea, 28 November)
+
+Stations at the places they broadcast from, on Apple's map: zoomed out it is the globe. Reuben chose it as the
+next radio step, before P0.
+
+- **Rust**: a station keeps its location when Radio Browser records one (`geo_lat`, `geo_long`; 0, 0 and
+  out-of-range numbers count as none). Two new asks: `Mapped`, the 300 most played stations with a location,
+  worldwide; and `Near`, the 300 most played within a radius of a place (5 to 3000 km), using Radio Browser's
+  `geo_lat`, `geo_long` and `geo_distance` search. Whatever a server does with the area, Rust keeps only stations
+  inside the circle, so a server that ignores it gives fewer stations, never wrong ones. Stations without a
+  location stay in the lists as before.
+- **Screen**: Discover > Live Radio > **Radio Map** (MapKit, hybrid imagery with realistic elevation). It opens
+  on the globe with the worldwide stations. Move or zoom in and **Stations Here** asks about the area in view. Tap
+  a station: it plays, and a card shows it with Save. **Show as List** gives the same stations as a list (also the
+  VoiceOver route).
+- **Not yet**: clustering (MapKit's SwiftUI map has none; 300 pins is the limit for now), the person's own
+  location (no permission asked), and live-checking that the servers honour `geo_distance` (the cloud can't
+  reach Radio Browser; the phone check does it).
+
+### Radio Map phone checks (about 5 minutes, Device Lab)
+
+1. Discover > Live Radio > Radio Map: the globe, with station pins on several continents. Spin it.
+2. Tap a pin: it plays (mini-player shows LIVE), and the card shows the station. Save it from the card; Library >
+   Stations shows it.
+3. Zoom into the UK (or any country) and press Stations Here: pins only in that area, more of them than before.
+4. Show as List: the same stations, and a row plays.
+
 ## Milestones
 
 | Order | Milestone | What it delivers | Phone check |
