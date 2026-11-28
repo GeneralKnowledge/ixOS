@@ -39,7 +39,7 @@ pub const MAX_MATCH_DB: f64 = 24.0;
 
 /// What Listen keeps on the phone: the take server's address, the
 /// person's Jamendo client ID and how songs run into each other.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ListenSettings {
     #[serde(default)]
     pub server: Option<String>,
@@ -49,6 +49,76 @@ pub struct ListenSettings {
     /// next; 0 plays them back to back with no gap.
     #[serde(default)]
     pub crossfade_seconds: u32,
+    /// How fast everything plays, in percent (100 is normal), one of
+    /// [`SPEEDS`].
+    #[serde(default = "normal_speed")]
+    pub speed_percent: u32,
+    /// How far Skip Back and Skip Forward move, in seconds, each one of
+    /// [`SKIP_SECONDS`].
+    #[serde(default = "default_skip_back")]
+    pub skip_back_seconds: u32,
+    #[serde(default = "default_skip_forward")]
+    pub skip_forward_seconds: u32,
+}
+
+impl Default for ListenSettings {
+    fn default() -> Self {
+        ListenSettings {
+            server: None,
+            jamendo_client_id: None,
+            crossfade_seconds: 0,
+            speed_percent: normal_speed(),
+            skip_back_seconds: default_skip_back(),
+            skip_forward_seconds: default_skip_forward(),
+        }
+    }
+}
+
+/// The speeds offered, in percent. Slower than half or faster than double
+/// stops being listening.
+pub const SPEEDS: [u32; 9] = [50, 75, 90, 100, 110, 125, 150, 175, 200];
+/// The skip amounts offered, in seconds.
+pub const SKIP_SECONDS: [u32; 6] = [5, 10, 15, 30, 45, 60];
+
+fn normal_speed() -> u32 {
+    100
+}
+
+/// Back 10 seconds, as the lock screen always had.
+fn default_skip_back() -> u32 {
+    10
+}
+
+fn default_skip_forward() -> u32 {
+    30
+}
+
+/// The offered value nearest `value` (the lower one on a tie).
+pub fn nearest(options: &[u32], value: u32) -> u32 {
+    options
+        .iter()
+        .copied()
+        .min_by_key(|o| o.abs_diff(value))
+        .unwrap_or(value)
+}
+
+/// The speeds Soundscape offers, in percent, slowest first.
+#[uniffi::export]
+pub fn playback_speeds() -> Vec<u32> {
+    SPEEDS.to_vec()
+}
+
+/// The skip amounts Soundscape offers, in seconds, shortest first.
+#[uniffi::export]
+pub fn skip_amounts() -> Vec<u32> {
+    SKIP_SECONDS.to_vec()
+}
+
+/// How far Skip Back and Skip Forward move, in seconds.
+#[derive(uniffi::Record, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SkipSeconds {
+    pub back: u32,
+    pub forward: u32,
 }
 
 /// The longest crossfade offered.

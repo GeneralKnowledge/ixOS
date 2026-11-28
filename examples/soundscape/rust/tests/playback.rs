@@ -166,3 +166,86 @@ fn the_crossfade_is_kept_and_has_a_limit() {
     drop(core);
     assert_eq!(open(&dir).crossfade_seconds(), 12);
 }
+
+#[test]
+fn speed_and_skip_amounts_are_kept_and_snap_to_the_offered_ones() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    assert_eq!(core.playback_speed_percent(), 100, "normal speed until set");
+    let skip = core.skip_seconds();
+    assert_eq!((skip.back, skip.forward), (10, 30));
+    assert_eq!(block(core.set_playback_speed_percent(150)).unwrap(), 150);
+    assert_eq!(block(core.set_playback_speed_percent(1000)).unwrap(), 200);
+    assert_eq!(block(core.set_playback_speed_percent(0)).unwrap(), 50);
+    assert_eq!(block(core.set_playback_speed_percent(120)).unwrap(), 125);
+    let set = block(core.set_skip_seconds(soundscape_core::SkipSeconds {
+        back: 14,
+        forward: 600,
+    }))
+    .unwrap();
+    assert_eq!((set.back, set.forward), (15, 60));
+    drop(core);
+    let core = open(&dir);
+    assert_eq!(core.playback_speed_percent(), 125);
+    assert_eq!(core.skip_seconds().forward, 60);
+    assert!(soundscape_core::playback_speeds().contains(&100));
+    assert!(soundscape_core::skip_amounts().contains(&10));
+}
+
+#[test]
+fn settings_saved_before_speed_existed_open_at_normal_speed() {
+    let old: soundscape_core::ListenSettings =
+        serde_json::from_str(r#"{"server":null,"crossfade_seconds":4}"#).unwrap();
+    assert_eq!(old.crossfade_seconds, 4);
+    assert_eq!(old.speed_percent, 100);
+    assert_eq!((old.skip_back_seconds, old.skip_forward_seconds), (10, 30));
+}
+
+#[test]
+fn long_items_carry_on_where_they_were_left() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir);
+    let id = "archive:concert/track01".to_string();
+    // A song is never kept: it starts again.
+    block(core.remember_position("jamendo:1".into(), 120.0, 200.0)).unwrap();
+    assert_eq!(core.resume_position("jamendo:1".into()), None);
+    // A long item is.
+    block(core.remember_position(id.clone(), 1500.0, 3600.0)).unwrap();
+    assert_eq!(core.resume_position(id.clone()), Some(1500.0));
+    // Played from the top for a moment, it keeps its place.
+    block(core.remember_position(id.clone(), 5.0, 3600.0)).unwrap();
+    assert_eq!(core.resume_position(id.clone()), Some(1500.0));
+    // It survives the app closing.
+    drop(core);
+    let core = open(&dir);
+    assert_eq!(core.resume_position(id.clone()), Some(1500.0));
+    // Finished, it is forgotten, so it plays from the start next time.
+    block(core.remember_position(id.clone(), 3590.0, 3600.0)).unwrap();
+    assert_eq!(core.resume_position(id), None);
+    assert!(!soundscape_core::keeps_position(599.0));
+    assert!(!soundscape_core::keeps_position(f64::NAN));
+    assert!(soundscape_core::keeps_position(600.0));
+}
+
+#[test]
+fn only_the_newest_positions_are_kept() {
+    use soundscape_core::playback::{heard, position, MAX_POSITIONS};
+    let mut positions = Vec::new();
+    for n in 0..(MAX_POSITIONS + 5) {
+        assert!(heard(
+            &mut positions,
+            &format!("r{n}"),
+            100.0,
+            1000.0,
+            n as i64
+        ));
+    }
+    assert_eq!(positions.len(), MAX_POSITIONS);
+    assert_eq!(position(&positions, "r0"), None, "the oldest went");
+    assert_eq!(
+        position(&positions, &format!("r{}", MAX_POSITIONS + 4)),
+        Some(100.0)
+    );
+    assert!(!heard(&mut positions, "r7", f64::INFINITY, 1000.0, 0));
+    assert!(!heard(&mut positions, "", 100.0, 1000.0, 0));
+}

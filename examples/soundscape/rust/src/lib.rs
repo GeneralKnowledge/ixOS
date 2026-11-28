@@ -62,8 +62,8 @@ pub use library::{
 };
 pub use library::{DuplicateReason, DuplicateSongs, MergedSong};
 pub use listen::{
-    group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
-    Take, TakeMark,
+    group_songs, loudness_match, playback_speeds, skip_amounts, ListenSettings, LoudnessMatch,
+    SkipSeconds, SongDetail, SongGroup, SongSummary, Take, TakeMark,
 };
 use live_radio::LiveRadioFile;
 pub use live_radio::{LiveAsk, LiveCategory, LiveCategoryKind, LiveRadio, LiveStation};
@@ -73,7 +73,7 @@ pub use musicbrainz::MusicBrainzMatch;
 pub use offline::{DownloadState, OfflineSummary, OfflineTrack};
 use offline::{OfflineFile, Progress};
 use playback::PlaybackFile;
-pub use playback::SavedPlayback;
+pub use playback::{keeps_position, SavedPlayback};
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 pub use search::CatalogueSearch;
 pub use smart::{
@@ -1032,6 +1032,59 @@ impl SoundscapeCore {
             .await
     }
 
+    /// How fast everything plays, in percent; 100 is normal.
+    pub fn playback_speed_percent(&self) -> u32 {
+        self.listen.get().speed_percent
+    }
+
+    /// Sets the speed to the offered one nearest `percent`
+    /// ([`playback_speeds`]). Returns what was saved.
+    pub async fn set_playback_speed_percent(&self, percent: u32) -> Result<u32, SoundscapeError> {
+        let percent = listen::nearest(&listen::SPEEDS, percent);
+        self.rt
+            .command("set-speed", move |state| {
+                state.listen.change(|s| {
+                    s.speed_percent = percent;
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                state.listen_published.set(state.listen.value().clone());
+                Ok(percent)
+            })
+            .await
+    }
+
+    /// How far Skip Back and Skip Forward move.
+    pub fn skip_seconds(&self) -> SkipSeconds {
+        let settings = self.listen.get();
+        SkipSeconds {
+            back: settings.skip_back_seconds,
+            forward: settings.skip_forward_seconds,
+        }
+    }
+
+    /// Sets both skip amounts, each to the offered one nearest
+    /// ([`skip_amounts`]). Returns what was saved.
+    pub async fn set_skip_seconds(
+        &self,
+        skip: SkipSeconds,
+    ) -> Result<SkipSeconds, SoundscapeError> {
+        let skip = SkipSeconds {
+            back: listen::nearest(&listen::SKIP_SECONDS, skip.back),
+            forward: listen::nearest(&listen::SKIP_SECONDS, skip.forward),
+        };
+        self.rt
+            .command("set-skip", move |state| {
+                state.listen.change(|s| {
+                    s.skip_back_seconds = skip.back;
+                    s.skip_forward_seconds = skip.forward;
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                state.listen_published.set(state.listen.value().clone());
+                Ok(skip)
+            })
+            .await
+    }
+
     /// Jamendo tracks matching `query`, or this week's most popular when it
     /// is empty. On-screen work.
     pub async fn search_jamendo(
@@ -1986,6 +2039,41 @@ impl SoundscapeCore {
             .command("playback-save", move |state| {
                 state.playback.change(|p| {
                     p.saved = saved;
+                    Ok::<_, SoundscapeError>(())
+                })?;
+                published.set(state.playback.value().clone());
+                Ok(())
+            })
+            .await
+    }
+
+    /// Where the long item `recording_id` was left, to carry on from
+    /// there; `None` for a song, or one finished or never played.
+    pub fn resume_position(&self, recording_id: String) -> Option<f64> {
+        playback::position(&self.playback.get().positions, &recording_id)
+    }
+
+    /// Notes how far into `recording_id` (`length` seconds long) playback
+    /// is. Kept only for long items ([`keeps_position`]); forgotten once
+    /// one is finished.
+    pub async fn remember_position(
+        &self,
+        recording_id: String,
+        seconds: f64,
+        length: f64,
+    ) -> Result<(), SoundscapeError> {
+        if !keeps_position(length) {
+            return Ok(());
+        }
+        let published = Arc::clone(&self.playback);
+        self.rt
+            .command("playback-position", move |state| {
+                let mut positions = state.playback.value().positions.clone();
+                if !playback::heard(&mut positions, &recording_id, seconds, length, now_ms()) {
+                    return Ok(());
+                }
+                state.playback.change(|p| {
+                    p.positions = positions;
                     Ok::<_, SoundscapeError>(())
                 })?;
                 published.set(state.playback.value().clone());

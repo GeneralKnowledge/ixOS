@@ -2520,6 +2520,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func phase()  -> AppPhase
     
+    /**
+     * How fast everything plays, in percent; 100 is normal.
+     */
+    func playbackSpeedPercent()  -> UInt32
+    
     func playlist(id: UInt64) throws  -> PlaylistDetail
     
     /**
@@ -2568,6 +2573,13 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func refreshLibrary(fresh: Bool, cancellation: Cancellation?) async throws  -> Library
     
     /**
+     * Notes how far into `recording_id` (`length` seconds long) playback
+     * is. Kept only for long items ([`keeps_position`]); forgotten once
+     * one is finished.
+     */
+    func rememberPosition(recordingId: String, seconds: Double, length: Double) async throws 
+    
+    /**
      * Takes every song off the phone and deletes the files.
      */
     func removeAllDownloads() async throws  -> OfflineSummary
@@ -2593,6 +2605,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * file, changes and artwork included.
      */
     func restoreRemoved(trackId: String) async throws  -> Library
+    
+    /**
+     * Where the long item `recording_id` was left, to carry on from
+     * there; `None` for a song, or one finished or never played.
+     */
+    func resumePosition(recordingId: String)  -> Double?
     
     /**
      * The last committed revision.
@@ -2713,10 +2731,22 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func setPhase(phase: AppPhase) 
     
     /**
+     * Sets the speed to the offered one nearest `percent`
+     * ([`playback_speeds`]). Returns what was saved.
+     */
+    func setPlaybackSpeedPercent(percent: UInt32) async throws  -> UInt32
+    
+    /**
      * Puts a playlist's songs back as they were, by track id in order
      * (Undo after removing one).
      */
     func setPlaylistTracks(id: UInt64, trackIds: [String]) async throws  -> PlaylistDetail
+    
+    /**
+     * Sets both skip amounts, each to the offered one nearest
+     * ([`skip_amounts`]). Returns what was saved.
+     */
+    func setSkipSeconds(skip: SkipSeconds) async throws  -> SkipSeconds
     
     /**
      * Saves a station at the front of Hear Nonstop Music, or forgets it.
@@ -2728,6 +2758,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
+    
+    /**
+     * How far Skip Back and Skip Forward move.
+     */
+    func skipSeconds()  -> SkipSeconds
     
     /**
      * A smart playlist (built in or yours) with the songs its rules let in
@@ -4043,6 +4078,18 @@ open func phase() -> AppPhase  {
 })
 }
     
+    /**
+     * How fast everything plays, in percent; 100 is normal.
+     */
+open func playbackSpeedPercent() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_playback_speed_percent(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 open func playlist(id: UInt64)throws  -> PlaylistDetail  {
     return try  FfiConverterTypePlaylistDetail_lift(try rustCallWithError(FfiConverterTypeSoundscapeError_lift) {
         uniffiCallStatus in
@@ -4165,6 +4212,27 @@ open func refreshLibrary(fresh: Bool, cancellation: Cancellation?)async throws  
 }
     
     /**
+     * Notes how far into `recording_id` (`length` seconds long) playback
+     * is. Kept only for long items ([`keeps_position`]); forgotten once
+     * one is finished.
+     */
+open func rememberPosition(recordingId: String, seconds: Double, length: Double)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_remember_position(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(recordingId),FfiConverterDouble.lower(seconds),FfiConverterDouble.lower(length)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_void,
+            completeFunc: ffi_soundscape_core_rust_future_complete_void,
+            freeFunc: ffi_soundscape_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Takes every song off the phone and deletes the files.
      */
 open func removeAllDownloads()async throws  -> OfflineSummary  {
@@ -4259,6 +4327,20 @@ open func restoreRemoved(trackId: String)async throws  -> Library  {
             liftFunc: FfiConverterTypeLibrary_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
+}
+    
+    /**
+     * Where the long item `recording_id` was left, to carry on from
+     * there; `None` for a song, or one finished or never played.
+     */
+open func resumePosition(recordingId: String) -> Double?  {
+    return try!  FfiConverterOptionDouble.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_resume_position(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(recordingId),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -4605,6 +4687,26 @@ open func setPhase(phase: AppPhase)  {try! rustCall() {
 }
     
     /**
+     * Sets the speed to the offered one nearest `percent`
+     * ([`playback_speeds`]). Returns what was saved.
+     */
+open func setPlaybackSpeedPercent(percent: UInt32)async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_playback_speed_percent(
+                        self.uniffiCloneHandle(),FfiConverterUInt32.lower(percent)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_u32,
+            completeFunc: ffi_soundscape_core_rust_future_complete_u32,
+            freeFunc: ffi_soundscape_core_rust_future_free_u32,
+            liftFunc: FfiConverterUInt32.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Puts a playlist's songs back as they were, by track id in order
      * (Undo after removing one).
      */
@@ -4620,6 +4722,26 @@ open func setPlaylistTracks(id: UInt64, trackIds: [String])async throws  -> Play
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePlaylistDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Sets both skip amounts, each to the offered one nearest
+     * ([`skip_amounts`]). Returns what was saved.
+     */
+open func setSkipSeconds(skip: SkipSeconds)async throws  -> SkipSeconds  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_skip_seconds(
+                        self.uniffiCloneHandle(),FfiConverterTypeSkipSeconds_lower(skip)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSkipSeconds_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -4653,6 +4775,18 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * How far Skip Back and Skip Forward move.
+     */
+open func skipSeconds() -> SkipSeconds  {
+    return try!  FfiConverterTypeSkipSeconds_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_skip_seconds(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -9203,6 +9337,63 @@ public func FfiConverterTypeSavedPlayback_lift(_ buf: RustBuffer) throws -> Save
 #endif
 public func FfiConverterTypeSavedPlayback_lower(_ value: SavedPlayback) -> RustBuffer {
     return FfiConverterTypeSavedPlayback.lower(value)
+}
+
+
+/**
+ * How far Skip Back and Skip Forward move, in seconds.
+ */
+public struct SkipSeconds: Equatable, Hashable {
+    public var back: UInt32
+    public var forward: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(back: UInt32, forward: UInt32) {
+        self.back = back
+        self.forward = forward
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SkipSeconds: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSkipSeconds: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SkipSeconds {
+        return
+            try SkipSeconds(
+                back: FfiConverterUInt32.read(from: &buf), 
+                forward: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SkipSeconds, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.back, into: &buf)
+        FfiConverterUInt32.write(value.forward, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSkipSeconds_lift(_ buf: RustBuffer) throws -> SkipSeconds {
+    return try FfiConverterTypeSkipSeconds.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSkipSeconds_lower(_ value: SkipSeconds) -> RustBuffer {
+    return FfiConverterTypeSkipSeconds.lower(value)
 }
 
 
@@ -14976,6 +15167,26 @@ public func loudnessMatch(aLufs: Double?, bLufs: Double?) -> LoudnessMatch  {
 })
 }
 /**
+ * The speeds Soundscape offers, in percent, slowest first.
+ */
+public func playbackSpeeds() -> [UInt32]  {
+    return try!  FfiConverterSequenceUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_playback_speeds(uniffiCallStatus
+    )
+})
+}
+/**
+ * The skip amounts Soundscape offers, in seconds, shortest first.
+ */
+public func skipAmounts() -> [UInt32]  {
+    return try!  FfiConverterSequenceUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_skip_amounts(uniffiCallStatus
+    )
+})
+}
+/**
  * The line being sung at `seconds`: the last sung line that has started,
  * as an index into `lines`. `None` before the first line and for lyrics
  * without timings.
@@ -15095,6 +15306,17 @@ public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
         FfiConverterTypeHttpTransport_lower(transport),uniffiCallStatus
     )
 }
+}
+/**
+ * Whether an item `length_seconds` long carries on where it was left.
+ */
+public func keepsPosition(lengthSeconds: Double) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_func_keeps_position(
+        FfiConverterDouble.lower(lengthSeconds),uniffiCallStatus
+    )
+})
 }
 /**
  * Adds songs to play next (right after the current one) or last.
@@ -15286,6 +15508,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_func_loudness_match() != 37068) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_func_playback_speeds() != 19326) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_skip_amounts() != 52756) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_func_lyric_line_at() != 42627) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15314,6 +15542,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_install_native_http() != 47558) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_func_keeps_position() != 48442) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_func_queue_add() != 65046) {
@@ -15556,6 +15787,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_phase() != 23479) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_playback_speed_percent() != 46990) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_playlist() != 53541) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15580,6 +15814,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_refresh_library() != 63331) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_remember_position() != 22672) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_remove_all_downloads() != 22027) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15593,6 +15830,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_restore_removed() != 21775) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_resume_position() != 49013) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_revision() != 34234) {
@@ -15649,13 +15889,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_phase() != 58514) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_playback_speed_percent() != 53405) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_playlist_tracks() != 47971) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_skip_seconds() != 7441) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_station_saved() != 62554) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_shutdown() != 30947) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_skip_seconds() != 29526) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_smart_playlist() != 25622) {

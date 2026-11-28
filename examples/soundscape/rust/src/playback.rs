@@ -11,11 +11,93 @@ pub const PLAYBACK_VERSION: u32 = 1;
 /// The most songs kept in a saved queue.
 pub const MAX_SAVED_TRACKS: usize = 5_000;
 
+/// Items at least this long (a DJ mix, a concert, later a podcast episode)
+/// carry on where they were left when played again. Songs start again.
+pub const LONG_ITEM_SECONDS: f64 = 600.0;
+/// Nearer the start than this, a kept position stays as it was: playing
+/// a long item from the top for a moment doesn't lose the place.
+pub const RESUME_MIN_SECONDS: f64 = 30.0;
+/// This near the end counts as finished, and the position is forgotten.
+pub const FINISHED_SECONDS_LEFT: f64 = 30.0;
+/// The most positions kept; the oldest go first.
+pub const MAX_POSITIONS: usize = 200;
+
 /// `playback.json`.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct PlaybackFile {
     #[serde(default)]
     pub saved: Option<SavedPlayback>,
+    /// Where long items were left, newest first.
+    #[serde(default)]
+    pub positions: Vec<KeptPosition>,
+}
+
+/// Where a long item was left.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct KeptPosition {
+    pub recording_id: String,
+    pub seconds: f64,
+    pub at_ms: i64,
+}
+
+/// Whether an item `length_seconds` long carries on where it was left.
+#[uniffi::export]
+pub fn keeps_position(length_seconds: f64) -> bool {
+    length_seconds.is_finite() && length_seconds >= LONG_ITEM_SECONDS
+}
+
+/// The position kept for `recording_id`, if any.
+pub fn position(positions: &[KeptPosition], recording_id: &str) -> Option<f64> {
+    positions
+        .iter()
+        .find(|p| p.recording_id == recording_id)
+        .map(|p| p.seconds)
+}
+
+/// Notes that `recording_id`, `length` seconds long, was heard up to
+/// `seconds`: kept for a long item, forgotten once finished. Returns
+/// whether anything changed.
+pub fn heard(
+    positions: &mut Vec<KeptPosition>,
+    recording_id: &str,
+    seconds: f64,
+    length: f64,
+    now: i64,
+) -> bool {
+    if recording_id.is_empty() || !seconds.is_finite() || !keeps_position(length) {
+        return false;
+    }
+    let at = positions
+        .iter()
+        .position(|p| p.recording_id == recording_id);
+    if seconds >= length - FINISHED_SECONDS_LEFT {
+        return match at {
+            Some(i) => {
+                positions.remove(i);
+                true
+            }
+            None => false,
+        };
+    }
+    if seconds < RESUME_MIN_SECONDS {
+        return false;
+    }
+    if let Some(i) = at {
+        if positions[i].seconds == seconds {
+            return false;
+        }
+        positions.remove(i);
+    }
+    positions.insert(
+        0,
+        KeptPosition {
+            recording_id: recording_id.to_string(),
+            seconds,
+            at_ms: now,
+        },
+    );
+    positions.truncate(MAX_POSITIONS);
+    true
 }
 
 /// The queue and how far into its current song playback was.
