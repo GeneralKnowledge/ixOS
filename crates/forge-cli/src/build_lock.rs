@@ -197,21 +197,24 @@ fn read_holder(path: &Path) -> String {
         .unwrap_or_else(|| "unknown (the lock file names no one yet)".to_string())
 }
 
+/// Whether the process holding a ticket still runs. On Unix this is the
+/// same check the UI session uses, which also treats pid 0 (a ticket name
+/// no forge wrote) as gone: `kill(0, 0)` asks about this process's own
+/// group, so it always succeeded and such a ticket was never cleared.
 fn pid_alive(pid: u32) -> bool {
-    #[cfg(unix)]
-    {
-        let Ok(p) = libc::pid_t::try_from(pid) else {
-            return false;
-        };
-        // SAFETY: signal 0 only checks that the process exists.
-        let r = unsafe { libc::kill(p, 0) };
-        r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
+    if cfg!(unix) {
+        forge_uitest::session::pid_alive(pid)
+    } else {
         true
     }
+}
+
+/// This user's id.
+#[cfg(unix)]
+#[allow(unsafe_code)]
+fn uid() -> u32 {
+    // SAFETY: getuid takes nothing, touches no memory and cannot fail.
+    unsafe { libc::getuid() }
 }
 
 /// The live tickets, oldest first, as (path, pid, line). Tickets whose
@@ -589,8 +592,7 @@ fn runtime_dir(env: Env) -> Option<String> {
         .or_else(|| {
             #[cfg(unix)]
             {
-                // SAFETY: getuid cannot fail.
-                let dir = format!("/run/user/{}", unsafe { libc::getuid() });
+                let dir = format!("/run/user/{}", uid());
                 Path::new(&dir).is_dir().then_some(dir)
             }
             #[cfg(not(unix))]
@@ -627,8 +629,7 @@ fn scope_support() -> &'static Result<(), String> {
         // the memory controller.
         #[cfg(unix)]
         {
-            // SAFETY: getuid cannot fail.
-            let uid = unsafe { libc::getuid() };
+            let uid = uid();
             let controllers = format!(
                 "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/cgroup.controllers"
             );
@@ -804,6 +805,7 @@ pub fn run_heavy(runner: &dyn CommandRunner, cmd: Cmd) -> Result<(), String> {
 
 /// nice 10 and best-effort I/O priority 7 for this process and everything
 /// it starts, so the machine's other users come first. Never raises it.
+#[allow(unsafe_code)]
 fn lower_priority(env: Env) {
     if env("FORGE_BUILD_NICE").is_some_and(|v| is_off(&v)) {
         return;

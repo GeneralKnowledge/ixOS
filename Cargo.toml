@@ -37,3 +37,12 @@ uniffi = { version = "0.32.2", features = ["cli"] }
 
 [workspace.metadata.uniffi]
 version = "0.32.2"
+
+# Every `unsafe` is an exception someone chose: `#[allow(unsafe_code)]` on the
+# one function that needs it, with a `// SAFETY:` comment on each block
+# (docs/research/unsafe-and-verification.md).
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"

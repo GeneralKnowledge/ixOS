@@ -226,6 +226,7 @@ mod platform {
         fn __android_log_write(prio: c_int, tag: *const c_char, text: *const c_char) -> c_int;
     }
 
+    #[allow(unsafe_code)]
     pub(super) fn write(record: &LogRecord) {
         // android/log.h priorities.
         let prio = match record.level {
@@ -254,6 +255,7 @@ mod platform {
         fn syslog(priority: c_int, format: *const c_char, ...);
     }
 
+    #[allow(unsafe_code)]
     pub(super) fn write(record: &LogRecord) {
         // sys/syslog.h priorities. The USB syslog relay (what
         // `forge device logs` and idevicesyslog read) drops LOG_INFO and

@@ -25,3 +25,7 @@ path = "src/lib.rs"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# App code has no unsafe Rust; UniFFI's generated scaffolding passes this too.
+[lints.rust]
+unsafe_code = "forbid"
