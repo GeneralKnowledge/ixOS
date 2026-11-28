@@ -228,6 +228,11 @@ final class LivePlayer {
                 MainActor.assumeIsolated {
                     guard let self, self.player.currentItem.map(ObjectIdentifier.init) == itemID else { return }
                     log.warn("stream ended")
+                    // Ended mid-play (no wait under way): the steady stretch
+                    // runs up to now. Mid-wait, keep the stretch frozen above.
+                    if self.watchdog == nil, let startedAt = self.startedAt {
+                        self.steadyFor = Date().timeIntervalSince(startedAt)
+                    }
                     self.stalled()
                 }
             })
