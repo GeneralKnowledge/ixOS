@@ -105,6 +105,16 @@ pub struct SavedGroup {
     /// that still lists it, sent before it heard, doesn't bring it back.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left_by_me: bool,
+    /// When this device took this version (ms; kept here, never sent).
+    /// A message held from a sender this version leaves out, that came
+    /// before it, may still be explained by an older update on its way
+    /// (by mailbox, say), which names the sender.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub taken_at: i64,
+}
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
 }
 
 impl SavedGroup {
@@ -219,25 +229,15 @@ impl Record {
                     }
                     return refuse("You aren't a member of that group here");
                 };
-                // A trusted device's own name here wins over the admin's.
-                let author = self
-                    .devices
-                    .get(from)
-                    .filter(|d| d.trust == SavedTrust::Trusted)
-                    .map(|d| d.shown_name().to_string())
-                    .unwrap_or_else(|| member.name.clone());
-                c.add(
-                    &group_conversation(&group),
-                    Message {
-                        id: message.id,
-                        author,
-                        author_id: from.to_string(),
-                        body,
-                        reply_to: message.reply_to,
-                        ..Message::default()
-                    },
-                )?;
-                Ok(())
+                self.add_group_message(
+                    c,
+                    &group,
+                    from,
+                    &member.name,
+                    message.id,
+                    body,
+                    message.reply_to,
+                )
             }
             GroupItem::Update(update) => {
                 let update = update.checked()?;
@@ -251,8 +251,15 @@ impl Record {
                         if g.admin != from {
                             return refuse("Only the group's admin changes it");
                         }
-                        if update.version <= g.version {
-                            // Already here, or older: a retry.
+                        if update.version < g.version {
+                            // Older, arriving late (by mailbox, say): it
+                            // may explain a message held before the
+                            // version this device has left its sender out.
+                            let before = g.taken_at;
+                            return self.release_held(c, &id, Some((&update.members, before)));
+                        }
+                        if update.version == g.version {
+                            // Already here: a retry.
                             return Ok(());
                         }
                         // Leaving is this device's own choice: an update
@@ -261,15 +268,19 @@ impl Record {
                         *g = SavedGroup {
                             left: !mine || left_by_me,
                             left_by_me,
+                            taken_at: now_ms(),
                             ..update
                         };
                     }
                     // Not added, or already removed before it arrived:
                     // nothing to keep.
                     None if !mine => {}
-                    None => self.groups.push(update),
+                    None => self.groups.push(SavedGroup {
+                        taken_at: now_ms(),
+                        ..update
+                    }),
                 }
-                self.release_held(c, me, &id)
+                self.release_held(c, &id, None)
             }
             GroupItem::Leave { group } => {
                 if let Some(g) = self.group_mut(&group) {
@@ -285,12 +296,14 @@ impl Record {
     /// Takes the messages held for group `id` now that an update came:
     /// those from a member are added; the others wait on for a later
     /// update (one in between needn't name their sender) until they
-    /// expire, or this device is out of the group.
+    /// expire, or this device is out of the group. With `earlier`, an
+    /// older update that came late: a sender it names counts too, for a
+    /// message held before this device took its current version.
     fn release_held(
         &mut self,
         c: &mut Conversations<'_>,
-        me: &str,
         id: &str,
+        earlier: Option<(&[GroupMember], i64)>,
     ) -> Result<(), RelayError> {
         let held = crate::store::take_held(c.connection(), id)?;
         let now = now_ms();
@@ -304,7 +317,13 @@ impl Record {
             let Some(g) = self.group(id).filter(|g| !g.left) else {
                 continue;
             };
-            if g.member(&sender).is_none() {
+            let name = g.member(&sender).map(|m| m.name.clone()).or_else(|| {
+                earlier
+                    .filter(|(_, before)| at < *before)
+                    .and_then(|(roster, _)| roster.iter().find(|m| m.endpoint_id == sender))
+                    .map(|m| m.name.clone())
+            });
+            let Some(name) = name else {
                 crate::store::hold_group_message(
                     c.connection(),
                     id,
@@ -315,22 +334,47 @@ impl Record {
                     MOST_HELD,
                 )?;
                 continue;
-            }
-            let message = PeerMessage {
-                id: message,
-                body: value["body"].as_str().unwrap_or_default().to_string(),
-                reply_to: value["reply_to"].as_str().map(String::from),
             };
-            self.take_group_item(
-                c,
-                me,
-                &sender,
-                GroupItem::Message {
-                    group: id.to_string(),
-                    message,
-                },
-            )?;
+            let Ok(body) = crate::model::clean_note(value["body"].as_str().unwrap_or_default())
+            else {
+                continue;
+            };
+            let reply_to = value["reply_to"].as_str().map(String::from);
+            self.add_group_message(c, id, &sender, &name, message, body, reply_to)?;
         }
+        Ok(())
+    }
+
+    /// Adds a member's message to the group's conversation, by the
+    /// sender's own name here when it is a trusted device.
+    #[allow(clippy::too_many_arguments)]
+    fn add_group_message(
+        &self,
+        c: &mut Conversations<'_>,
+        group: &str,
+        from: &str,
+        member_name: &str,
+        id: String,
+        body: String,
+        reply_to: Option<String>,
+    ) -> Result<(), RelayError> {
+        let author = self
+            .devices
+            .get(from)
+            .filter(|d| d.trust == SavedTrust::Trusted)
+            .map(|d| d.shown_name().to_string())
+            .unwrap_or_else(|| member_name.to_string());
+        c.add(
+            &group_conversation(group),
+            Message {
+                id,
+                author,
+                author_id: from.to_string(),
+                body,
+                reply_to,
+                ..Message::default()
+            },
+        )?;
         Ok(())
     }
 
@@ -505,6 +549,7 @@ impl RelayCore {
             version: 1,
             left: false,
             left_by_me: false,
+            taken_at: 0,
         };
         self.add_trusted(&mut group, &me, &members)?;
         if group.members.len() < 2 {
@@ -929,6 +974,7 @@ pub(crate) fn incoming(msg: crate::device::DeviceMsg) -> Option<GroupItem> {
             version,
             left: false,
             left_by_me: false,
+            taken_at: 0,
         }),
         DeviceMsg::GroupLeave { group } => GroupItem::Leave { group: hex(&group) },
         _ => return None,
@@ -1062,6 +1108,7 @@ mod tests {
             version,
             left: false,
             left_by_me: false,
+            taken_at: 0,
         }
     }
 
@@ -1267,6 +1314,53 @@ mod tests {
         let bodies: Vec<&str> = messages.iter().map(|m| m.body.as_str()).collect();
         assert_eq!(bodies, ["early", "spam"]);
         assert_eq!(held(&store), 0);
+    }
+
+    #[test]
+    fn an_older_update_that_comes_late_explains_a_message_held_before() {
+        let mut r = Record::default();
+        let store = crate::store::Store::in_memory();
+        let v1 = group("a", &["a", "b", "me"], 1);
+        let id = v1.id.clone();
+        let mut v2 = group("a", &["a", "me"], 2);
+        v2.id = id.clone();
+        let msg = |text: &str| GroupItem::Message {
+            group: id.clone(),
+            message: PeerMessage {
+                id: text.into(),
+                body: text.into(),
+                reply_to: None,
+            },
+        };
+        let write = |r: &mut Record, from: &str, item: GroupItem| {
+            store
+                .write(|c| {
+                    let mut cs = Conversations::new(c);
+                    r.take_group_item(&mut cs, "me", from, item)
+                })
+                .unwrap()
+        };
+        // b's message comes straight; the group's first version waits in
+        // a mailbox, and the second, which removes b, comes first.
+        write(&mut r, "b", msg("while a member"));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        write(&mut r, "a", GroupItem::Update(v2));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        // After the removal is known here: never shown.
+        write(&mut r, "b", msg("after removal"));
+        write(&mut r, "a", GroupItem::Update(v1));
+        let bodies: Vec<String> = store
+            .read(|c| crate::store::since(c, &group_conversation(&id), None))
+            .unwrap()
+            .into_iter()
+            .map(|m| m.body)
+            .collect();
+        assert_eq!(bodies, ["while a member"]);
+        assert_eq!(
+            r.group(&id).unwrap().version,
+            2,
+            "the late update changes nothing else"
+        );
     }
 
     #[test]

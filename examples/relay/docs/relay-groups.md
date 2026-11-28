@@ -115,7 +115,10 @@ A message can arrive before the update that tells the device about its
 group or its sender (the update went by mailbox, the message straight).
 It is held, at most 200 for a week, and shown once the admin's update
 makes the sender a member; one that no update explains is dropped unseen
-when it expires.
+when it expires. Updates can overtake each other too (one waits in a
+mailbox, the next comes straight): an older update that arrives late still
+explains a message held before this device took the newer one, so a
+member's message sent before their removal isn't lost.
 
 **How long a copy waits.** A member away for long doesn't get everything:
 the sender's outbox gives up on a copy after 30 days, and a copy in the
