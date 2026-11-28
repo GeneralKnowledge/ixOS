@@ -7,6 +7,8 @@ product, not a bigger one.
 **Out of scope for now:** M14 to M17. That means no EQ expansion, no sync between devices, no recommendation
 engine and no overhaul of how sources are unified. The Apple Music-style redesign (S1 to S6, [design.md](design.md)) runs alongside in its own thread; these milestones build on its screens rather than adding their own.
 
+Podcasts and live radio are proposed separately in [podcasts-and-radio.md](podcasts-and-radio.md) (not yet approved).
+
 ## Principles, for all five milestones
 
 1. **Local-first.** Smart playlists, statistics, maintenance and backups work without a cloud account or a paid
