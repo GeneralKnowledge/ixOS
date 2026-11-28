@@ -1,6 +1,6 @@
 //! V4 of docs/research/unsafe-and-verification.md: everything Relay reads
 //! from the network, fed random and damaged bytes. None of it may panic,
-//! and nothing damaged may be accepted:
+//! and nothing damaged may be accepted beyond what is not signed:
 //!
 //! - a mailbox server request of any bytes is refused or answered, and
 //!   whatever decodes is run against a real store;
