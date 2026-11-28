@@ -184,7 +184,7 @@ Rust owns pack validation (hashes, schema version, image sizes, the label rule) 
 
 Reuben shows the preview to 5 businesses, at least 3 of the same kind. For each: did the preview get attention, what do they use for booking now, would they pay, and for what (an app, the maintained profile, bookings, loyalty), and how much. Record it in one table.
 
-**Gate:** at least 2 businesses ask for a paid next step. If none do, stop or change the offer before writing any more code. If they do, decide D4 and add the server pieces to BusinessForge.
+**Gate:** at least 2 businesses ask for a paid next step. If fewer than 2 do, stop or change the offer before writing any more code; a single business that commits to paying for a pilot may get one, as an exception that does not pass the gate. If they do, decide D4 and add the server pieces to BusinessForge.
 
 ## Later stages (only after the gate)
 
