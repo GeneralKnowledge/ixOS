@@ -1,0 +1,45 @@
+# Business Preview: a local business's own app, made from its verified
+# profile (docs/research/business-to-app.md, milestone M1). This crate owns
+# the rules: which packs are accepted, what the preview may show (only
+# verified prices, the concept label), and the prospects kept on the phone.
+# The profile format itself is BusinessForge's `business-profile` crate.
+[package]
+name = "business-preview-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+# Named after the app, so Device Lab can link this crate (docs/app-crate.md).
+name = "business_preview_core"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# The profile: its types and every rule a valid profile follows, shared with
+# the extractor. Pinned to a commit until BusinessForge #1 merges.
+business-profile = { git = "https://github.com/GeneralKnowledge/BusinessForge", rev = "c573a2389fd5efaa3d9b5918b57b0dd3a64dc9ba" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+url = "2"
+# Packs sent as one file (from the laptop, with Relay, or a download).
+zip = { version = "9.4", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace: the app builds the same inside or outside the Forge checkout.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -1,0 +1,23 @@
+# What Business Preview must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view models against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone. The pack
+# rules themselves are rust/tests/preview.rs.
+
+[[requirement]]
+id = "BP-1"
+statement = "A profile pack imported on the phone is listed with its review state, kept on the phone, and deleted with its files."
+twin = ["ProspectsModelTests.testAnImportedPackIsListedShownAndDeleted"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "BP-2"
+statement = "The preview carries the concept label on every screen while the business hasn't agreed, and never shows a price no person has verified."
+twin = ["ProspectsModelTests.testAnImportedPackIsListedShownAndDeleted"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "BP-3"
+statement = "A pack that isn't valid (not a profile, a bad picture, an http address) is refused with a reason, and nothing is kept."
+twin = ["ProspectsModelTests.testARefusedPackSaysWhy"]
+device = ["uitests/smoke.toml"]

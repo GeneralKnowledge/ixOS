@@ -1,0 +1,44 @@
+{
+  "schema": "business-profile/0",
+  "id": "riding-school-example",
+  "category": "riding_school",
+  "name": { "value": "The Riding School", "source": "s1", "method": "jsonld", "verified": true },
+  "tagline": { "value": "Your next adventure starts here", "source": "s1", "method": "html", "verified": true },
+  "branding": {
+    "primary": { "value": "#171717", "source": "s2", "method": "css", "verified": true },
+    "accent": { "value": "#C5A66A", "source": "s2", "method": "css", "verified": true },
+    "logo": { "value": "images/logo.png", "source": "s1", "method": "html", "verified": true }
+  },
+  "services": [
+    {
+      "name": { "value": "Private lesson (30 min)", "source": "s3", "method": "html", "verified": true },
+      "price": { "value": { "amount": "45.00", "currency": "GBP" }, "source": "s3", "method": "llm", "confidence": 0.8, "verified": false },
+      "duration_minutes": { "value": 30, "source": "s3", "method": "llm", "confidence": 0.9, "verified": true }
+    },
+    {
+      "name": { "value": "Group lesson", "source": "s3", "method": "html", "verified": true },
+      "price": { "value": { "amount": "35.00", "currency": "GBP" }, "source": "s3", "method": "html", "verified": true }
+    }
+  ],
+  "contact": {
+    "phone": { "value": "01506 000000", "source": "s1", "method": "jsonld", "verified": true },
+    "email": { "value": "hello@example.com", "source": "s1", "method": "html", "verified": true },
+    "address": { "value": "Example Farm, Livingston, EH54 0AA", "source": "s1", "method": "jsonld", "verified": true },
+    "social": [
+      { "value": "https://www.facebook.com/example", "source": "s1", "method": "html", "verified": true }
+    ]
+  },
+  "hours": [
+    { "value": { "day": "saturday", "opens": "09:00", "closes": "17:00" }, "source": "s1", "method": "jsonld", "verified": true }
+  ],
+  "actions": {
+    "book": { "kind": "link", "value": "https://booking.example/riding-school", "source": "s4", "method": "html", "verified": true }
+  },
+  "sources": {
+    "s1": { "url": "https://example.com/", "fetched": "2026-11-28T10:00:00Z" },
+    "s2": { "url": "https://example.com/assets/site.css", "fetched": "2026-11-28T10:00:02Z" },
+    "s3": { "url": "https://example.com/lessons", "fetched": "2026-11-28T10:00:05Z" },
+    "s4": { "url": "https://example.com/book", "fetched": "2026-11-28T10:00:08Z" }
+  },
+  "preview": { "status": "concept", "consent": "none" }
+}

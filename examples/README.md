@@ -15,6 +15,7 @@ The products built with Forge. Each one is its own SwiftUI app on its own Rust c
 | [Sums](sums/README.md) | A calculator rebuilt from the outside: the Calculator expedition's recreation, tested against answers recorded from the iPhone's own | [README](sums/README.md), [expedition](../docs/research/expeditions/calculator/profile.md), [reconstruction](../docs/research/expeditions/calculator/reconstruction.md) |
 | [Soundscape](soundscape/README.md) | Multi-track sound sketchpad | [README](soundscape/README.md) |
 | [Urdu, Naturally](urdu-naturally/README.md) | Conversational Pakistani Urdu, learnt by talking: 14 everyday conversations are the course, and the words come from them | [README](urdu-naturally/README.md), [plan](urdu-naturally/docs/plan.md), [content guidelines](urdu-naturally/docs/content-guidelines.md) |
+| [Business Preview](business-preview/README.md) | A local business's own app, made from its website's verified profile, to show the owner (BusinessForge, milestone M1) | [README](business-preview/README.md), [plan](../docs/research/business-to-app.md) |
 | [Pocket Library for Android](pocket-library-android/README.md) | Android, work in progress | [README](pocket-library-android/README.md) |
 | [Relay for Android](relay-android/README.md) | Android, work in progress: stage 1 of Relay's parity plan (Devices) | [README](relay-android/README.md), [gap list](relay/docs/relay-android.md) |
 
