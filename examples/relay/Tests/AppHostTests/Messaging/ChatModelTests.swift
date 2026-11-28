@@ -26,12 +26,41 @@ final class ChatModelTests: XCTestCase {
         let message = ChatMessage(
             id: "m1", conversationId: "general", author: "Laptop", authorId: "id-laptop",
             isMine: false, body: "hi", sentAt: 0, status: .sent,
-            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [])
+            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [],
+            inMailbox: false)
         model.apply(.messageReceived(message: message))
         XCTAssertNil(model.feedback.kind)
         model.apply(.notify(message: message))
         XCTAssertEqual(model.feedback.kind, .refresh)
         XCTAssertEqual(model.feedback.count, 1)
+    }
+
+    /// A message Rust refuses by its rules (over 4,000 characters) reports
+    /// false, so the composer gives the text back; one Rust kept reports
+    /// true, so it isn't given back twice.
+    func testARefusedMessageReportsThatNothingWasKept() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try model()
+        await me.open()
+        try await me.signUp(serverURL: server.url, displayName: "Reuben")
+        await waitUntil("rooms listed") { me.conversations.map(\.id).contains("general") }
+
+        // "é" spelt as two scalars: the limit counts scalars, as Rust's
+        // chars() does, not the characters on screen.
+        let longest = String(repeating: "e\u{0301}", count: MAX_MESSAGE_CHARS_SWIFT / 2)
+        XCTAssertEqual(longest.unicodeScalars.count, MAX_MESSAGE_CHARS_SWIFT)
+        let tooLong = longest + "x"
+        XCTAssertEqual(tooLong.unicodeScalars.count, MAX_MESSAGE_CHARS_SWIFT + 1)
+        let refused = await me.send(tooLong, to: "general")
+        XCTAssertFalse(refused)
+        XCTAssertNotNil(me.sendError["general"])
+        XCTAssertFalse(me.messages(in: "general").contains { $0.body == tooLong })
+
+        let kept = await me.send(longest, to: "general")
+        XCTAssertTrue(kept)
+        XCTAssertNil(me.sendError["general"])
+        me.close()
     }
 
     func testSignUpThenSendAndReceive() async throws {

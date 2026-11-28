@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use checklist_core::{ChecklistCore, ChecklistError, Summary};
+use checklist_core::{checklist_error_kind, ChecklistCore, ChecklistError, Summary};
 use forge_app::{AppPhase, Cancellation, ErrorKind, RuntimeEvent};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
@@ -161,7 +161,7 @@ fn the_checklist_goes_out_and_comes_back_as_a_spreadsheet() {
     let text = std::fs::read_to_string(&path).unwrap();
     assert_eq!(
         text.trim_start_matches('\u{feff}'),
-        "Item,Done\nBuy oat milk,Yes\nCall the vet,No\n"
+        "Item,Done,Due\nBuy oat milk,Yes,\nCall the vet,No,\n"
     );
 
     // A spreadsheet someone edited: other column order, an extra column, a
@@ -205,4 +205,81 @@ fn the_checklist_goes_out_and_comes_back_as_a_spreadsheet() {
     std::fs::write(&junk, "").unwrap();
     let err = block_on(core.import_csv(junk.to_string_lossy().into_owned())).unwrap_err();
     assert!(matches!(err, ChecklistError::Storage { .. }), "{err:?}");
+}
+
+/// A cell with a double space or a tab is saved tidied ("Buy milk"), and
+/// importing the file again still finds it on the list (defect hunt
+/// finding 6).
+#[test]
+fn reimporting_finds_items_that_were_tidied_on_the_way_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir).unwrap();
+    let file = dir.path().join("spaced.csv");
+    std::fs::write(&file, "Item,Done\nBuy  milk,No\nCall\tthe vet,No\n").unwrap();
+    let first = block_on(core.import_csv(file.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(first.added, 2, "{first:?}");
+    let titles: Vec<String> = core.items().iter().map(|i| i.title.clone()).collect();
+    assert_eq!(titles, vec!["Buy milk", "Call the vet"]);
+
+    let again = block_on(core.import_csv(file.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(again.added, 0, "{again:?}");
+    assert_eq!(
+        again.skipped,
+        vec!["2 items were already on the list".to_string()]
+    );
+    assert_eq!(core.items().len(), 2);
+}
+
+/// Due days are saved with the item, survive a relaunch, sort the agenda,
+/// and go out to and come back from a spreadsheet; a row whose day isn't
+/// one is skipped and says why.
+#[test]
+fn due_days_are_kept_shown_in_the_agenda_and_exported() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let core = open(&dir).unwrap();
+        let vet = block_on(core.add("Call the vet".into())).unwrap();
+        let tent = block_on(core.add("Pack the tent".into())).unwrap();
+        block_on(core.add("Someday".into())).unwrap();
+        block_on(core.set_due(vet, Some("2026-11-21".into()))).unwrap();
+        block_on(core.set_due(tent, Some("2026-11-24".into()))).unwrap();
+        let err = block_on(core.set_due(tent, Some("2026-11-31".into()))).unwrap_err();
+        assert!(matches!(err, ChecklistError::InvalidDay { .. }), "{err:?}");
+        assert_eq!(checklist_error_kind(err), ErrorKind::Invalid);
+        core.shutdown();
+    }
+    let core = open(&dir).unwrap();
+    let agenda = core.agenda("2026-11-22".into());
+    assert_eq!(agenda.overdue.len(), 1);
+    assert_eq!(agenda.overdue[0].title, "Call the vet");
+    assert!(agenda.today.is_empty());
+    assert_eq!(agenda.upcoming[0].due.as_deref(), Some("2026-11-24"));
+    assert_eq!(core.agenda("2026-11-24".into()).today.len(), 1);
+
+    let path = block_on(core.export_csv(None)).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        text.trim_start_matches('\u{feff}'),
+        "Item,Done,Due\nCall the vet,No,2026-11-21\nPack the tent,No,2026-11-24\nSomeday,No,\n"
+    );
+
+    let file = dir.path().join("dated.csv");
+    std::fs::write(
+        &file,
+        "Item,Due\nBuy stamps,2026-12-01\nPost the parcel,next week\nWater plants,\n",
+    )
+    .unwrap();
+    let summary = block_on(core.import_csv(file.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(summary.added, 2, "{summary:?}");
+    assert_eq!(summary.skipped.len(), 1, "{summary:?}");
+    assert!(
+        summary.skipped[0].starts_with("Line 3:") && summary.skipped[0].contains("not a day"),
+        "{summary:?}"
+    );
+    let items = core.items();
+    assert_eq!(items[3].due.as_deref(), Some("2026-12-01"));
+    assert_eq!(items[4].due, None);
+
+    block_on(core.set_due(items[3].id, None)).unwrap();
+    assert_eq!(core.items()[3].due, None);
 }

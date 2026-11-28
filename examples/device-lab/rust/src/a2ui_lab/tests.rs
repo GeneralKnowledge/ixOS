@@ -197,7 +197,7 @@ fn a_refused_payload_keeps_the_reviewed_change_set() {
 fn gate_after_start() -> GateState {
     let mut state = GateState::default();
     let entries = proposal(PROPOSAL).unwrap();
-    gate::check(&surface::create(&entries).to_string(), &mut state).unwrap();
+    surface::check(&surface::create(&entries).to_string(), &mut state).unwrap();
     state
 }
 
@@ -232,6 +232,21 @@ fn gate_refuses_what_the_catalog_cannot_express() {
         (json!([{ "version": "1.0", "updateDataModel": { "surfaceId": surface::SURFACE_ID,
             "path": "/books", "value": [{ "id": "piranesi", "title": "Piranesi", "author": "George Eliot",
                 "priority": ["high"], "start": "2026-12-01", "finish": "2026-12-02" }] } }]).to_string(), "data"),
+        // Anything the ForgeUI adapter doesn't draw: a time picker, a filter
+        // field, a checkbox list, an unknown property, a date picker without
+        // dates.
+        (update(json!([{ "id": "bookStart", "component": "DateTimeInput", "label": "Start",
+            "enableDate": true, "enableTime": true, "value": { "@path": "start" } }])), "unsupported_property"),
+        (update(json!([{ "id": "bookStart", "component": "DateTimeInput", "label": "Start",
+            "value": { "@path": "start" } }])), "unsupported_property"),
+        (update(json!([{ "id": "bookPriority", "component": "ChoicePicker", "label": "Priority",
+            "filterable": true, "options": ["high"], "value": { "@path": "priority" } }])), "unsupported_property"),
+        (update(json!([{ "id": "bookPriority", "component": "ChoicePicker", "label": "Priority",
+            "displayStyle": "checkbox", "options": ["high"], "value": { "@path": "priority" } }])), "unsupported_property"),
+        (update(json!([{ "id": "intro", "component": "Text", "text": "x", "weight": 2 }])), "unsupported_property"),
+        (update(json!([{ "id": "review", "component": "Button", "child": "reviewLabel",
+            "variant": "borderless", "action": { "event": { "name": surface::REVIEW_EVENT,
+                "context": surface::review_context() } } }])), "unsupported_property"),
         // A bad component id.
         (update(json!([{ "id": "../x", "component": "Text", "text": "x" }])), "malformed"),
         // Two components with one id.
@@ -264,7 +279,7 @@ fn gate_refuses_what_the_catalog_cannot_express() {
         let mut state = gate_after_start();
         let before = state.actions.clone();
         let refusal =
-            gate::check(&payload, &mut state).expect_err(&payload[..payload.len().min(160)]);
+            surface::check(&payload, &mut state).expect_err(&payload[..payload.len().min(160)]);
         assert_eq!(refusal.code, want, "{}", &payload[..payload.len().min(160)]);
         assert_eq!(
             state.actions, before,
@@ -287,7 +302,7 @@ fn a_payload_is_all_or_nothing() {
         json!({ "version": "1.0", "updateComponents": { "surfaceId": surface::SURFACE_ID,
         "components": [{ "id": "web", "component": "WebView" }] } }),
     );
-    assert!(gate::check(&Value::Array(messages).to_string(), &mut state).is_err());
+    assert!(surface::check(&Value::Array(messages).to_string(), &mut state).is_err());
     assert!(!state.created);
     assert!(state.actions.is_empty());
 }
@@ -298,7 +313,7 @@ fn updates_before_the_surface_exist_are_refused() {
     let payload = json!([{ "version": "1.0", "updateComponents": {
         "surfaceId": surface::SURFACE_ID, "components": [] } }]);
     assert_eq!(
-        gate::check(&payload.to_string(), &mut state)
+        surface::check(&payload.to_string(), &mut state)
             .unwrap_err()
             .code,
         "lifecycle"

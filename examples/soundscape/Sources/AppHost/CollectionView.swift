@@ -4,90 +4,26 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-// MARK: On the library's first screen
-
-/// Favourites, Playlists and Recently Played, above the library's shelves,
-/// with the last few songs played one tap away.
-struct YourMusicSection: View {
-    let model: ListenModel
-    let player: TakePlayer
-    let showDetails: (String) -> Void
-
-    private var collection: MusicCollection { model.collection }
-
-    var body: some View {
-        Section("Your Music") {
-            NavigationLink(value: ListenRoute.discover) {
-                row("Discover", systemImage: "globe", tint: .blue, count: nil)
-            }
-            .accessibilityIdentifier("library.discover")
-            NavigationLink(value: ListenRoute.favourites) {
-                row("Favourites", systemImage: "heart.fill", tint: .pink,
-                    count: collection.favouriteTracks.count + collection.favouriteAlbums.count
-                        + collection.favouriteArtists.count)
-            }
-            .accessibilityIdentifier("library.favourites")
-            NavigationLink(value: ListenRoute.playlists) {
-                row("Playlists", systemImage: "music.note.list", tint: .indigo, count: collection.playlists.count)
-            }
-            .accessibilityIdentifier("library.playlists")
-            NavigationLink(value: ListenRoute.recent) {
-                row("Recently Played", systemImage: "clock.fill", tint: .orange, count: nil)
-            }
-            .accessibilityIdentifier("library.recent")
-            let toPick = model.toPick.count
-            if toPick > 0 {
-                NavigationLink(value: ListenRoute.toPick) {
-                    row("To Pick", systemImage: "checkmark.circle.badge.questionmark", tint: .teal, count: toPick)
-                }
-                .accessibilityIdentifier("library.toPick")
-            }
-            NavigationLink(value: ListenRoute.downloads) {
-                row("Downloaded", systemImage: "arrow.down.circle.fill", tint: .green,
-                    count: Int(model.offline.downloaded))
-            }
-            .accessibilityIdentifier("library.downloads")
-        }
-        let recent = Array(collection.recentlyPlayed.prefix(3))
-        if !recent.isEmpty {
-            Section("Played Lately") {
-                ForEach(Array(recent.enumerated()), id: \.element.track.id) { index, play in
-                    TrackRow(model: model, player: player, track: play.track,
-                             showDetails: { showDetails(play.track.id) }) {
-                        player.play(model.queue(recent.map(\.track)), from: index)
-                    }
-                }
-            }
-        }
-    }
-
-    private func row(_ title: String, systemImage: String, tint: Color, count: Int?) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body)
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(tint.gradient, in: RoundedRectangle(cornerRadius: 8))
-            Text(title)
-            Spacer()
-            if let count, count > 0 {
-                Text("\(count)").foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
 /// A heart that adds a song, album or artist to the favourites, or takes it out.
 struct FavouriteButton: View {
     let model: ListenModel
     let id: String
     let identifier: String
+    /// The song playing, when it is this one: a catalogue song joins the
+    /// library before it becomes a favourite.
+    var queued: QueueTrack? = nil
 
     var body: some View {
         let on = model.isFavourite(id)
         Button(on ? "Remove from Favourites" : "Add to Favourites",
                systemImage: on ? "heart.fill" : "heart") {
-            Task { await model.toggleFavourite(id) }
+            Task {
+                if let queued, queued.trackId == id {
+                    await model.toggleFavourite(queued: queued)
+                } else {
+                    await model.toggleFavourite(id)
+                }
+            }
         }
         .tint(on ? .pink : nil)
         .accessibilityIdentifier(identifier)
@@ -99,7 +35,7 @@ struct FavouriteButton: View {
 struct FavouritesView: View {
     let model: ListenModel
     let player: TakePlayer
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
 
     private var collection: MusicCollection { model.collection }
 
@@ -114,8 +50,8 @@ struct FavouritesView: View {
                 }
                 Section("Songs") {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                        TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
-                            player.play(model.queue(tracks), from: index)
+                        TrackRow(model: model, player: player, track: track, showDetails: { openSurface(ListenRoute.track(track.id)) }) {
+                            player.play(model.queue(tracks, from: index))
                         }
                     }
                 }
@@ -139,9 +75,6 @@ struct FavouritesView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Favourites")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .overlay {
             if tracks.isEmpty && collection.favouriteAlbums.isEmpty && collection.favouriteArtists.isEmpty {
                 ForgeStateView.empty(
@@ -161,33 +94,42 @@ struct PlaylistsView: View {
     let player: TakePlayer
     @State private var naming = false
     @State private var deleting: Playlist?
+    @State private var makingSmart = false
 
     var body: some View {
         List {
-            ForEach(model.collection.playlists) { list in
-                NavigationLink(value: ListenRoute.playlist(list.id)) { PlaylistRow(list: list) }
-                    .accessibilityIdentifier("playlists.playlist")
-                    .forgeRowActions {
-                        Button("Delete", systemImage: "trash", role: .destructive) { deleting = list }
-                            .accessibilityIdentifier("playlists.delete")
-                    }
+            SmartPlaylistsSection(model: model)
+            Section("Playlists") {
+                ForEach(model.collection.playlists) { list in
+                    NavigationLink(value: ListenRoute.playlist(list.id)) { PlaylistRow(list: list) }
+                        .accessibilityIdentifier("playlists.playlist")
+                        .forgeRowActions {
+                            Button("Delete", systemImage: "trash", role: .destructive) { deleting = list }
+                                .accessibilityIdentifier("playlists.delete")
+                        }
+                }
+                if model.collection.playlists.isEmpty {
+                    Text("Make one with +, or add a song from its menu.")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("playlists.none")
+                }
             }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Playlists")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("New Playlist", systemImage: "plus") { naming = true }
-                    .accessibilityIdentifier("playlists.new")
+                Menu("New", systemImage: "plus") {
+                    Button("New Playlist", systemImage: "music.note.list") { naming = true }
+                        .accessibilityIdentifier("playlists.new")
+                    Button("New Smart Playlist", systemImage: "gearshape") { makingSmart = true }
+                        .accessibilityIdentifier("playlists.newSmart")
+                }
+                .accessibilityIdentifier("playlists.add")
             }
         }
-        .overlay {
-            if model.collection.playlists.isEmpty {
-                ForgeStateView.empty(
-                    "No Playlists Yet", systemImage: "music.note.list",
-                    description: "Make one with +, or add a song from its menu."
-                )
-            }
+        .sheet(isPresented: $makingSmart) {
+            SmartPlaylistEditor(model: model, editing: nil, start: .new)
         }
         .forgeRename("New Playlist", isPresented: $naming, name: "", id: "playlistName", confirmTitle: "Create") { name in
             _ = try await model.createPlaylist(name)
@@ -261,7 +203,7 @@ struct PlaylistView: View {
 
     @State private var detail: PlaylistDetail?
     @State private var renaming = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingDelete = false
     @Environment(\.dismiss) private var dismiss
 
@@ -280,9 +222,6 @@ struct PlaylistView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { detail = model.playlist(id) }
         .onChange(of: model.collection) { detail = model.playlist(id) }
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if detail != nil {
                 ToolbarItem(placement: .primaryAction) {
@@ -348,8 +287,8 @@ struct PlaylistView: View {
                     let entry = row.entry
                     TrackRow(model: model, player: player, track: entry.track,
                              remove: { removeEntry(at: index, of: detail) },
-                             showDetails: { details = entry.track.id }) {
-                        player.play(model.queue(tracks), from: index)
+                             showDetails: { openSurface(ListenRoute.track(entry.track.id)) }) {
+                        player.play(model.queue(tracks, from: index))
                     }
                 }
                 .onMove { from, to in
@@ -360,7 +299,7 @@ struct PlaylistView: View {
                 .onDelete { offsets in
                     var entries = detail.entries
                     entries.remove(atOffsets: offsets)
-                    show(entries, of: detail)
+                    remove(keeping: entries, of: detail)
                 }
             }
         }
@@ -378,7 +317,15 @@ struct PlaylistView: View {
         var entries = detail.entries
         guard entries.indices.contains(index) else { return }
         entries.remove(at: index)
-        show(entries, of: detail)
+        remove(keeping: entries, of: detail)
+    }
+
+    /// Shows what is left at once, then saves it with Undo on the banner.
+    private func remove(keeping entries: [PlaylistEntry], of detail: PlaylistDetail) {
+        self.detail = PlaylistDetail(playlist: detail.playlist, entries: entries)
+        Task {
+            if let d = await model.removeFromPlaylist(detail, keeping: entries.map(\.place)) { self.detail = d }
+        }
     }
 
     /// Shows the new order at once, so a moved row lands where it was
@@ -411,7 +358,7 @@ struct ToPickView: View {
     let model: ListenModel
     let player: TakePlayer
 
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
 
     var body: some View {
         let tracks = model.toPick
@@ -419,8 +366,8 @@ struct ToPickView: View {
             Section {
                 ForEach(tracks) { track in
                     TrackRow(model: model, player: player, track: track,
-                             showDetails: { details = track.id }) {
-                        details = track.id
+                             showDetails: { openSurface(ListenRoute.track(track.id)) }) {
+                        openSurface(ListenRoute.track(track.id))
                     }
                 }
             } footer: {
@@ -430,9 +377,6 @@ struct ToPickView: View {
             }
         }
         .navigationTitle("To Pick")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .overlay {
             if tracks.isEmpty {
                 ForgeStateView.empty(
@@ -490,6 +434,7 @@ struct AddToPlaylistSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .soundscapeOverlay()
         .forgeFeedback(model.feedback)
     }
 }
@@ -499,7 +444,7 @@ struct AddToPlaylistSheet: View {
 struct RecentlyPlayedView: View {
     let model: ListenModel
     let player: TakePlayer
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingClear = false
 
     var body: some View {
@@ -509,8 +454,8 @@ struct RecentlyPlayedView: View {
             ForEach(Array(recent.enumerated()), id: \.element.track.id) { index, play in
                 VStack(alignment: .leading, spacing: 0) {
                     TrackRow(model: model, player: player, track: play.track,
-                             showDetails: { details = play.track.id }) {
-                        player.play(model.queue(tracks), from: index)
+                             showDetails: { openSurface(ListenRoute.track(play.track.id)) }) {
+                        player.play(model.queue(tracks, from: index))
                     }
                     Text(Self.when(play.playedMs))
                         .font(.caption2)
@@ -521,9 +466,6 @@ struct RecentlyPlayedView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Recently Played")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if !recent.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -555,15 +497,78 @@ struct RecentlyPlayedView: View {
         return date.formatted(.relative(presentation: .named))
     }
 }
+
+/// Songs that look like one song reaching the library from several sources
+/// (the take server, your files, Jamendo, the Internet Archive). Merging
+/// makes one song with every source's recordings; Keep Apart stops the
+/// offer. Nothing merges by itself.
+struct DuplicatesView: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    @Environment(\.forgeOpenSurface) private var openSurface
+
+    var body: some View {
+        let groups = model.duplicates
+        List {
+            ForEach(groups, id: \.self) { group in
+                Section {
+                    ForEach(Array(group.tracks.enumerated()), id: \.element.id) { index, track in
+                        TrackRow(model: model, player: player, track: track,
+                                 showDetails: { openSurface(ListenRoute.track(track.id)) }) {
+                            player.play(model.queue(group.tracks, from: index))
+                        }
+                    }
+                    if let keep = group.tracks.first {
+                        Button {
+                            Task { _ = await model.merge(group.tracks.dropFirst().map(\.id), into: keep.id) }
+                        } label: {
+                            Label("Merge into One Song", systemImage: "square.on.square")
+                        }
+                        .accessibilityIdentifier("duplicates.merge")
+                    }
+                    Button {
+                        Task { await model.keepApart(group.tracks.map(\.id)) }
+                    } label: {
+                        Label("Keep Apart", systemImage: "square.split.2x1")
+                    }
+                    .accessibilityIdentifier("duplicates.keepApart")
+                } header: {
+                    Text(group.tracks.first?.title ?? "")
+                } footer: {
+                    Text(Self.why(group))
+                }
+            }
+        }
+        .navigationTitle("Same Song")
+        .overlay {
+            if groups.isEmpty {
+                ForgeStateView.empty(
+                    "Nothing to Merge", systemImage: "checkmark.circle",
+                    description: "No songs in your library look like the same song from different places."
+                )
+            }
+        }
+        .forgeFeedback(model.feedback)
+    }
+
+    static func why(_ group: DuplicateSongs) -> String {
+        let keep = group.tracks.first.map { "\(TrackView.sourceName($0))\u{2019}s details are kept" } ?? ""
+        switch group.reason {
+        case .sameRecording:
+            return "Linked to the same MusicBrainz recording. \(keep); every recording stays, and your own file plays when there is one."
+        case .sameDetails:
+            return "Same title, artist and length. \(keep); every recording stays, and your own file plays when there is one."
+        }
+    }
+}
 #endif
 
 #if os(iOS)
 // MARK: Lyrics
 
-/// A song's lyrics to read along: section headings ("Verse", "Chorus") in
-/// small capitals, stanzas apart. With timed lyrics and the song playing
-/// (`player`), the line being sung is bright and stays in view, and with
-/// word timings each word lights up as it is sung; tap a line to go to it.
+/// A song's lyrics to read along, in a sheet of their own (a song's
+/// screen). Now Playing shows the same `LyricsScroll` in place.
 struct LyricsView: View {
     let title: String
     let subtitle: String?
@@ -572,6 +577,43 @@ struct LyricsView: View {
     var player: TakePlayer? = nil
     @Environment(\.dismiss) private var dismiss
 
+    var body: some View {
+        NavigationStack {
+            LyricsScroll(lyrics: lyrics, player: player)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 0) {
+                            Text(title).font(.headline).lineLimit(1)
+                            if let subtitle {
+                                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                            .accessibilityIdentifier("lyrics.done")
+                    }
+                }
+        }
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// Lyrics as they scroll: section headings ("Verse", "Chorus") in small
+/// capitals, stanzas apart. With timed lyrics and the song playing
+/// (`player`), the line being sung is bright (`sung`) and stays in view,
+/// and with word timings each word lights up as it is sung; tap a line to
+/// go to it.
+struct LyricsScroll: View {
+    let lyrics: String
+    var player: TakePlayer? = nil
+    /// The colour of the words being sung.
+    var sung: Color = .accentColor
+    /// Space at the left and right.
+    var edge: CGFloat = 24
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lines: [LyricLine] = []
     @State private var currentLine: Int?
     @State private var currentWord: Int?
@@ -579,43 +621,26 @@ struct LyricsView: View {
     private var timed: Bool { player != nil && lines.contains { $0.atSeconds != nil } }
 
     var body: some View {
-        NavigationStack {
-            ScrollViewReader { scroller in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: timed ? 10 : 6) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                            row(line, index: index).id(index)
-                        }
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: timed ? 10 : 6) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        row(line, index: index).id(index)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
-                    .padding(.bottom, timed ? 240 : 0)
                 }
-                .onChange(of: currentLine) { _, line in
-                    guard let line else { return }
-                    withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo(line, anchor: .center) }
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, edge)
+                .padding(.vertical, 16)
+                .padding(.bottom, timed ? 240 : 0)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 0) {
-                        Text(title).font(.headline).lineLimit(1)
-                        if let subtitle {
-                            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .accessibilityIdentifier("lyrics.done")
-                }
+            .onChange(of: currentLine) { _, line in
+                guard let line else { return }
+                withForgeAnimation(.standard, reduceMotion: reduceMotion) { scroller.scrollTo(line, anchor: .center) }
             }
         }
-        .presentationDragIndicator(.visible)
         .onAppear { lines = lyricLines(lyrics: lyrics) }
-        .task(id: lines.count) { await follow() }
+        .onChange(of: lyrics) { _, new in lines = lyricLines(lyrics: new) }
+        .task(id: "\(lines.count)|\(lyrics.hashValue)") { await follow() }
     }
 
     @ViewBuilder private func row(_ line: LyricLine, index: Int) -> some View {
@@ -628,12 +653,12 @@ struct LyricsView: View {
                 .padding(.top, 4)
                 .accessibilityAddTraits(.isHeader)
         case .line:
-            let sung = timed && index == currentLine
-            words(line, sung: sung)
+            let isSung = timed && index == currentLine
+            words(line, isSung: isSung)
                 .font(timed ? .title2.weight(.bold) : .title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
-                .scaleEffect(sung ? 1.0 : 0.97, anchor: .leading)
-                .animation(.easeOut(duration: 0.2), value: sung)
+                .scaleEffect(isSung ? 1.0 : 0.97, anchor: .leading)
+                .forgeAnimation(.quick, value: isSung)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if timed, let at = line.atSeconds { player?.seek(to: at) }
@@ -647,18 +672,18 @@ struct LyricsView: View {
 
     /// The line's text: all bright when it's sung without word timings,
     /// the words sung so far bright with them, dim otherwise (when timed).
-    private func words(_ line: LyricLine, sung: Bool) -> Text {
+    private func words(_ line: LyricLine, isSung: Bool) -> Text {
         guard timed else { return Text(line.text) }
-        guard sung else { return Text(line.text).foregroundColor(.secondary) }
+        guard isSung else { return Text(line.text).foregroundColor(.secondary) }
         guard !line.words.isEmpty else { return Text(line.text).foregroundColor(.primary) }
         let upTo = currentWord ?? -1
         return line.words.enumerated().reduce(Text("")) { text, item in
             let (i, word) = item
-            return text + Text(word.text).foregroundColor(i <= upTo ? .accentColor : .secondary)
+            return text + Text(word.text).foregroundColor(i <= upTo ? sung : .secondary)
         }
     }
 
-    /// Follows the song while the sheet is open: which line and word are sung.
+    /// Follows the song while the lyrics show: which line and word are sung.
     private func follow() async {
         guard let player, lines.contains(where: { $0.atSeconds != nil }) else { return }
         while !Task.isCancelled {

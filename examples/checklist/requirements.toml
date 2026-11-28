@@ -19,3 +19,9 @@ device = ["uitests/add-and-tick.toml"]
 id = "CL-3"
 statement = "In the background, on-screen work such as search stops while an export still finishes, holding background time only until it is done; back on screen the list is read again, and leaving a search stops it in Rust."
 twin = ["ChecklistTests.testTheBackgroundInterruptsOnScreenWorkOnly", "ChecklistTests.testFinishingWorkHoldsBackgroundTimeUntilItIsDone", "ChecklistTests.testCancellingTheSwiftTaskCancelsTheRustWork"]
+
+[[requirement]]
+id = "CL-4"
+statement = "An item can be given a local due day and have it removed; a day that isn't one is refused in plain words; the agenda lists items not yet done as overdue, due today or upcoming, in day order, and leaves out done and undated items; due days survive a relaunch and travel through the spreadsheet's Due column."
+twin = ["ChecklistTests.testDueDatesFillTheAgendaOnTheLocalDay"]
+device = ["uitests/due-dates.toml"]

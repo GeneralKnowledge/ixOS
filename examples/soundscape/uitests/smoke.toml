@@ -1,26 +1,36 @@
-# Smoke test: the app opens on the library, and Discover opens from it.
+# Smoke test: the app opens on Listen with the mini-player saying Not
+# Playing, the Library tab lists its kinds, and Discover is a tab.
 # Uses a temporary data folder, so the library is empty.
-# Run with the phone plugged in:  forge ui run uitests/smoke.toml
-name = "Smoke: library, then Discover"
-app = "org.forgemobile.agentlab"
+# Run with the phone plugged in:  forge ui run examples/soundscape/uitests/smoke.toml
+name = "Smoke: Listen, Library, then Discover"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "soundscape"] }
 
 [[step]]
-expect = { id = "library.discover" }
+expect = { id = "nowPlaying.open" }
 
 [[step]]
-screenshot = "1-library"
+screenshot = "1-listen"
 
 [[step]]
-tap = { id = "library.discover" }
+tap = { label = "Library" }
+
+[[step]]
+expect = { id = "library.albums" }
+
+[[step]]
+screenshot = "2-library"
+
+[[step]]
+tap = { label = "Discover" }
 
 [[step]]
 expect = { id = "discover.source" }
 
 [[step]]
-screenshot = "2-discover"
+screenshot = "3-discover"

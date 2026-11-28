@@ -105,6 +105,8 @@ Or step by step:
 cd examples/pocket-library && xtool dev run
 ```
 
+Device Lab's first build also compiles numpy for Python Lab ([numpy-spike.md](../examples/device-lab/docs/numpy-spike.md)). That build needs python3 3.12 or newer, either `uv` or python3's venv module (`sudo apt install python3-venv`), network access to PyPI once, and the `ld64.lld` and `llvm-ar` that come with xtool's Darwin SDK and Swift. Later builds use the cached result.
+
 ## CI note
 
 Hosted Linux CI runs the Rust checks, binding drift, Android JVM tests and a debug APK build; macOS CI builds the Xcode projects and runs the Swift host tests. Linux iOS linking needs the Darwin SDK from `xtool setup`, which cannot be checked into the repo or downloaded in hosted CI. Use a self-hosted runner with the SDK installed for full Linux iOS builds.

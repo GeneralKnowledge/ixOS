@@ -1,16 +1,16 @@
 # Launch on an empty library, open Add Feed, type an address, cancel.
 # Changes nothing. Run with the phone plugged in:
-#   forge ui run uitests/smoke.toml
+#   forge ui run examples/commonplace/uitests/smoke.toml
 # Format: docs/forge-ui-testing.md.
 
 name = "Smoke: open Add Feed, type an address, cancel"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace"] }
 
 [[step]]
 expect = { id = "feeds.addFirst" }
@@ -25,7 +25,7 @@ tap = { id = "feeds.add" }
 type = { id = "addFeed.url", text = "example.com/feed.xml" }
 
 [[step]]
-expect = { id = "addFeed.save", enabled = true }
+expect = { id = "addFeed.confirm", enabled = true }
 
 [[step]]
 screenshot = "2-add-feed"

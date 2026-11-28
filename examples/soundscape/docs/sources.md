@@ -93,7 +93,19 @@ Everything plays through the same player and queue.
 **One change from the plan above:** saved catalogue tracks are kept in `library.json` (its `catalogue`
 section) rather than a store of their own. Every screen already looks tracks up in the library, so playlists,
 favourites, history, downloads and the queue work for Jamendo tracks with no separate resolver. Their rights
-live with the saved track, so they outlast any cache. Search results that are not added stay in memory only.
+live with the saved track, so they outlast any cache. Search results that are not added are not in the
+library; Jamendo's answers themselves are kept for a while (below).
+
+**Jamendo's answers are kept** (`rust/src/jamendo_cache.rs`, 2026-11-24). Every `GET` to Jamendo's API goes
+through one cache in front of the app's HTTP client, so a page, shelf or search opened again doesn't ask Jamendo
+again. An answer is used as it is for 6 hours; after that Jamendo is asked again, and the kept answer is still
+used when Jamendo can't be reached, answers with a server error, or answers with nothing, so a page that opened
+once opens offline. Only answers with something in them are kept (Jamendo's occasional empty answer never is).
+Answers live in memory and one file each in the caches folder (`jamendo/`), keyed by the address without the
+client ID, which is never written to disk; files older than 30 days go when the app opens, and at most 500 are
+kept. Compared cover hashes are kept there too (`covers.json`), so an artist page reopened after a launch
+fetches no covers. Pull to refresh on Listen, Discover and the Jamendo pages asks Jamendo again for
+everything.
 
 Of the resolver tests above, these pass in `rust/tests/catalogue.rs`: adding to a playlist, restarting and
 finding it again, leaving search results without losing the playlist entry, and keeping the licence without
@@ -180,6 +192,45 @@ and their results appear below under **From Jamendo** and **From the Internet Ar
   asked for an empty search (the catalogues' popular lists belong to Discover).
 - **In `rust/src/search.rs`**, tested in `rust/tests/search.rs`.
 
+## More by the artist and by genre, as built
+
+Now Playing on a Jamendo song (from the library or straight from Discover)
+has an **On Jamendo** section: **More by <artist>** and **More in This
+Genre**. Rust (`jamendo::more`) first asks Jamendo for the song itself
+(`tracks/?id=`), so it works for songs added before Soundscape kept an
+artist's id, then asks for that artist's tracks (`artist_id=`, most played
+first) or the song's first genre (`tags=`, this week's most popular),
+leaving out the song playing. Discover's Jamendo list starts with
+**Browse by Genre**: twenty of Jamendo's genre tags (`jamendo::GENRES`),
+each opening that genre's popular tracks. `tags=jazz` was checked live on
+2026-11-18; `artist_id=` and the other tags were not yet. The library's own
+genre names are unchanged (`newage` stays "Newage" there), so songs already
+added don't move genre.
+
+## Test catalogue, as built
+
+`rust/src/test_catalogue.rs` holds eight tracks that Soundscape writes itself the first time Discover's
+**Test Catalogue** is opened (menu at the top right), into `test-catalogue/` in the app's data folder (about
+18 MB). The same files come out on every phone and in every test, and nothing needs the network or a client ID.
+
+| Track | Checks |
+|---|---|
+| Short Chime (4 s, WAV) | The next song starts on its own; the time never runs past the end |
+| Long Drone (10 min, WAV at 8 kHz) | Scrubbing, locking the phone, the sleep timer |
+| No Artwork (45 s, AIFF) | The stand-in artwork everywhere, the lock screen too |
+| Untagged (30 s, CAF) | No artist, album or genre: Unknown Artist, and lists still sort |
+| Theme in C, slow (60 s, WAV) and fast (40 s, AIFF) | Two recordings of one work stay two songs (lengths differ) |
+| Theme in C, copy (60 s, CAF) | The slow recording again: Your Music offers to merge the two |
+| Stream Only (20 s, WAV) | Download isn't offered; Downloads never lists it |
+
+The audio is tones written as 16-bit mono PCM: WAV, AIFF and CAF are the formats iOS plays that need no
+encoder, so MP3 and AAC are not covered here (Jamendo and the Archive already serve MP3). Artwork is a PNG drawn
+by the same module. Ids are `test:<slug>`, the provider is "Test Catalogue" and the licence CC0. A test track
+saved in the library keeps a `file://` URL; the app's data folder moves when it is reinstalled, so building the
+library follows the file name into the folder as it is now (`test_catalogue::relocate`, only for the
+catalogue's own names). Downloading one copies the file, and only a test track's recording may be copied from
+the phone this way.
+
 ## Order of work
 
 1. ~~The track resolver~~ (the library is the lookup; above) and Jamendo: built.
@@ -187,8 +238,7 @@ and their results appear below under **From Jamendo** and **From the Internet Ar
    are not used yet; download verification comes with reconciliation.
 3. MusicBrainz, to recognise the same recording from different sources: built (above). Merging linked songs
    into one comes with reconciliation ([architecture.md](architecture.md)).
-4. A small fixed test catalogue: short and long tracks, with and without artwork or tags, two recordings of one
-   work, several formats, and one track that may not be downloaded.
+4. A small fixed test catalogue: built ([below](#test-catalogue-as-built)).
 5. Mixed playlists, and playback across all sources, tested together.
 
 Not now: more providers, recommendations, or extra infrastructure.
@@ -197,3 +247,63 @@ Not now: more providers, recommendations, or extra infrastructure.
 
 These catalogues are not Spotify or Apple Music, and they have no mainstream new releases. This is not meant
 to grow into a full streaming service.
+
+## Exploring Jamendo, as built (Rust)
+
+Reuben (2026-11-24): Soundscape focuses on Jamendo for now, and is a *discover* app: nobody knows Jamendo's
+artists beforehand, so exploring has to offer much more than one week's most popular songs. This part is the
+Rust; the screens come in their own PR (`docs/design/`: data before visuals).
+
+- **Shelves** (`jamendo_shelves`, `jamendo_shelf`): Jamendo's Picks (`featured=1`), New Releases
+  (`order=releasedate_desc`), Rising (`order=buzzrate`, songs gaining listeners fastest), Popular This Month,
+  Instrumental (`vocalinstrumental=instrumental`) and All-Time Favourites, each with singles and album tracks.
+- **Artists to discover** (`jamendo_artists`): this week's most popular artists, or the newest; ones with a
+  picture first.
+- **Because You Like** (`jamendo_because`): the Jamendo song in your library you play most (a favourite counts
+  as three plays) starts it; songs in its genre by artists not in your library.
+- **Artist pages** (`jamendo_artist`, `jamendo_artist_of_track`; `jamendo_artist_id_of_track` finds the artist of a song, so the app opens one page per artist however it was reached): the artist and their releases, newest first,
+  as **Albums, EPs and Singles** (one song is a single; up to six songs under 30 minutes an EP; more an album).
+
+### Functional albums
+
+Many Jamendo songs are not in a proper album: artists upload one single at a time. Reuben's rule: *singles with
+the same album art go together*. So on an artist's page:
+
+1. Jamendo's own albums with two or more of the artist's songs stay as they are, in Jamendo's track order.
+2. Every other song is grouped by its cover. Jamendo gives each single its own artwork address even when the
+   picture is the same, so the cover files themselves are compared: each is fetched once (at most 80 per page,
+   2 MB each) and compared by SHA-256, and kept for the rest of the run so a page opened again fetches nothing.
+3. Songs sharing a cover make one album (marked `grouped`), in the order they came out, named by the album name
+   they all share or else after the earliest song. A song left alone is a single. A cover that can't be fetched
+   leaves its song a single.
+
+### The screens
+
+- **Discover** adds, under Popular This Week: Because You Like, Jamendo's Picks, Artists to Discover (round
+  tiles), New Releases and Rising; after the stations, the other shelves and New on Jamendo. Every shelf has
+  See All.
+- **A Jamendo artist** (from an artist tile, **Go to Artist** on a Jamendo song, **More by <artist>** in Now
+  Playing, or a library artist's **Open Their Jamendo Page**) shows their picture, Play and Shuffle for everything,
+  Albums and EPs as shelves and Singles as songs. It is one surface per artist, however it was reached: a
+  way in from a song first asks Jamendo for the song's artist id (`jamendo_artist_id_of_track`, remembered for
+  the run), so the route is always the artist's id and an artist already open underneath is returned to
+  (ForgeAppKit's `ForgeLayeredPath.settle`) instead of opened again.
+- **A library artist** whose songs came from Jamendo shows, under your own songs and albums, everything Jamendo
+  has by them: Albums, EPs and Singles "on Jamendo", the same sections as their Jamendo page (asked by the
+  artist's Jamendo id, found from one of their songs), not only the songs you saved. Your own albums are titled
+  Your Albums once Jamendo's are there.
+- **Similar Artists** (on a Jamendo artist's page and a library artist's "on Jamendo" part): the other artists
+  popular this week in the genre most of the artist's songs carry, as round tiles, with "Popular in <genre> this
+  week" under them (`jamendo_similar_artists`). Jamendo has no similar-artists list of its own, so this is
+  Soundscape's reading. The artist's songs are the request their page already made (usually kept); their
+  pictures come from one `/artists` request for all of them (`id=1+2+3`, from Jamendo's documentation, not
+  checked live), and without it the tiles show names. Nothing is shown when there are none or Jamendo can't be
+  asked.
+- **A release** shows its cover, kind and year, its songs, and Add All to Library; a grouped one says its singles
+  share a cover and are separate on Jamendo. Its artist's name leads back to the artist, so Artist, Release,
+  Artist returns to the first page.
+
+Not checked yet: the live API (the cloud can't reach Jamendo). In particular, whether singles with the same
+picture always have byte-identical cover files; if Jamendo re-encodes them, a perceptual comparison (a small
+hash of the scaled-down picture) is the next step. The order and filter names (`releasedate_desc`, `buzzrate`,
+`featured`, `vocalinstrumental`, `joindate_desc`) are from Jamendo's API documentation.

@@ -6,10 +6,10 @@
 #   forge ui run examples/good-dog/uitests/lessons.toml
 
 name = "GD-10: stage lessons"
-app = "org.forgemobile.gooddog"
+app = "org.forgemobile.devicelab"
 
 [[step]]
-launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog"] }
+launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog", "-launchApp", "goodDog"] }
 
 [[step]]
 tap = { id = "today.goal" }

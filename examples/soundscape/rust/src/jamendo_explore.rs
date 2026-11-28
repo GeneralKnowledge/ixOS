@@ -1,0 +1,598 @@
+//! Exploring Jamendo beyond one week's most popular tracks: artists to
+//! discover, and each artist's releases as albums, EPs and singles.
+//!
+//! Many Jamendo songs are not in a proper album: an artist uploads one
+//! single at a time. Soundscape groups them into *functional albums*:
+//! singles of one artist that share the same cover art belong together,
+//! and a song left on its own is a single. Jamendo gives every single its
+//! own artwork address even when the picture is the same, so covers are
+//! compared by the image files themselves (their SHA-256), fetched once.
+
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
+
+use forge_net::{CancelHandle, HttpClient, Request};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+use crate::catalogue::CatalogueTrack;
+use crate::jamendo::{self, text, Ask, API};
+use crate::library::tag;
+use crate::model::SoundscapeError;
+
+/// Artists asked for in one list.
+pub const ARTISTS_PAGE: u32 = 30;
+/// The most covers fetched to compare for one artist's page.
+pub const MAX_COVERS: usize = 80;
+/// The largest cover file compared; a larger one is not fetched.
+pub const MAX_COVER_BYTES: usize = 2 * 1024 * 1024;
+const COVER_TIMEOUT: Duration = Duration::from_secs(10);
+/// An EP has at most this many songs, and lasts under [`EP_SECONDS`].
+pub const EP_MAX_TRACKS: usize = 6;
+pub const EP_SECONDS: f64 = 30.0 * 60.0;
+
+/// A Jamendo artist.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoArtist {
+    /// Jamendo's artist id (digits).
+    pub id: String,
+    pub name: String,
+    pub image_url: Option<String>,
+    /// When they joined Jamendo (`2019-05-03`).
+    pub joined: Option<String>,
+}
+
+/// Which artists to list.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JamendoArtistList {
+    /// This week's most popular artists.
+    Popular,
+    /// The newest artists on Jamendo.
+    New,
+}
+
+/// What a release is, by its songs (the way Apple Music names them).
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReleaseKind {
+    Album,
+    Ep,
+    Single,
+}
+
+/// One release on an artist's page.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoRelease {
+    /// `album:<id>` for Jamendo's own album, `cover:<sha256>` for singles
+    /// grouped by their cover, `single:<track id>` for a single.
+    pub id: String,
+    pub title: String,
+    pub kind: ReleaseKind,
+    /// True when Soundscape grouped singles by their cover; Jamendo has no
+    /// such album.
+    pub grouped: bool,
+    /// The earliest song's release date (`2019-05-03`).
+    pub released: Option<String>,
+    pub artwork_url: Option<String>,
+    pub duration_seconds: f64,
+    /// In order: Jamendo's track order, else by release date.
+    pub tracks: Vec<CatalogueTrack>,
+}
+
+/// An artist and their releases, newest first.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoArtistPage {
+    pub artist: JamendoArtist,
+    pub releases: Vec<JamendoRelease>,
+}
+
+/// The `/artists` request for `list`.
+pub fn artists_url(client_id: &str, list: JamendoArtistList) -> String {
+    let order = match list {
+        JamendoArtistList::Popular => "popularity_week",
+        JamendoArtistList::New => "joindate_desc",
+    };
+    format!(
+        "{API}/artists/?client_id={}&format=json&limit={ARTISTS_PAGE}&order={order}",
+        crate::listen::encode(client_id, false)
+    )
+}
+
+/// The `/artists` request for one artist.
+pub fn artist_url(client_id: &str, artist_id: &str) -> String {
+    format!(
+        "{API}/artists/?client_id={}&format=json&id={}",
+        crate::listen::encode(client_id, false),
+        crate::listen::encode(artist_id, false)
+    )
+}
+
+/// An artist id as given, checked: digits only.
+pub fn clean_artist_id(id: &str) -> Result<String, SoundscapeError> {
+    let id = id.trim();
+    if id.is_empty() || id.len() > 20 || !id.chars().all(|c| c.is_ascii_digit()) {
+        return Err(SoundscapeError::BadAddress {
+            reason: "that isn't a Jamendo artist".into(),
+        });
+    }
+    Ok(id.to_string())
+}
+
+/// Artists to discover. Ones without a picture come last.
+pub fn artists(
+    http: &dyn HttpClient,
+    client_id: &str,
+    list: JamendoArtistList,
+    cancel: &CancelHandle,
+) -> Result<Vec<JamendoArtist>, SoundscapeError> {
+    let mut found: Vec<JamendoArtist> =
+        jamendo::results_at(http, &artists_url(client_id, list), cancel)?
+            .iter()
+            .filter_map(artist)
+            .collect();
+    // Stable: Jamendo's order is kept within each half.
+    found.sort_by_key(|a| a.image_url.is_none());
+    Ok(found)
+}
+
+fn artist(item: &Value) -> Option<JamendoArtist> {
+    Some(JamendoArtist {
+        id: clean_artist_id(&text(&item["id"])?).ok()?,
+        name: tag(text(&item["name"]).as_deref())?,
+        image_url: text(&item["image"]).filter(|u| u.starts_with("https://")),
+        joined: text(&item["joindate"]),
+    })
+}
+
+/// Covers already compared: artwork address to its SHA-256, so a page
+/// opened again fetches nothing new. [`Covers::at`] keeps them in a file
+/// (in the caches folder) across launches; [`Covers::save`] writes it.
+#[derive(Default)]
+pub struct Covers {
+    known: Mutex<HashMap<String, String>>,
+    file: Option<PathBuf>,
+    changed: AtomicBool,
+}
+
+/// The most cover hashes kept in the file.
+pub const MAX_KEPT_COVERS: usize = 5000;
+
+impl Covers {
+    /// Covers kept in `file`, starting from what it holds (nothing when it
+    /// is missing or can't be read).
+    pub fn at(file: PathBuf) -> Self {
+        let known = std::fs::read(&file)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
+        Self {
+            known: Mutex::new(known),
+            file: Some(file),
+            changed: AtomicBool::new(false),
+        }
+    }
+
+    fn get(&self, url: &str) -> Option<String> {
+        self.known
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(url)
+            .cloned()
+    }
+
+    fn put(&self, url: &str, hash: String) {
+        self.known
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(url.to_string(), hash);
+        self.changed.store(true, Ordering::SeqCst);
+    }
+
+    /// Writes the file when something new was compared. A failure only
+    /// means the covers are compared again next launch.
+    pub fn save(&self) {
+        let Some(file) = &self.file else { return };
+        if !self.changed.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        let mut known = self.known.lock().unwrap_or_else(|p| p.into_inner());
+        if known.len() > MAX_KEPT_COVERS {
+            known.clear();
+        }
+        let written = serde_json::to_vec(&*known)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| {
+                if let Some(dir) = file.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+                }
+                forge_storage::write_atomic(file, &bytes).map_err(|e| e.to_string())
+            });
+        if let Err(err) = written {
+            forge_runtime::logging::warn!("couldn't keep compared covers: {err}");
+        }
+    }
+}
+
+/// One artist's page: who they are and their releases. `artist_id` is
+/// Jamendo's id; covers of singles are fetched (at most [`MAX_COVERS`])
+/// to find the ones that share a picture.
+pub fn artist_page(
+    http: &dyn HttpClient,
+    client_id: &str,
+    artist_id: &str,
+    covers: &Covers,
+    cancel: &CancelHandle,
+) -> Result<JamendoArtistPage, SoundscapeError> {
+    let artist_id = clean_artist_id(artist_id)?;
+    let items = jamendo::results(http, client_id, &Ask::Releases(artist_id.clone()), cancel)?;
+    let named = jamendo::results_at(http, &artist_url(client_id, &artist_id), cancel)
+        .ok()
+        .and_then(|found| found.iter().find_map(artist));
+    let artist = named
+        .or_else(|| {
+            let item = items.first()?;
+            Some(JamendoArtist {
+                id: artist_id.clone(),
+                name: tag(text(&item["artist_name"]).as_deref())?,
+                image_url: None,
+                joined: None,
+            })
+        })
+        .ok_or_else(|| SoundscapeError::Server {
+            reason: "Jamendo has no songs by this artist".into(),
+        })?;
+    let songs = songs(&items);
+    // Covers already known count for free; only new fetches are capped.
+    let mut hashes = HashMap::new();
+    let mut fetched = 0;
+    for url in loose_covers(&songs) {
+        if let Some(hash) = covers.get(&url) {
+            hashes.insert(url, hash);
+            continue;
+        }
+        if fetched == MAX_COVERS || cancel.is_cancelled() {
+            continue;
+        }
+        fetched += 1;
+        if let Some(hash) = cover_hash(http, &url, covers, cancel) {
+            hashes.insert(url, hash);
+        }
+    }
+    // A stopped page is not a page with its singles left ungrouped.
+    if cancel.is_cancelled() {
+        return Err(SoundscapeError::Stopped {
+            kind: forge_app::ErrorKind::Cancelled,
+        });
+    }
+    Ok(JamendoArtistPage {
+        artist,
+        releases: releases(songs, &hashes),
+    })
+}
+
+/// The artist id of the Jamendo track `track_id` (`jamendo:<id>`).
+pub fn artist_of(
+    http: &dyn HttpClient,
+    client_id: &str,
+    track_id: &str,
+    cancel: &CancelHandle,
+) -> Result<String, SoundscapeError> {
+    let number = jamendo::track_number(track_id).ok_or_else(|| SoundscapeError::BadAddress {
+        reason: "this song isn't from Jamendo".into(),
+    })?;
+    jamendo::results(http, client_id, &Ask::Track(number.into()), cancel)?
+        .iter()
+        .find(|item| text(&item["id"]).as_deref() == Some(number))
+        .and_then(|item| text(&item["artist_id"]))
+        .and_then(|id| clean_artist_id(&id).ok())
+        .ok_or_else(|| SoundscapeError::Server {
+            reason: "Jamendo doesn't say who made this song".into(),
+        })
+}
+
+fn cover_hash(
+    http: &dyn HttpClient,
+    url: &str,
+    covers: &Covers,
+    cancel: &CancelHandle,
+) -> Option<String> {
+    if let Some(hash) = covers.get(url) {
+        return Some(hash);
+    }
+    let response = http
+        .send_cancellable(&Request::get(url).timeout(COVER_TIMEOUT), cancel)
+        .ok()?;
+    if !(200..300).contains(&response.status)
+        || response.body.is_empty()
+        || response.body.len() > MAX_COVER_BYTES
+    {
+        return None;
+    }
+    let hash = hex(&Sha256::digest(&response.body));
+    covers.put(url, hash.clone());
+    Some(hash)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A song with what grouping needs from Jamendo's answer.
+#[derive(Clone, Debug)]
+pub struct Song {
+    pub track: CatalogueTrack,
+    /// Jamendo's album id, when the song is in one.
+    pub album_id: Option<String>,
+    pub album_name: Option<String>,
+    pub released: Option<String>,
+}
+
+/// The songs in a `/tracks` answer, each once.
+pub fn songs(items: &[Value]) -> Vec<Song> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .iter()
+        .filter_map(|item| {
+            let track = jamendo::track(item)?;
+            Some(Song {
+                album_id: text(&item["album_id"]).filter(|id| id != "0"),
+                album_name: tag(text(&item["album_name"]).as_deref()),
+                released: text(&item["releasedate"]).filter(|d| d.len() == 10),
+                track,
+            })
+        })
+        .filter(|s| seen.insert(s.track.id.clone()))
+        .collect()
+}
+
+/// Album ids with two or more songs in `songs`: Jamendo's own albums.
+fn real_albums(songs: &[Song]) -> BTreeMap<String, usize> {
+    let mut count = BTreeMap::new();
+    for s in songs {
+        if let Some(id) = &s.album_id {
+            *count.entry(id.clone()).or_insert(0) += 1;
+        }
+    }
+    count.retain(|_, n| *n >= 2);
+    count
+}
+
+/// The covers of songs not in a real album, each once, newest song first.
+pub fn loose_covers(songs: &[Song]) -> Vec<String> {
+    let albums = real_albums(songs);
+    let mut urls = Vec::new();
+    for s in songs {
+        let loose = s
+            .album_id
+            .as_ref()
+            .is_none_or(|id| !albums.contains_key(id));
+        if let (true, Some(url)) = (loose, &s.track.artwork_url) {
+            if !urls.contains(url) {
+                urls.push(url.clone());
+            }
+        }
+    }
+    urls
+}
+
+/// `songs` as releases, newest first. Jamendo's albums of two or more
+/// songs stay as they are. The other songs are grouped by cover: songs
+/// whose artwork has the same SHA-256 in `hashes`
+/// make one functional album, named by the name they share or else after
+/// the earliest song; a song left alone is a single.
+pub fn releases(songs: Vec<Song>, hashes: &HashMap<String, String>) -> Vec<JamendoRelease> {
+    let albums = real_albums(&songs);
+    // Groups keyed by release id, in first-seen order.
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: HashMap<String, Vec<Song>> = HashMap::new();
+    for s in songs {
+        let key = match &s.album_id {
+            Some(id) if albums.contains_key(id) => format!("album:{id}"),
+            // A cover that couldn't be compared leaves its song a single.
+            _ => match s.track.artwork_url.as_ref().and_then(|url| hashes.get(url)) {
+                Some(hash) => format!("cover:{hash}"),
+                None => format!("single:{}", s.track.id),
+            },
+        };
+        if !groups.contains_key(&key) {
+            order.push(key.clone());
+        }
+        groups.entry(key).or_default().push(s);
+    }
+    let mut out: Vec<JamendoRelease> = order
+        .into_iter()
+        .filter_map(|key| {
+            let songs = groups.remove(&key)?;
+            Some(release(key, songs))
+        })
+        .collect();
+    // Newest first; a release without a date goes last.
+    out.sort_by(|a, b| match (&a.released, &b.released) {
+        (Some(x), Some(y)) => y.cmp(x),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    out
+}
+
+fn release(key: String, mut songs: Vec<Song>) -> JamendoRelease {
+    let real = key.starts_with("album:");
+    if real {
+        songs.sort_by(|a, b| {
+            a.track
+                .number
+                .unwrap_or(u32::MAX)
+                .cmp(&b.track.number.unwrap_or(u32::MAX))
+                .then_with(|| a.track.title.cmp(&b.track.title))
+        });
+    } else {
+        // Oldest first, as the songs came out.
+        songs.sort_by(|a, b| {
+            a.released
+                .cmp(&b.released)
+                .then_with(|| a.track.title.cmp(&b.track.title))
+        });
+    }
+    let duration: f64 = songs.iter().filter_map(|s| s.track.duration_seconds).sum();
+    let kind = if songs.len() == 1 {
+        ReleaseKind::Single
+    } else if songs.len() <= EP_MAX_TRACKS && duration < EP_SECONDS {
+        ReleaseKind::Ep
+    } else {
+        ReleaseKind::Album
+    };
+    let released = songs.iter().filter_map(|s| s.released.clone()).min();
+    let first = &songs[0];
+    let shared_name = first
+        .album_name
+        .clone()
+        .filter(|name| songs.iter().all(|s| s.album_name.as_ref() == Some(name)));
+    let title = if real || songs.len() > 1 {
+        shared_name.unwrap_or_else(|| first.track.title.clone())
+    } else {
+        first.track.title.clone()
+    };
+    let id = if songs.len() == 1 && !real {
+        format!("single:{}", first.track.id)
+    } else {
+        key
+    };
+    JamendoRelease {
+        id,
+        title,
+        kind,
+        grouped: !real && songs.len() > 1,
+        released,
+        artwork_url: first.track.artwork_url.clone(),
+        duration_seconds: duration,
+        tracks: songs.into_iter().map(|s| s.track).collect(),
+    }
+}
+
+// MARK: Similar artists
+
+/// The most similar artists shown on an artist's page.
+pub const SIMILAR_ARTISTS: usize = 12;
+
+/// Artists like one artist: others popular this week in their main genre.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoSimilarArtists {
+    /// The genre they share, as shown ("Electronic").
+    pub genre: String,
+    pub artists: Vec<JamendoArtist>,
+}
+
+/// The genre most of an artist's songs carry (`/tracks` items with
+/// `musicinfo`), as a tag Jamendo can be asked by; ties go to the genre
+/// seen first.
+pub fn main_genre(items: &[Value]) -> Option<String> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for item in items {
+        let Some(genres) = item["musicinfo"]["tags"]["genres"].as_array() else {
+            continue;
+        };
+        for genre in genres.iter().filter_map(Value::as_str) {
+            let Ok(genre) = jamendo::clean_tag(genre) else {
+                continue;
+            };
+            match counts.iter_mut().find(|(g, _)| *g == genre) {
+                Some((_, count)) => *count += 1,
+                None => counts.push((genre, 1)),
+            }
+        }
+    }
+    // max_by_key keeps the last of equals; reversed, the first seen wins.
+    counts
+        .into_iter()
+        .rev()
+        .max_by_key(|(_, count)| *count)
+        .map(|(genre, _)| genre)
+}
+
+/// The artists of `/tracks` items other than `except`, each once, in the
+/// order their songs came, at most `max`. Only names: tracks carry no
+/// artist picture.
+pub fn other_artists(items: &[Value], except: &str, max: usize) -> Vec<JamendoArtist> {
+    let mut found: Vec<JamendoArtist> = Vec::new();
+    for item in items {
+        let Some(id) = text(&item["artist_id"]).and_then(|id| clean_artist_id(&id).ok()) else {
+            continue;
+        };
+        if id == except || found.iter().any(|a| a.id == id) {
+            continue;
+        }
+        let Some(name) = tag(text(&item["artist_name"]).as_deref()) else {
+            continue;
+        };
+        found.push(JamendoArtist {
+            id,
+            name,
+            image_url: None,
+            joined: None,
+        });
+        if found.len() == max {
+            break;
+        }
+    }
+    found
+}
+
+/// The `/artists` request for several artists at once.
+pub fn artists_by_id_url(client_id: &str, ids: &[String]) -> String {
+    format!(
+        "{API}/artists/?client_id={}&format=json&limit={}&id={}",
+        crate::listen::encode(client_id, false),
+        ids.len().max(1),
+        ids.join("+")
+    )
+}
+
+/// Artists like `artist_id`: the other artists popular this week in the
+/// genre most of their songs carry, with their pictures when Jamendo gives
+/// them (names alone otherwise). None found is an empty list, not an
+/// error.
+pub fn similar_artists(
+    http: &dyn HttpClient,
+    client_id: &str,
+    artist_id: &str,
+    cancel: &CancelHandle,
+) -> Result<JamendoSimilarArtists, SoundscapeError> {
+    let artist_id = clean_artist_id(artist_id)?;
+    // The same request as the artist's page, so usually already kept.
+    let own = jamendo::results(http, client_id, &Ask::Releases(artist_id.clone()), cancel)?;
+    let Some(genre) = main_genre(&own) else {
+        return Ok(JamendoSimilarArtists {
+            genre: String::new(),
+            artists: Vec::new(),
+        });
+    };
+    let popular = jamendo::results(http, client_id, &Ask::Genre(genre.clone()), cancel)?;
+    let mut artists = other_artists(&popular, &artist_id, SIMILAR_ARTISTS);
+    if !artists.is_empty() {
+        let ids: Vec<String> = artists.iter().map(|a| a.id.clone()).collect();
+        match jamendo::results_at(http, &artists_by_id_url(client_id, &ids), cancel) {
+            Ok(items) => {
+                let full: HashMap<String, JamendoArtist> = items
+                    .iter()
+                    .filter_map(artist)
+                    .map(|a| (a.id.clone(), a))
+                    .collect();
+                for known in &mut artists {
+                    if let Some(found) = full.get(&known.id) {
+                        *known = found.clone();
+                    }
+                }
+            }
+            Err(err) if cancel.is_cancelled() => return Err(err),
+            // Pictures are a nicety: names alone still lead to the pages.
+            Err(err) => forge_runtime::logging::warn!("similar artists' pictures: {err}"),
+        }
+    }
+    Ok(JamendoSimilarArtists {
+        genre: jamendo::genre_name(&genre),
+        artists,
+    })
+}

@@ -108,12 +108,9 @@ private struct ForgeBannerView<Action>: View {
         .padding(.horizontal, theme.spacing.l)
         .padding(.vertical, theme.spacing.m)
         .frame(maxWidth: 520)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous)
-                .strokeBorder(theme.colors.separator.opacity(0.6), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        // A passive notice, so ForgeUI's standard material, not glass
+        // (glass is for controls; docs/forgeui.md, materials).
+        .forgeMaterial(in: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous))
         .padding(.horizontal, theme.spacing.l)
         // Room above for the shadow, which would otherwise fall on the
         // last row: the bar's measured height includes this padding.

@@ -1,14 +1,15 @@
-# Smoke test: make a sketch, open its layers, add one, undo it. Uses a
-# temporary data folder, so it leaves no sketches behind.
-# Run with the phone plugged in:  forge ui run uitests/smoke.toml
-name = "Smoke: new sketch, add a layer, undo"
-app = "org.forgemobile.agentlab"
+# SK-1 on a real iPhone, in Device Lab (the app on the phone): make a
+# sketch, open its layers, add one, undo it. Uses a temporary data folder,
+# so it leaves no sketches behind.
+#   forge ui run examples/sketchbook/uitests/smoke.toml
+name = "SK-1: new sketch, add a layer, undo"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "sketchbook"] }
 
 [[step]]
 screenshot = "1-empty"

@@ -104,6 +104,54 @@ public var destination: Destination?
 
 Closing the sheet (Cancel, a swipe down, `dismiss()`) sets the destination back to nil. `.forgeFullScreenCover` and `.forgeNavigationDestination` work the same way; `$model.destination.forgeCase(\.edit)` and `.forgeIs(.add)` are the bindings underneath, for SwiftUI modifiers ForgeAppKit doesn't wrap. A case's computed property (`edit` above) is the one line per case this costs; there are no macros, so it builds with xtool on Linux.
 
+## Pushed pages: Layered Navigation
+
+A pushed page is a surface for one thing (an artist, a book, a conversation), not for the way it was reached, and opening a thing that is already open goes back to it instead of stacking a copy. Artist, then one of its albums, then the artist again from the album's header: the first artist page comes back with its scroll position and state, because it was never closed.
+
+Each route says which thing it shows; a screen that is new each time (a search, a practice set) has no identity and always stacks:
+
+```swift
+enum Route: ForgeSurfaceRoute {
+    case artist(id: String)
+    case album(id: String)
+    case search(String)
+
+    var surfaceID: String? {
+        switch self {
+        case .artist(let id): "artist:\(id)"
+        case .album(let id): "album:\(id)"
+        case .search: nil
+        }
+    }
+    // Things grow out of the tile they were opened from; lists push.
+    var surfaceStyle: ForgeSurfaceStyle { if case .search = self { .fullScreen } else { .stacked } }
+}
+```
+
+The identity names the entity, never the route used to reach it: an artist opened from a song resolves to `artist:<id>` before it is pushed (Soundscape's `ListenModel.canonical`), rather than having an identity of its own.
+
+The stack applies the rule to its path, so it holds however a push happens:
+
+```swift
+@State private var path: [Route] = []
+@Namespace private var surfaces
+
+NavigationStack(path: $path.forgeLayered()) {
+    ArtistList()
+        .forgeLayeredDestination(for: Route.self) { route in RouteView(route) }
+}
+.forgeSurfaces(surfaces, path: $path)
+```
+
+- A `NavigationLink(value:)` goes through the stack's path.
+- A page deeper in the stack opens a route with `@Environment(\.forgeOpenSurface)`: `openSurface(Route.album(id: id))`. Don't push beside the path with `navigationDestination(item:)`: SwiftUI keeps those out of the path, so the rule can't see them.
+- Links side by side (tiles in a grid or shelf, two names in a row) are `ForgeSurfaceLink(route) { tile }`: a `List` row pushes every `NavigationLink` in it on one tap, plain buttons one at a time.
+- Code that owns the path (Now Playing's Go to Artist, a deep link) calls `path.forgeOpen(route)`.
+- `.forgeSurfaceSource(route)` on a tile makes a stacked route zoom out of it and back into it (iOS 18 and later); with Reduce Motion it is an ordinary push.
+- Each tab keeps its own path, so tabs keep their own histories.
+
+`ForgeLayeredPath.settle` is the rule itself, Foundation only and tested on Linux. The parity rule `layered-navigation` checks every app pushes this way. The whole contract, behaviour and visual rules, is in [ios-ui.md](ios-ui.md#layered-navigation-the-contract).
+
 ## Loading: `ForgeLoad`
 
 One value instead of a result, a busy flag and an error that can disagree:
@@ -182,6 +230,16 @@ ForgeField("Pages", message: model.errors.message(for: "total_pages", otherwise:
 ```
 
 `fields` keeps the order they were reported in, so the first problem can be focused or announced; `summary` is every problem as one line each.
+
+After a refused save, move focus to the first field on screen that has a problem, so a keyboard or VoiceOver user lands on it and hears its message. Go by the form's order, not the order Rust reported them in (Pocket Library's `BookFormView`):
+
+```swift
+private static let fieldOrder: [(Field, String)] = [(.title, "title"), (.author, "author"), (.totalPages, "total_pages")]
+
+private func focusFirstProblem() {
+    if let first = Self.fieldOrder.first(where: { errors[$0.1] != nil }) { focused = first.0 }
+}
+```
 
 ## Files the person picks: `ForgePickedFile`
 

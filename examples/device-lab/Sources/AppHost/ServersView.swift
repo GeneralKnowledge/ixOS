@@ -24,8 +24,8 @@ struct ServersView: View {
         .navigationTitle("Servers")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Check Again", systemImage: "arrow.clockwise") {
-                    Task { await model.checkAll() }
+                ForgeButton("Check Again", systemImage: "arrow.clockwise") {
+                    await model.checkAll()
                 }
                 .accessibilityIdentifier("servers.check")
             }

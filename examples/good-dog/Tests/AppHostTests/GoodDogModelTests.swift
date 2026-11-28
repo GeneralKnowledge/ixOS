@@ -433,4 +433,14 @@ final class GoodDogModelTests: XCTestCase {
         XCTAssertNil(model.actionError)
         XCTAssertEqual(model.goal(id: goal.id)?.gate?.safety.first?.met, true)
     }
+
+    /// Defect hunt finding 5: the reminders' week learns of the clock
+    /// going forward, at 01:00 UTC on Sunday 28 March 2027 in London.
+    func testOffsetChangesFindTheClockGoingForward() throws {
+        let london = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        let saturday = Date(timeIntervalSince1970: 1_806_138_000) // 09:00 GMT
+        let changes = LocalTime.offsetChanges(in: london, from: saturday)
+        XCTAssertEqual(changes, [OffsetChange(atMs: 1_806_195_600_000, utcOffsetMinutes: 60)])
+        XCTAssertEqual(LocalTime.offsetChanges(in: london, from: saturday, days: 0), [])
+    }
 }

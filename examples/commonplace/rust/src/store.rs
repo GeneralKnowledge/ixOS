@@ -643,6 +643,47 @@ impl Store {
         })
     }
 
+    /// Applies checked folder moves in one transaction: the new folders
+    /// are made at the top and every feed moved, or nothing changes.
+    pub fn apply_folder_moves(
+        &mut self,
+        moves: &[crate::organise::FeedMove],
+        now_ms: i64,
+    ) -> Result<(), AppError> {
+        use crate::organise::Target;
+        self.db.transaction(|tx| {
+            let mut made: Vec<(String, i64)> = Vec::new();
+            for m in moves {
+                let folder = match &m.to {
+                    Target::Folder { id } => {
+                        folder_exists(tx, *id)?;
+                        Some(*id)
+                    }
+                    Target::NoFolder => None,
+                    Target::NewFolder { name } => {
+                        let name = folder_name(name)?;
+                        match made.iter().find(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+                            Some((_, id)) => Some(*id),
+                            None => {
+                                let id = ensure_folder(tx, None, &name, now_ms)?.0;
+                                made.push((name, id));
+                                Some(id)
+                            }
+                        }
+                    }
+                };
+                if tx.execute(
+                    "UPDATE feeds SET folder_id = ?2 WHERE id = ?1",
+                    params![m.feed_id, folder],
+                )? == 0
+                {
+                    return Err(AppError::NotFound);
+                }
+            }
+            Ok(())
+        })
+    }
+
     /// Puts a feed in a folder (at the top with None).
     pub fn move_feed(&mut self, feed: i64, folder: Option<i64>) -> Result<(), AppError> {
         self.db.transaction(|tx| {

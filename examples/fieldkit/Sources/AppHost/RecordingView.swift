@@ -55,9 +55,9 @@ struct RecordingView: View {
             }
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack {
-                    Stat(title: "Distance", value: TripFormat.distance(trip.distanceM))
-                    Stat(title: "Time", value: TripFormat.elapsed(trip, now: context.date))
-                    Stat(title: "Climb", value: TripFormat.distance(trip.climbM))
+                    ForgeStat("Distance", value: TripFormat.distance(trip.distanceM))
+                    ForgeStat("Time", value: TripFormat.elapsed(trip, now: context.date))
+                    ForgeStat("Climb", value: TripFormat.distance(trip.climbM))
                 }
             }
             HStack {
@@ -89,23 +89,5 @@ struct RecordingView: View {
             failedReads += 1
             log.warn("Couldn't read the recording's map data (\(failedReads) in a row): \(TripsModel.describe(error))")
         }
-    }
-}
-
-/// One number with its name under it.
-struct Stat: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack {
-            Text(value)
-                .font(.title3.monospacedDigit().bold())
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
     }
 }

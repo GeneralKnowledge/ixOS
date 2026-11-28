@@ -95,6 +95,9 @@ pub(crate) struct Node {
     /// (`device`), kept apart from the word code's so ending one doesn't
     /// end the other.
     pub device_allowed: Allowed,
+    /// Answers for trusted devices: also told what a device says in the
+    /// Hello when this device is the one that dialled.
+    pub devices: Arc<dyn DeviceInbound>,
     router: Router,
     /// The servers the endpoint uses now (`use_servers` changes them).
     servers: Mutex<RelayServers>,
@@ -176,7 +179,7 @@ impl Node {
             .accept(
                 DEVICE_ALPN,
                 DeviceHandler {
-                    host: devices,
+                    host: Arc::clone(&devices),
                     node: link,
                 },
             )
@@ -188,6 +191,7 @@ impl Node {
             sending,
             allowed,
             device_allowed,
+            devices,
             router,
             servers: Mutex::new(servers.clone()),
             servers_since: Mutex::new(std::time::Instant::now()),
@@ -287,6 +291,38 @@ impl Node {
             .take(crate::resolver::MAX_ADDRESSES)
             .map(|a| a.to_string())
             .collect()
+    }
+
+    /// The mailbox server this device collects from, if any (Hybrid only).
+    pub fn mailbox_server(&self) -> Option<iroh::PublicKey> {
+        forge_runtime::lock(&self.servers).mailbox()
+    }
+
+    /// Where to dial the mailbox server `id`: by key, and through this
+    /// device's relay (the mailbox runs on Relay's own server, on the same
+    /// relay), so it is reached without waiting on the lookup server;
+    /// iroh moves to a direct path when it can.
+    /// The relay this node uses now, if any.
+    pub fn relay(&self) -> Option<iroh::RelayUrl> {
+        forge_runtime::lock(&self.servers).relay()
+    }
+
+    pub fn mailbox_addr(&self, id: iroh::PublicKey) -> iroh::EndpointAddr {
+        let relay = forge_runtime::lock(&self.servers).relay();
+        iroh::EndpointAddr::from_parts(id, relay.map(iroh::TransportAddr::Relay))
+    }
+
+    /// What this device tells `peer` about its mailbox in the Hello (N3):
+    /// nothing when it uses no mailbox, which is always the case outside
+    /// Hybrid (the node's servers are those of the mode).
+    pub fn mailbox_intro(&self, peer: &iroh::PublicKey) -> Option<crate::mailbox::MailboxIntro> {
+        let server = forge_runtime::lock(&self.servers).mailbox()?;
+        Some(crate::mailbox::MailboxIntro::new(
+            self.endpoint.secret_key(),
+            peer,
+            &server,
+            forge_runtime::now_ms(),
+        ))
     }
 
     /// The UDP port the endpoint listens on (IPv4), for Bonjour.

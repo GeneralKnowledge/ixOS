@@ -41,7 +41,7 @@ struct MyDogView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        DogStack(model: model) {
             List {
                 if let dog = model.dog {
                     Section {
@@ -59,7 +59,7 @@ struct MyDogView: View {
                 if model.dog != nil, !model.pathways.isEmpty {
                     Section {
                         ForEach(model.goals) { goal in
-                            NavigationLink(value: GoalRoute(goalId: goal.id)) {
+                            NavigationLink(value: DogRoute.goal(goal.id)) {
                                 ForgeRow(
                                     goal.title,
                                     subtitle: goal.status == .finished
@@ -158,12 +158,6 @@ struct MyDogView: View {
                 }
             }
             .navigationTitle("My Dog")
-            .navigationDestination(for: GoalRoute.self) { route in
-                GoalPathView(model: model, goalId: route.goalId)
-            }
-            .navigationDestination(for: ExerciseRoute.self) { route in
-                ExerciseView(model: model, route: route)
-            }
             .sheet(isPresented: $choosingGoal) { GoalPickerView(model: model) }
             .toolbar {
                 if model.dog != nil {

@@ -1,5 +1,6 @@
 @preconcurrency import RelayFFI
 import ForgeAppKit
+import ForgeUI
 import Foundation
 import ImageIO
 import SwiftUI
@@ -82,6 +83,7 @@ struct StagedFile: Identifiable, Equatable {
 
 enum AttachmentFiles {
     /// Photos are sent at most this many pixels on their longer side.
+    // swift-only: Swift scales the photo before Rust sees it.
     static let maxPhotoPixels = 2048
 
     /// A fresh folder in the temporary directory for one picked file.
@@ -261,25 +263,15 @@ private struct PhotoThumbnail: View {
     @State private var failed = false
 
     var body: some View {
-        Group {
+        ForgeThumbnail(width: 220) {
             if let image {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .scaledToFill()
             } else {
-                ZStack {
-                    Color.secondary.opacity(0.15)
-                    if failed {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ProgressView()
-                    }
-                }
+                ForgeThumbnailPlaceholder(failed ? .failed : .loading, systemImage: "photo")
             }
         }
-        .frame(width: 220, height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .task(id: attachment.id) {
             guard image == nil else { return }
             guard let url = await model.localFile(for: attachment) else {
@@ -312,15 +304,13 @@ private struct DocumentRow: View {
                     .lineLimit(2)
                 Text(AttachmentFiles.sizeLabel(attachment.size))
                     .font(.caption)
-                    .opacity(0.8)
+                    // Full strength on our bubble: dimmed it fell below 4.5:1.
+                    .opacity(onMine ? 1 : 0.8)
             }
         }
         .padding(8)
         .frame(minWidth: 180, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
-        )
+        .background { RelayInset(onMine: onMine) }
         .task(id: attachment.id) {
             guard page == nil, let url = model.storedFile(for: attachment) else { return }
             page = await ForgeDocuments.thumbnail(
@@ -331,11 +321,11 @@ private struct DocumentRow: View {
     @ViewBuilder
     private var preview: some View {
         if let page {
-            Image(decorative: page, scale: displayScale)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 32, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            ForgeThumbnail(width: 32, aspectRatio: 32 / 42) {
+                Image(decorative: page, scale: displayScale)
+                    .resizable()
+                    .scaledToFit()
+            }
         } else {
             Image(systemName: AttachmentFiles.symbol(for: attachment.mime))
                 .font(.title2)
@@ -377,7 +367,8 @@ private struct VoiceMessageRow: View {
             }
             Text(AttachmentFiles.timeLabel(playing || progress > 0 ? player.position : duration ?? 0))
                 .font(.caption.monospacedDigit())
-                .opacity(0.8)
+                // Full strength on our bubble, which may be the failed red one.
+                .opacity(onMine ? 1 : 0.8)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
@@ -403,6 +394,7 @@ struct WaveformView: View {
     let bars: [Float]
     let progress: Double
     let onMine: Bool
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         GeometryReader { geometry in
@@ -420,8 +412,14 @@ struct WaveformView: View {
         .accessibilityHidden(true)
     }
 
-    private var played: Color { onMine ? .white : .accentColor }
-    private var unplayed: Color { onMine ? .white.opacity(0.4) : .secondary.opacity(0.4) }
+    // On our own bubble, the bubble's text colour (onAccent, or the
+    // failed bubble's); elsewhere Relay's accent.
+    private var played: AnyShapeStyle {
+        onMine ? AnyShapeStyle(.foreground) : AnyShapeStyle(theme.colors.accent.solid)
+    }
+    private var unplayed: AnyShapeStyle {
+        onMine ? AnyShapeStyle(.foreground.opacity(0.4)) : AnyShapeStyle(.secondary.opacity(0.4))
+    }
 }
 
 /// Files picked for the next message, above the text field. Tap × to drop
@@ -447,6 +445,24 @@ struct StagedFilesBar: View {
                     .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 }
             }
+        }
+    }
+}
+
+/// The inset behind a quote or a document inside a bubble. On our bubble it
+/// is an outline in the bubble's text colour, so the text keeps the bubble's
+/// own background (onAccent on the accent, tested in RelayColorsTests); a
+/// fill would lighten the light-mode accent under white text. On others'
+/// bubbles, a faint fill.
+struct RelayInset: View {
+    let onMine: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        if onMine {
+            shape.strokeBorder(.foreground.opacity(0.5), lineWidth: 1)
+        } else {
+            shape.fill(.primary.opacity(0.06))
         }
     }
 }

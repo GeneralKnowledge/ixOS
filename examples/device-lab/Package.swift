@@ -137,11 +137,13 @@ let package = Package(
                 .product(name: "ForgeUI", package: "forgekit"),
                 // The interaction patterns page (PatternsView.swift).
                 .product(name: "ForgeAppKit", package: "forgekit"),
-                // A2UI Lab only (A2uiLabSurface.swift).
+                // A2UI Lab only (A2uiLabSurface.swift, A2uiForgeCatalog.swift).
+                // BasicCatalog supplies component definitions only; every
+                // component is drawn in ForgeUI, so BasicCatalogSwiftUI (A2UI's
+                // own look) isn't a dependency.
                 .product(name: "A2UISwiftCore", package: "a2ui"),
                 .product(name: "A2UISwiftUI", package: "a2ui"),
                 .product(name: "BasicCatalog", package: "a2ui"),
-                .product(name: "BasicCatalogSwiftUI", package: "a2ui"),
             ],
             path: "Sources/AppHost",
             swiftSettings: hostSettings

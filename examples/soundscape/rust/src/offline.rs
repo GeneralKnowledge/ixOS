@@ -138,11 +138,14 @@ pub fn plan(offline: &OfflineFile, library: &Library) -> Plan {
         if !may_download(recording) {
             continue;
         }
-        let key = download_key(id, &recording.id);
+        // A recording a merged song brought is kept under that song, as
+        // localize_track looks for it.
+        let owner = recording.merged_from.as_deref().unwrap_or(id.as_str());
+        let key = download_key(owner, &recording.id);
         if !offline.files.contains_key(&key) {
             fetch.push(Fetch {
                 key: key.clone(),
-                track_id: id.clone(),
+                track_id: owner.to_string(),
                 recording_id: recording.id.clone(),
                 url: recording.audio_url.clone(),
                 extension: extension_of(&recording.audio_url),
@@ -179,7 +182,12 @@ pub fn localize_track(
     url: &dyn Fn(&str) -> Option<String>,
 ) {
     if let Some(recording) = &mut track.preferred {
-        if localize(&track.id, recording, offline, url) {
+        // A recording a merged song brought is kept under that song.
+        let owner = recording
+            .merged_from
+            .clone()
+            .unwrap_or_else(|| track.id.clone());
+        if localize(&owner, recording, offline, url) {
             track.downloaded = true;
         }
     }
@@ -270,7 +278,11 @@ pub fn state_of(offline: &OfflineFile, progress: &Progress, track: &LibraryTrack
             reason: "its source doesn't allow downloading".into(),
         };
     }
-    let key = download_key(&track.id, &recording.id);
+    let owner = recording
+        .merged_from
+        .as_deref()
+        .unwrap_or(track.id.as_str());
+    let key = download_key(owner, &recording.id);
     if offline.files.contains_key(&key) {
         DownloadState::Downloaded
     } else if progress.current.as_deref() == Some(key.as_str()) {
@@ -327,6 +339,19 @@ pub fn download(
     destination: &Path,
     cancel: &CancelHandle,
 ) -> Result<u64, SoundscapeError> {
+    // A file the app made itself (the test catalogue) is copied. No other
+    // song's download may read a file on the phone.
+    if let Some(path) = fetch.url.strip_prefix("file://") {
+        if crate::test_catalogue::spec(&fetch.recording_id).is_none() {
+            return Err(SoundscapeError::Server {
+                reason: "this recording isn't a download".into(),
+            });
+        }
+        let source = crate::listen::decode(path);
+        return std::fs::copy(&source, destination).map_err(|err| SoundscapeError::Storage {
+            reason: format!("copy the recording: {err}"),
+        });
+    }
     let response = forge_net::download_to_file(
         http,
         &Request::get(fetch.url.clone()),

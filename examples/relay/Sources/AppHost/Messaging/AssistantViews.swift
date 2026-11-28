@@ -7,18 +7,24 @@ import SwiftUI
 /// conversations with a model that runs on this iPhone, no account needed.
 struct AssistantTab: View {
     let model: AssistantModel
-    @State private var path: [String] = []
+    @State private var path: [AssistantRoute] = []
 
     var body: some View {
-        NavigationStack(path: $path) {
-            AssistantListView(model: model) { path.append($0) }
-                .navigationDestination(for: String.self) { id in
-                    AssistantChatView(model: model, conversationId: id)
+        NavigationStack(path: $path.forgeLayered()) {
+            AssistantListView(model: model) { path.forgeOpen(AssistantRoute(conversationId: $0)) }
+                .forgeLayeredDestination(for: AssistantRoute.self) { route in
+                    AssistantChatView(model: model, conversationId: route.conversationId)
                 }
         }
         // One alert for the list and the open conversation.
         .forgeAlert(failure: Bindable(model).actionError)
     }
+}
+
+/// An assistant conversation in the Assistant tab's stack.
+struct AssistantRoute: ForgeSurfaceRoute {
+    let conversationId: String
+    var surfaceID: String? { "assistant:\(conversationId)" }
 }
 
 /// The assistant conversations, most recent first. New starts one with the
@@ -68,6 +74,8 @@ struct AssistantListView: View {
                 }
             }
         }
+        // Full width, like the Chats list.
+        .listStyle(.plain)
         .navigationTitle("Assistant")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -221,7 +229,7 @@ struct AssistantChatView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .relayFloatingBar()
     }
 
     private func send() {
@@ -236,6 +244,7 @@ private struct AssistantBubble: View {
     /// The text so far while this answer is being written.
     let liveText: String?
     let character: AssistantCharacter?
+    @Environment(\.forgeTheme) private var theme
 
     private var mine: Bool { message.role == .user }
     private var text: String { liveText ?? message.text }
@@ -247,9 +256,9 @@ private struct AssistantBubble: View {
                 content
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .foregroundStyle(mine ? Color.white : Color.primary)
+                    .foregroundStyle(mine ? theme.colors.accent.onSolid : Color.primary)
                     .background(
-                        mine ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.tertiary),
+                        mine ? AnyShapeStyle(theme.colors.accent.solid) : AnyShapeStyle(.fill.tertiary),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
                     .textSelection(.enabled)

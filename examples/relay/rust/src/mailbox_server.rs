@@ -551,6 +551,30 @@ impl MailboxStore {
     }
 
     /// What waits for `owner`, oldest first.
+    /// How many deposit passes `owner` has registered.
+    pub fn passes_of(&self, owner: &[u8; 32]) -> usize {
+        self.sql(|c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM passes WHERE owner = ?1",
+                params![&owner[..]],
+                |r| r.get::<_, i64>(0),
+            )
+        })
+        .map_or(0, |n| n as usize)
+    }
+
+    /// How many items and receipts wait for `owner`, unexpired or not.
+    pub fn waiting_for(&self, owner: &[u8; 32]) -> usize {
+        self.sql(|c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM items WHERE owner = ?1",
+                params![&owner[..]],
+                |r| r.get::<_, i64>(0),
+            )
+        })
+        .map_or(0, |n| n as usize)
+    }
+
     pub(crate) fn list(&self, owner: &[u8; 32], now: i64) -> Result<Vec<Waiting>, Refusal> {
         self.sql(|c| {
             let mut q = c.prepare(
@@ -925,8 +949,6 @@ impl ProtocolHandler for MailboxServer {
 }
 
 /// Why a call to the mailbox didn't do what was asked.
-// The client in step 3 calls it; until then only the tests do.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum CallError {
     #[error("the mailbox refused: {0}")]
@@ -942,13 +964,10 @@ impl From<RelayError> for CallError {
 }
 
 /// A connection to a mailbox server, as its caller's endpoint.
-// The client in step 3 calls it; until then only the tests do.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct MailboxClient {
     conn: Connection,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl MailboxClient {
     pub(crate) async fn connect(
         endpoint: &Endpoint,
@@ -1102,10 +1121,22 @@ pub struct ServeOptions {
     pub lookup: Option<url::Url>,
 }
 
-/// Runs a mailbox server until the process is stopped: the endpoint, the
-/// protocol, and a sweep of expired items every ten minutes. Prints the
-/// endpoint id devices dial it by. Its key is `device.key` in `dir`.
-pub fn serve(options: ServeOptions) -> Result<std::convert::Infallible, RelayError> {
+/// A mailbox server running in this process: its endpoint and store.
+pub struct Running {
+    pub router: iroh::protocol::Router,
+    pub store: Arc<MailboxStore>,
+}
+
+impl Running {
+    /// The endpoint id devices dial it by.
+    pub fn id(&self) -> iroh::EndpointId {
+        self.router.endpoint().id()
+    }
+}
+
+/// Starts a mailbox server on the current Tokio runtime: the endpoint and
+/// the protocol. Its key is `device.key` in `dir`.
+pub async fn start(options: &ServeOptions) -> Result<Running, RelayError> {
     use iroh::endpoint::presets;
     use iroh::RelayMode;
     // The lookup server publishes relay addresses only: without a relay,
@@ -1115,43 +1146,47 @@ pub fn serve(options: ServeOptions) -> Result<std::convert::Infallible, RelayErr
             reason: "--lookup needs --relay: the lookup server publishes the relay address".into(),
         });
     }
+    std::fs::create_dir_all(&options.dir).map_err(|e| RelayError::Storage {
+        reason: e.to_string(),
+    })?;
+    let key = crate::node::device_key(&options.dir)?;
+    let store = Arc::new(MailboxStore::open(&options.dir)?);
+    let mut builder = Endpoint::builder(presets::Minimal)
+        .secret_key(key)
+        .relay_mode(match &options.relay {
+            Some(url) => RelayMode::Custom(iroh::RelayMap::from(iroh::RelayUrl::from(url.clone()))),
+            None => RelayMode::Disabled,
+        });
+    if let Some(url) = &options.lookup {
+        builder = builder.address_lookup(iroh::address_lookup::pkarr::PkarrPublisher::builder(
+            url.clone(),
+        ));
+    }
+    if options.port != 0 {
+        builder = builder
+            .clear_ip_transports()
+            .bind_addr(std::net::SocketAddr::from((
+                std::net::Ipv4Addr::UNSPECIFIED,
+                options.port,
+            )))
+            .map_err(connection)?;
+    }
+    let endpoint = builder.bind().await.map_err(connection)?;
+    let router = iroh::protocol::Router::builder(endpoint)
+        .accept(MAILBOX_ALPN, MailboxServer::new(Arc::clone(&store)))
+        .spawn();
+    Ok(Running { router, store })
+}
+
+/// Runs a mailbox server until the process is stopped: [`start`], and a
+/// sweep of expired items every ten minutes. Prints the endpoint id
+/// devices dial it by.
+pub fn serve(options: ServeOptions) -> Result<std::convert::Infallible, RelayError> {
     crate::code::TOKIO.block_on(async move {
-        std::fs::create_dir_all(&options.dir).map_err(|e| RelayError::Storage {
-            reason: e.to_string(),
-        })?;
-        let key = crate::node::device_key(&options.dir)?;
-        let store = Arc::new(MailboxStore::open(&options.dir)?);
-        let mut builder = Endpoint::builder(presets::Minimal)
-            .secret_key(key)
-            .relay_mode(match &options.relay {
-                Some(url) => {
-                    RelayMode::Custom(iroh::RelayMap::from(iroh::RelayUrl::from(url.clone())))
-                }
-                None => RelayMode::Disabled,
-            });
-        if let Some(url) = &options.lookup {
-            builder = builder.address_lookup(iroh::address_lookup::pkarr::PkarrPublisher::builder(
-                url.clone(),
-            ));
-        }
-        if options.port != 0 {
-            builder = builder
-                .clear_ip_transports()
-                .bind_addr(std::net::SocketAddr::from((
-                    std::net::Ipv4Addr::UNSPECIFIED,
-                    options.port,
-                )))
-                .map_err(connection)?;
-        }
-        let endpoint = builder.bind().await.map_err(connection)?;
-        let router = iroh::protocol::Router::builder(endpoint.clone())
-            .accept(MAILBOX_ALPN, MailboxServer::new(Arc::clone(&store)))
-            .spawn();
-        println!("relay-mailbox {}", endpoint.id());
-        // Runs until the process is stopped; the router serves meanwhile.
-        let _router = router;
+        let running = start(&options).await?;
+        println!("relay-mailbox {}", running.id());
         loop {
-            let gone = store.sweep(now_ms());
+            let gone = running.store.sweep(now_ms());
             if gone > 0 {
                 log::info!("mailbox: {gone} expired items deleted unread");
             }

@@ -105,6 +105,7 @@ let package = Package(
                 "RelayFFI",
                 .product(name: "ForgeKit", package: "forgekit"),
                 .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeUI", package: "forgekit"),
             ],
             path: "Tests/AppHostTests",
             linkerSettings: rustLibrary

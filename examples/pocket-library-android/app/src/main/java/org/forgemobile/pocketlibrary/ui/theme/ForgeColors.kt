@@ -96,7 +96,7 @@ data class ForgeColors(
 
 data class ForgeSpacing(val xxs: Float, val xs: Float, val s: Float, val m: Float, val l: Float, val xl: Float, val xxl: Float)
 
-data class ForgeRadius(val s: Float, val m: Float, val l: Float)
+data class ForgeRadius(val s: Float, val m: Float, val l: Float, val xl: Float)
 
 /** iOS's text styles; ForgeTheme maps each to the Material 3 style that plays its part. */
 enum class ForgeTextStyle { LARGE_TITLE, TITLE, TITLE2, TITLE3, HEADLINE, SUBHEADLINE, BODY, CALLOUT, FOOTNOTE, CAPTION, CAPTION2 }

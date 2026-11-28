@@ -98,6 +98,7 @@ pub fn is_mbid(text: &str) -> bool {
 /// Words for a search field: what was typed, with Lucene's special
 /// characters taken out so they can't change the query's shape.
 fn words(text: &str) -> String {
+    // cut: words from a track's tags for a lookup, not typed
     let cleaned: String = text
         .chars()
         .take(MAX_QUERY_CHARS)

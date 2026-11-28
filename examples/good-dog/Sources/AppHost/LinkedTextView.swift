@@ -42,7 +42,7 @@ private struct TermSheet: ViewModifier {
                 return .handled
             })
             .sheet(item: $termId) { term in
-                NavigationStack {
+                DogStack(model: model) {
                     TermView(model: model, termId: term.id)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
@@ -93,7 +93,7 @@ struct TermView: View {
                 if !term.related.isEmpty {
                     Section("Related words") {
                         ForEach(term.related) { related in
-                            NavigationLink(value: TermRoute(id: related.id)) {
+                            NavigationLink(value: DogRoute.term(related.id)) {
                                 TermRow(term: related)
                             }
                             .accessibilityIdentifier("term.related.\(related.id)")
@@ -103,7 +103,7 @@ struct TermView: View {
                 if !term.exercises.isEmpty {
                     Section("Practise it") {
                         ForEach(term.exercises) { exercise in
-                            NavigationLink(value: ExerciseRoute(exerciseId: exercise.id, activityId: nil)) {
+                            NavigationLink(value: DogRoute.exercise(ExerciseRoute(exerciseId: exercise.id, activityId: nil))) {
                                 ExerciseRow(exercise: exercise)
                             }
                             .accessibilityIdentifier("term.exercise.\(exercise.id)")
@@ -115,16 +115,10 @@ struct TermView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .navigationDestination(for: TermRoute.self) { TermView(model: model, termId: $0.id) }
-            .navigationDestination(for: ExerciseRoute.self) { ExerciseView(model: model, route: $0) }
         } else {
             ForgeStateView.empty("Term Not Found", systemImage: "questionmark.circle")
         }
     }
-}
-
-struct TermRoute: Hashable {
-    let id: String
 }
 
 struct TermRow: View {

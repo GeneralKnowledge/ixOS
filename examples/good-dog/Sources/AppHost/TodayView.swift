@@ -9,7 +9,7 @@ struct TodayView: View {
     @State private var choosingGoal = false
 
     var body: some View {
-        NavigationStack {
+        DogStack(model: model) {
             List {
                 if let plan = model.today {
                     Section {
@@ -29,7 +29,7 @@ struct TodayView: View {
                     }
                     Section {
                         if let focus = plan.goalFocus {
-                            NavigationLink(value: GoalRoute(goalId: focus.goalId)) {
+                            NavigationLink(value: DogRoute.goal(focus.goalId)) {
                                 GoalFocusRow(focus: focus)
                             }
                             .accessibilityIdentifier("today.goal")
@@ -46,7 +46,7 @@ struct TodayView: View {
                     }
                     Section {
                         ForEach(Array(plan.activities.enumerated()), id: \.element.id) { index, activity in
-                            NavigationLink(value: ExerciseRoute(exerciseId: activity.exerciseId, activityId: activity.id)) {
+                            NavigationLink(value: DogRoute.exercise(ExerciseRoute(exerciseId: activity.exerciseId, activityId: activity.id))) {
                                 ActivityRow(activity: activity)
                             }
                             .accessibilityIdentifier("today.activity.\(index)")
@@ -113,18 +113,13 @@ struct TodayView: View {
                 }
             }
             .navigationTitle("Today")
-            .navigationDestination(for: ExerciseRoute.self) { route in
-                ExerciseView(model: model, route: route)
-            }
-            .navigationDestination(for: GoalRoute.self) { route in
-                GoalPathView(model: model, goalId: route.goalId)
-            }
             .sheet(isPresented: $choosingGoal) { GoalPickerView(model: model) }
         }
     }
 }
 
 /// Which exercise to show, and the plan activity it belongs to, if any.
+/// An exercise to show, and the activity it was opened from, if any.
 struct ExerciseRoute: Hashable {
     let exerciseId: String
     let activityId: UInt64?
@@ -141,6 +136,7 @@ private struct ProgressRow: View {
             Text(allDone ? "All done for today" : "\(plan.totalMinutes) minutes with \(dogName)")
                 .font(.headline)
             ProgressView(value: Double(plan.doneCount), total: Double(max(plan.activities.count, 1)))
+                .progressViewStyle(.forge)
                 .accessibilityLabel("Activities done")
                 .accessibilityValue("\(plan.doneCount) of \(plan.activities.count)")
             if allDone {
@@ -211,7 +207,7 @@ private struct GoalFocusRow: View {
                 ForgeBadge("\(focus.stageNumber) of \(focus.stageCount)", systemImage: "flag", tone: .accent)
             }
             ProgressView(value: Double(focus.stageNumber - 1), total: Double(max(focus.stageCount, 1)))
-                .forgeTint(.accent)
+                .progressViewStyle(.forge)
                 .accessibilityHidden(true)
             Text("Now: \(focus.stageTitle)")
                 .font(.subheadline.weight(.semibold))

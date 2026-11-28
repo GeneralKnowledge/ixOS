@@ -4,13 +4,13 @@
 #   forge ui run examples/commonplace/uitests/bad-address.toml
 
 name = "CP-2: a bad feed address is refused"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace"] }
 
 [[step]]
 tap = { id = "feeds.addFirst" }
@@ -19,7 +19,7 @@ tap = { id = "feeds.addFirst" }
 type = { id = "addFeed.url", text = "not an address" }
 
 [[step]]
-tap = { id = "addFeed.save" }
+tap = { id = "addFeed.confirm" }
 
 [[step]]
 expect = { id = "alert.ok" }

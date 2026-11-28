@@ -10,9 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::training::{local_day, Stored};
-use crate::{native, LocalTime};
-
-use good_dog_core::coaching::DAY_MS;
+use crate::{native, LocalTime, OffsetChange};
 
 /// The notification category with the two buttons.
 pub(crate) const CATEGORY: &str = "gooddog.reminder";
@@ -46,23 +44,30 @@ impl Stored {
 
     /// The reminders that should be pending now: one per day for the next
     /// week, from today if it's still to come and today is still open.
+    /// Every day uses today's offset from UTC; see [`Self::reminders_with`].
+    #[cfg(test)]
     pub(crate) fn reminders(&self, now: LocalTime) -> Vec<native::LocalNotification> {
+        self.reminders_with(now, &[])
+    }
+
+    /// The reminders, with the clock changes the phone expects this week
+    /// (`changes`): a day after a change gets its reminder at the owner's
+    /// time by the new offset, not an hour early or late.
+    pub(crate) fn reminders_with(
+        &self,
+        now: LocalTime,
+        changes: &[OffsetChange],
+    ) -> Vec<native::LocalNotification> {
         let (Some(at_minute), Some(dog)) = (self.reminder.at_minute, &self.dog) else {
             return Vec::new();
         };
         let today = local_day(now);
-        let offset_ms = i64::from(now.utc_offset_minutes) * 60_000;
         (today..today + DAYS_AHEAD)
             .filter(|&day| {
                 day != today
                     || (self.reminder.skipped_day != Some(today) && !self.practised_on(today, now))
             })
-            .map(|day| {
-                (
-                    day,
-                    day * DAY_MS + i64::from(at_minute) * 60_000 - offset_ms,
-                )
-            })
+            .map(|day| (day, unix_ms_at(day, at_minute, now, changes)))
             .filter(|&(_, at)| at > now.ms)
             .map(|(day, at)| {
                 let mut n = native::LocalNotification::now(
@@ -77,6 +82,19 @@ impl Stored {
             })
             .collect()
     }
+}
+
+/// The moment `at_minute` past local midnight on local `day` happens, by
+/// the offset in force then (`forge_runtime::time::local_time_ms`).
+fn unix_ms_at(day: i64, at_minute: u32, now: LocalTime, changes: &[OffsetChange]) -> i64 {
+    let changes: Vec<forge_runtime::time::OffsetChange> = changes
+        .iter()
+        .map(|c| forge_runtime::time::OffsetChange {
+            at_ms: c.at_ms,
+            utc_offset_minutes: c.utc_offset_minutes,
+        })
+        .collect();
+    forge_runtime::time::local_time_ms(day, at_minute, now.ms, now.utc_offset_minutes, &changes)
 }
 
 /// The local day a reminder is for, from its id.

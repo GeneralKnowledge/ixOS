@@ -580,6 +580,14 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
     func add(title: String) async throws  -> UInt64
     
     /**
+     * The items not yet done that have a due day, split into overdue, due
+     * `today` and upcoming. `today` is the phone's local day
+     * (`YYYY-MM-DD`): Swift knows the time zone, Rust doesn't need to.
+     * Never waits for a command.
+     */
+    func agenda(today: String)  -> Agenda
+    
+    /**
      * The host's background time ran out: finishing work stops.
      */
     func backgroundTimeExpired() 
@@ -602,7 +610,7 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
     func events()  -> RuntimeEvents?
     
     /**
-     * Writes the checklist as a spreadsheet (Item, Done) for sharing;
+     * Writes the checklist as a spreadsheet (Item, Done, Due) for sharing;
      * returns the file's path. Finishing work, like `export_text`.
      */
     func exportCsv(cancellation: Cancellation?) async throws  -> String
@@ -617,7 +625,7 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
     
     /**
      * Adds the rows of a spreadsheet at `path` (an "Item" column, and
-     * optionally "Done") after the existing items, in one save. Rows it
+     * optionally "Done" and "Due") after the existing items, in one save. Rows it
      * can't use are skipped and listed; it adds nothing if none are usable.
      */
     func importCsv(path: String) async throws  -> CsvImportSummary
@@ -652,6 +660,12 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
      * the background (`Stopped { Interrupted }`) and by shutdown.
      */
     func search(query: String, cancellation: Cancellation?) async throws  -> [Item]
+    
+    /**
+     * Sets the local day an item is due (`YYYY-MM-DD`), or clears it with
+     * none. A day that isn't one is refused (`InvalidDay`).
+     */
+    func setDue(id: UInt64, due: String?) async throws 
     
     /**
      * The host reports the application lifecycle phase.
@@ -767,6 +781,22 @@ open func add(title: String)async throws  -> UInt64  {
 }
     
     /**
+     * The items not yet done that have a due day, split into overdue, due
+     * `today` and upcoming. `today` is the phone's local day
+     * (`YYYY-MM-DD`): Swift knows the time zone, Rust doesn't need to.
+     * Never waits for a command.
+     */
+open func agenda(today: String) -> Agenda  {
+    return try!  FfiConverterTypeAgenda_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_checklist_core_fn_method_checklistcore_agenda(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(today),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The host's background time ran out: finishing work stops.
      */
 open func backgroundTimeExpired()  {try! rustCall() {
@@ -823,7 +853,7 @@ open func events() -> RuntimeEvents?  {
 }
     
     /**
-     * Writes the checklist as a spreadsheet (Item, Done) for sharing;
+     * Writes the checklist as a spreadsheet (Item, Done, Due) for sharing;
      * returns the file's path. Finishing work, like `export_text`.
      */
 open func exportCsv(cancellation: Cancellation?)async throws  -> String  {
@@ -866,7 +896,7 @@ open func exportText(cancellation: Cancellation?)async throws  -> String  {
     
     /**
      * Adds the rows of a spreadsheet at `path` (an "Item" column, and
-     * optionally "Done") after the existing items, in one save. Rows it
+     * optionally "Done" and "Due") after the existing items, in one save. Rows it
      * can't use are skipped and listed; it adds nothing if none are usable.
      */
 open func importCsv(path: String)async throws  -> CsvImportSummary  {
@@ -987,6 +1017,26 @@ open func search(query: String, cancellation: Cancellation?)async throws  -> [It
 }
     
     /**
+     * Sets the local day an item is due (`YYYY-MM-DD`), or clears it with
+     * none. A day that isn't one is refused (`InvalidDay`).
+     */
+open func setDue(id: UInt64, due: String?)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_checklist_core_fn_method_checklistcore_set_due(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterOptionString.lower(due)
+                )
+            },
+            pollFunc: ffi_checklist_core_rust_future_poll_void,
+            completeFunc: ffi_checklist_core_rust_future_complete_void,
+            freeFunc: ffi_checklist_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeChecklistError_lift
+        )
+}
+    
+    /**
      * The host reports the application lifecycle phase.
      */
 open func setPhase(phase: AppPhase)  {try! rustCall() {
@@ -1090,6 +1140,69 @@ public func FfiConverterTypeChecklistCore_lower(_ value: ChecklistCore) -> UInt6
 
 
 /**
+ * The items still to do that have a due day, sorted by that day (then in
+ * the order they were added): what is late, what is due today, what is
+ * coming.
+ */
+public struct Agenda: Equatable, Hashable {
+    public var overdue: [Item]
+    public var today: [Item]
+    public var upcoming: [Item]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(overdue: [Item], today: [Item], upcoming: [Item]) {
+        self.overdue = overdue
+        self.today = today
+        self.upcoming = upcoming
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension Agenda: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAgenda: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Agenda {
+        return
+            try Agenda(
+                overdue: FfiConverterSequenceTypeItem.read(from: &buf), 
+                today: FfiConverterSequenceTypeItem.read(from: &buf), 
+                upcoming: FfiConverterSequenceTypeItem.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Agenda, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeItem.write(value.overdue, into: &buf)
+        FfiConverterSequenceTypeItem.write(value.today, into: &buf)
+        FfiConverterSequenceTypeItem.write(value.upcoming, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgenda_lift(_ buf: RustBuffer) throws -> Agenda {
+    return try FfiConverterTypeAgenda.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgenda_lower(_ value: Agenda) -> RustBuffer {
+    return FfiConverterTypeAgenda.lower(value)
+}
+
+
+/**
  * What `import_csv` did: how many items it added, and why it skipped the
  * rows it couldn't use ("Line 4: an item needs a title").
  */
@@ -1151,13 +1264,25 @@ public struct Item: Equatable, Hashable {
     public var id: UInt64
     public var title: String
     public var done: Bool
+    /**
+     * The local day it is due, as `YYYY-MM-DD`, or none. A day, not a
+     * moment: the phone decides which day is today (see [`agenda`]).
+     * Added after version 1 shipped; a file without it opens with none.
+     */
+    public var due: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: UInt64, title: String, done: Bool) {
+    public init(id: UInt64, title: String, done: Bool, 
+        /**
+         * The local day it is due, as `YYYY-MM-DD`, or none. A day, not a
+         * moment: the phone decides which day is today (see [`agenda`]).
+         * Added after version 1 shipped; a file without it opens with none.
+         */due: String?) {
         self.id = id
         self.title = title
         self.done = done
+        self.due = due
     }
 
     
@@ -1178,7 +1303,8 @@ public struct FfiConverterTypeItem: FfiConverterRustBuffer {
             try Item(
                 id: FfiConverterUInt64.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
-                done: FfiConverterBool.read(from: &buf)
+                done: FfiConverterBool.read(from: &buf), 
+                due: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -1186,6 +1312,7 @@ public struct FfiConverterTypeItem: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.id, into: &buf)
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterBool.write(value.done, into: &buf)
+        FfiConverterOptionString.write(value.due, into: &buf)
     }
 }
 
@@ -1272,6 +1399,8 @@ enum ChecklistError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError
     case EmptyTitle
     case TitleTooLong(max: UInt32
     )
+    case InvalidDay(day: String
+    )
     case NotFound(id: UInt64
     )
     case InUse
@@ -1319,18 +1448,21 @@ public struct FfiConverterTypeChecklistError: FfiConverterRustBuffer {
         case 2: return .TitleTooLong(
             max: try FfiConverterUInt32.read(from: &buf)
             )
-        case 3: return .NotFound(
+        case 3: return .InvalidDay(
+            day: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .NotFound(
             id: try FfiConverterUInt64.read(from: &buf)
             )
-        case 4: return .InUse
-        case 5: return .Corrupt(
+        case 5: return .InUse
+        case 6: return .Corrupt(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .NewerData
-        case 7: return .Storage(
+        case 7: return .NewerData
+        case 8: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Stopped(
+        case 9: return .Stopped(
             kind: try FfiConverterTypeErrorKind.read(from: &buf)
             )
 
@@ -1354,31 +1486,36 @@ public struct FfiConverterTypeChecklistError: FfiConverterRustBuffer {
             FfiConverterUInt32.write(max, into: &buf)
             
         
-        case let .NotFound(id):
+        case let .InvalidDay(day):
             writeInt(&buf, Int32(3))
+            FfiConverterString.write(day, into: &buf)
+            
+        
+        case let .NotFound(id):
+            writeInt(&buf, Int32(4))
             FfiConverterUInt64.write(id, into: &buf)
             
         
         case .InUse:
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
         
         
         case let .Corrupt(reason):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .NewerData:
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
         
         
         case let .Storage(reason):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Stopped(kind):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             
         }
@@ -1489,6 +1626,30 @@ public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustB
     return FfiConverterTypeForgeLogLevel.lower(value)
 }
 
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+    typealias SwiftType = String?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1699,6 +1860,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_checklist_core_checksum_method_checklistcore_add() != 43170) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_checklist_core_checksum_method_checklistcore_agenda() != 38794) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_checklist_core_checksum_method_checklistcore_background_time_expired() != 36054) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1711,13 +1875,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_checklist_core_checksum_method_checklistcore_events() != 59558) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_checklist_core_checksum_method_checklistcore_export_csv() != 31376) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_export_csv() != 20484) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_checklist_core_checksum_method_checklistcore_export_text() != 43962) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_checklist_core_checksum_method_checklistcore_import_csv() != 19902) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_import_csv() != 22895) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_checklist_core_checksum_method_checklistcore_items() != 6887) {
@@ -1739,6 +1903,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_checklist_core_checksum_method_checklistcore_search() != 13141) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_checklist_core_checksum_method_checklistcore_set_due() != 39393) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_checklist_core_checksum_method_checklistcore_set_phase() != 40650) {

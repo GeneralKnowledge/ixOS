@@ -9,10 +9,10 @@
 #   forge ui run examples/good-dog/uitests/guided.toml
 
 name = "GD-7: guided exercise session"
-app = "org.forgemobile.gooddog"
+app = "org.forgemobile.devicelab"
 
 [[step]]
-launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog"] }
+launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog", "-launchApp", "goodDog"] }
 
 [[step]]
 expect = { id = "today.progress" }

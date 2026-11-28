@@ -38,6 +38,7 @@ mod feed;
 mod full;
 mod model;
 mod opml;
+pub mod organise;
 mod store;
 mod suggested;
 
@@ -77,6 +78,8 @@ forge_runtime::log_export!();
 
 /// How long one feed may take to answer.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+/// Who Commonplace says it is to the sites it reads, through either client.
+pub(crate) const USER_AGENT: &str = "Commonplace/0.1 (ixOS)";
 /// The most full articles one refresh fetches; the rest wait for the next.
 const FULL_ARTICLES_PER_REFRESH: u32 = 10;
 
@@ -143,8 +146,8 @@ impl AppCore {
         // URLSession once the host has installed its services (on iOS, just
         // after this core is made); ureq before that, and in Linux tests.
         let http = Arc::new(native::http::HttpService::prefer_installed(
-            Arc::new(UreqClient::new()),
-            |c| c,
+            Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+            |c| c.user_agent(USER_AGENT),
         ));
         let core = Self::open(storage_directory, http.clone(), full::system_lookup)?;
         // Only for the log line saying which transport fetched the feeds.
@@ -868,6 +871,39 @@ impl AppCore {
             .await
     }
 
+    /// "Organise my feeds": the feeds and folders a folder plan may use,
+    /// as JSON ([`organise::OrganiseSnapshot`]). JSON because it travels
+    /// through Swift to Device Lab's A2UI Lab, which reads it with these
+    /// same Rust types.
+    pub fn organise_snapshot_json(&self) -> String {
+        let snapshot = self.snapshot.get();
+        let organise = organise::snapshot(&snapshot.feeds, &snapshot.folders);
+        serde_json::to_string(&organise).unwrap_or_default()
+    }
+
+    /// Applies a confirmed folder plan ([`organise::FolderPlan`] as JSON):
+    /// checks it again against the library as it is now, makes its new
+    /// folders and moves its feeds. Refused whole if anything moved since
+    /// the plan was made. Returns how many feeds moved.
+    pub async fn apply_folder_plan_json(&self, plan_json: String) -> Result<u32, AppError> {
+        let plan: organise::FolderPlan =
+            serde_json::from_str(&plan_json).map_err(|_| AppError::InvalidInput {
+                reason: "The folder plan isn't in the expected form.".into(),
+            })?;
+        self.rt
+            .command("apply-folder-plan", move |state| {
+                let snapshot = state.store.snapshot()?;
+                let current = organise::snapshot(&snapshot.feeds, &snapshot.folders);
+                let moves = organise::check(&current, &plan)
+                    .map_err(|e| AppError::InvalidInput { reason: e.0 })?;
+                // One transaction: a failure part way leaves nothing moved.
+                state.store.apply_folder_moves(&moves, now_ms())?;
+                state.publish();
+                Ok(moves.len() as u32)
+            })
+            .await
+    }
+
     /// Whether a feed's new articles count for the new-articles
     /// notification (when that is on at all).
     pub async fn set_feed_notify(&self, feed_id: i64, notify: bool) -> Result<(), AppError> {
@@ -1174,7 +1210,7 @@ fn normalise_url(input: &str) -> Result<String, AppError> {
 
 /// Whether two feed addresses name the same feed: `http` and `https`, the
 /// host's case and a trailing `/` don't make a different feed.
-fn same_address(a: &str, b: &str) -> bool {
+pub(crate) fn same_address(a: &str, b: &str) -> bool {
     fn key(url: &str) -> String {
         let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
         let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
@@ -1202,7 +1238,7 @@ fn fetch(
             "Accept",
             "application/rss+xml, application/atom+xml, application/feed+json, application/json;q=0.9, application/xml;q=0.9, */*;q=0.5",
         )
-        .header("User-Agent", "Commonplace/0.1 (ixOS)");
+        .header("User-Agent", USER_AGENT);
     if let Some(etag) = etag {
         request = request.header("If-None-Match", etag);
     }

@@ -8,9 +8,25 @@ import ForgeUI
 /// (docs/bonsai-harness-plan.md).
 struct BonsaiHarnessView: View {
     @Bindable var model: BonsaiHarnessModel
+    /// Python Lab, to open the project Bonsai worked in.
+    var pythonLab: PythonLabModel?
+    @State private var showPythonLab = false
+    /// The step on screen when going back through a finished task; nil
+    /// follows the last one.
+    @State private var replayPosition: Int?
 
     var body: some View {
         List {
+            // Python Lab shares the interpreter, so its script waiting for
+            // an answer holds Bonsai's Python runs too.
+            if PythonActivity.shared.labWaitingForInput {
+                Section {
+                    Label("Python Lab is waiting for an answer. Bonsai's Python runs wait until it gets one or is stopped.", systemImage: "hourglass")
+                        .font(.footnote)
+                        .forgeForeground(.warning)
+                        .accessibilityIdentifier("harness.pythonLabWaiting")
+                }
+            }
             if let error = model.error {
                 Section {
                     Text(error).font(.footnote).forgeForeground(.danger)
@@ -20,15 +36,53 @@ struct BonsaiHarnessView: View {
             if model.isAvailable {
                 modelSection
                 if model.isRunning {
+                    if let snapshot = model.snapshot, let task = snapshot.task {
+                        BonsaiLiveSection(
+                            task: task.description,
+                            step: snapshot.phase == .thinking ? snapshot.steps.count + 1 : max(snapshot.steps.count, 1),
+                            phase: snapshot.phase,
+                            live: model.live
+                        )
+                    }
                     Section {
                         Button("Stop", systemImage: "stop.fill", role: .destructive) { model.stop() }
                             .accessibilityIdentifier("harness.stop")
                     }
-                } else {
-                    tasksSection
+                } else if let snapshot = model.snapshot, let task = snapshot.task, !snapshot.steps.isEmpty {
+                    // The finished task stays where the live view was, to
+                    // step back through, with its result and pictures below.
+                    BonsaiReplaySection(
+                        task: task.description,
+                        steps: snapshot.steps,
+                        replay: model.replay(step:),
+                        position: $replayPosition
+                    )
+                }
+                if let snapshot = model.snapshot, let plan = snapshot.plan {
+                    BonsaiPlanSection(
+                        plan: plan,
+                        draft: snapshot.task == nil ? snapshot.draft : "",
+                        running: snapshot.running,
+                        answer: $model.planAnswer,
+                        approve: {
+                            handOff(snapshot.project ?? model.project)
+                            model.continuePlan()
+                        },
+                        discard: model.discardPlan,
+                        send: {
+                            handOff(snapshot.project ?? model.project)
+                            model.answerPlan()
+                        },
+                        editTests: editTests(in: snapshot.project ?? model.project)
+                    )
                 }
                 if let snapshot = model.snapshot, let task = snapshot.task {
                     statusSection(snapshot, task)
+                }
+                if !model.isRunning {
+                    tasksSection
+                }
+                if let snapshot = model.snapshot, snapshot.task != nil {
                     stepsSection(snapshot)
                     projectSection(snapshot)
                 }
@@ -38,6 +92,13 @@ struct BonsaiHarnessView: View {
         .navigationTitle("Bonsai Harness")
         .inlineNavigationTitle()
         .task { await model.follow() }
+        .navigationDestination(isPresented: $showPythonLab) {
+            if let pythonLab {
+                PythonLabView(model: pythonLab)
+            }
+        }
+        .onChange(of: model.snapshot?.task?.id) { replayPosition = nil }
+        .onChange(of: model.isRunning) { if model.isRunning { replayPosition = nil } }
     }
 
     private var modelSection: some View {
@@ -80,20 +141,54 @@ struct BonsaiHarnessView: View {
                         Text(task.request).font(.footnote).foregroundStyle(.secondary)
                         Text("Done when \(task.acceptance.joined(separator: "; ")).")
                             .font(.caption).foregroundStyle(.secondary)
+                        if task.planned {
+                            Label("Bonsai plans it as several tasks first", systemImage: "list.number")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if task.endsBlocked {
+                            Label("It can't succeed here: it should stop and ask you", systemImage: "questionmark.bubble")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .accessibilityIdentifier("harness.task.\(task.id)")
             }
+            if model.projects.count > 1 {
+                Picker(
+                    "Project",
+                    selection: Binding(get: { model.project }, set: { model.choose(project: $0) })
+                ) {
+                    ForEach(model.projects, id: \.self) { Text($0).tag($0) }
+                }
+                .accessibilityIdentifier("harness.project")
+            }
             TextField("Your own task", text: $model.request, axis: .vertical)
                 .lineLimit(2...5)
                 .accessibilityIdentifier("harness.request")
-            Button("Run My Task", systemImage: "play.fill") { model.runRequest() }
+            Button("Run My Task", systemImage: "play.fill") {
+                handOff(model.project)
+                model.runRequest()
+            }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.runRequest")
+            Button("Plan My Task", systemImage: "list.number") {
+                handOff(model.project)
+                model.runPlan()
+            }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.planRequest")
+            Button("Tests First, Then Code", systemImage: "checklist") {
+                handOff(model.project)
+                model.runTestsFirst()
+            }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.testsFirst")
+            Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
+                .accessibilityIdentifier("harness.approvePlans")
         } header: {
             Text("Tasks")
         } footer: {
-            Text("Each ladder task starts from a fresh project. Your own tasks share one project, kept between tasks.")
+            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts. Tests first has Bonsai write the tests, waits for you to check them, then has it write code that passes them unchanged.")
         }
     }
 
@@ -112,12 +207,14 @@ struct BonsaiHarnessView: View {
                     .forgeForeground(task.status == .completed ? .success : .danger)
                     .accessibilityIdentifier("harness.result")
             }
-            if snapshot.running, !snapshot.draft.isEmpty {
-                Text(snapshot.draft)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(8)
-                    .accessibilityIdentifier("harness.draft")
+            if !snapshot.running, let made = model.made.first {
+                NavigationLink {
+                    ArtifactDetailView(artifact: made, url: model.url(of: made))
+                } label: {
+                    MadePreview(artifact: made, url: model.url(of: made))
+                }
+                .accessibilityLabel("Made \(made.path)")
+                .accessibilityIdentifier("harness.made")
             }
             if !snapshot.running {
                 ShareLink(item: model.transcript) {
@@ -194,10 +291,40 @@ struct BonsaiHarnessView: View {
             if model.files.isEmpty {
                 Text("No files yet.").foregroundStyle(.secondary)
             }
+            if let pythonLab, let name = snapshot.project, model.projects.contains(name) {
+                Button("Open in Python Lab", systemImage: "chevron.left.forwardslash.chevron.right") {
+                    // Python Lab opens either way: when it couldn't switch
+                    // (an unsaved file, a folder it can't list), its banner
+                    // says why it stayed on the project it has open.
+                    pythonLab.open(project: name)
+                    showPythonLab = true
+                }
+                .accessibilityIdentifier("harness.openInPythonLab")
+            }
         } header: {
             Text("Project \(snapshot.project ?? "")")
         }
         .onAppear { model.loadFiles() }
+    }
+
+    /// Opens `project` in Python Lab, to fix a test before approving it;
+    /// nil when this build has no Python Lab.
+    private func editTests(in project: String) -> (@MainActor () -> Void)? {
+        guard let pythonLab else { return nil }
+        return {
+            pythonLab.open(project: project)
+            showPythonLab = true
+        }
+    }
+
+    /// Python Lab's last second of typing is saved before Bonsai reads or
+    /// restores `project`, for every start, approval, Resume and answer. A
+    /// save that fails shows in Python Lab and the work still starts; the
+    /// unsaved text stays on screen there and isn't written over Bonsai's
+    /// work until edited again.
+    private func handOff(_ project: String) {
+        pythonLab?.flush()
+        pythonLab?.bonsaiStarting(in: project)
     }
 
     private func phase(_ phase: HarnessPhase) -> String {
@@ -215,5 +342,32 @@ struct BonsaiHarnessView: View {
         case false?: "xmark.circle.fill"
         case nil: "circle.dotted"
         }
+    }
+}
+
+/// The picture a task made, big enough to judge, right under the result.
+/// Opens the full view to zoom or share.
+private struct MadePreview: View {
+    let artifact: ProjectArtifact
+    let url: URL?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Made \(artifact.path)").font(.subheadline.weight(.semibold))
+            Group {
+                if artifact.kind == "svg" {
+                    if let url, let svg = try? String(contentsOf: url, encoding: .utf8) {
+                        SVGView(svg: svg).allowsHitTesting(false)
+                    }
+                } else if let image = ArtifactImage.load(url) {
+                    image.resizable().scaledToFit()
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 260)
+            .background(.white, in: RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .id("\(artifact.path)-\(artifact.modifiedMs)-\(artifact.bytes)")
+        }
+        .padding(.vertical, 4)
     }
 }

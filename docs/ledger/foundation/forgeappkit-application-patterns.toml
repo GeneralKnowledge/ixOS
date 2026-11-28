@@ -1,9 +1,9 @@
 order = 26
-capability = "ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors, Undo and progress banners, haptic feedback)"
+capability = "ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors, Undo and progress banners, haptic feedback, Layered Navigation for pushed pages)"
 framework = "Yes: ForgeAppKit product of the ForgeKit package"
 rust_api = "n/a"
 ios_native = "Yes"
-in_app = "Partial: Pocket Library (alerts, confirmations, destinations, catalogue load state, form submission and field errors); the forge init template (alerts, form submission); Commonplace (Undo banner after Mark All as Read); ForgeFeedback haptics in every app that has outcome haptics (Relay, Commonplace, FieldKit, Sketchbook, Good Dog, Pocket Library, Soundscape; the forge init template follows with the next ForgeKit release); Device Lab Interaction Patterns page"
+in_app = "Partial: Pocket Library (alerts, confirmations, destinations, catalogue load state, form submission and field errors); the forge init template (alerts, form submission); Commonplace (Undo banner after Mark All as Read); ForgeFeedback haptics in every app that has outcome haptics (Relay, Commonplace, FieldKit, Sketchbook, Good Dog, Pocket Library, Soundscape; the forge init template follows with the next ForgeKit release); Device Lab Interaction Patterns page; Layered Navigation in Soundscape, Commonplace, FieldKit, Relay, Sketchbook, Good Dog and Urdu Naturally (the forge init template follows with the next ForgeKit release)"
 iphone = "Partial: Device Lab 1.29915393, 2026-11-17, reported by Reuben: every banner and haptic on Device Lab's Interaction Patterns page, also with VoiceOver on (read out, Undo reachable), and Commonplace's Undo after Mark All as Read (the opened article stays read). FieldKit's Stop confirmation on top of the recording screen after #250 (2026-11-16, device-validation.md)"
 documented = "Yes: forgeappkit.md"
-limits = "0.1: model values tested on Linux; the SwiftUI side compiles with xtool in Device Lab; push destinations and full-screen covers are used by no app yet; no navigation path or tab state"
+limits = "0.1: model values tested on Linux; the SwiftUI side compiles with xtool in Device Lab; full-screen covers are used by no app yet; Layered Navigation (Soundscape since 2026-11-22, the other apps since 2026-11-24) not yet checked on the phone in any app"

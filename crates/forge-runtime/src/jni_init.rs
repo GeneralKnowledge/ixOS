@@ -18,6 +18,9 @@ use jni::EnvUnowned;
 /// `ForgeAndroid.nativeInit(context: Context): String?`. Returns `null` on
 /// success or the reason `https` stays disabled, so Kotlin can raise its own
 /// typed exception rather than a bare `RuntimeException`.
+// The JVM finds this function by its exact symbol name, which only
+// `no_mangle` gives; the body itself is safe Rust through the `jni` crate.
+#[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_forgemobile_ffi_ForgeAndroid_nativeInit<'caller>(
     mut unowned_env: EnvUnowned<'caller>,

@@ -74,6 +74,7 @@ fn try_lock(file: &File) -> Result<(), TryLockError> {
 }
 
 #[cfg(target_os = "android")]
+#[allow(unsafe_code)]
 fn try_lock(file: &File) -> Result<(), TryLockError> {
     use std::os::fd::AsRawFd;
     // SAFETY: `flock` only reads the descriptor, which `file` keeps open for
@@ -478,11 +479,15 @@ impl<S: Send + 'static> Runtime<S> {
     }
 
     /// Runs `work` on its own thread (not the command thread, so commands
-    /// keep flowing). If its scope was cancelled when it fails, the error
-    /// becomes `Stopped` with the reason ([`Work::stop_kind`]), so every
-    /// app reports interruption, cancellation and shutdown the same way.
-    /// Dropping the future cancels the work. Never use it to save: commands
-    /// do that.
+    /// keep flowing). If its scope was cancelled by the time it returns,
+    /// the result becomes `Stopped` with the reason ([`Work::stop_kind`]),
+    /// whether the task failed or returned `Ok`: a task that notices the
+    /// cancellation part way and hands back what it had (a page with half
+    /// its covers, a partial search) must not reach the caller as a
+    /// complete answer. So every app reports interruption, cancellation and
+    /// shutdown the same way, and a task needs no cancellation check of its
+    /// own after its last step. Dropping the future cancels the work. Never
+    /// use it to save: commands do that.
     pub fn run<T, E, F>(
         &self,
         name: &str,
@@ -502,9 +507,12 @@ impl<S: Send + 'static> Runtime<S> {
             let kind = work.stop_kind();
             drop(work.links);
             drop(work._pending);
-            match result {
-                Err(_) if stopped => Err(E::from(Stopped { kind })),
-                other => other,
+            // Partial work is not an answer, so `Ok` after cancellation
+            // is stopped too.
+            if stopped {
+                Err(E::from(Stopped { kind }))
+            } else {
+                result
             }
         });
         async move {

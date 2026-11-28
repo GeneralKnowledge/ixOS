@@ -21,7 +21,7 @@ public struct ContentView: View {
         ForgeRoot(host) { core in
             RelayScreen(core: core, host: host, changes: host.changes)
         }
-        .forgeTheme(.standard)
+        .forgeTheme(RelayColors.theme)
     }
 }
 
@@ -61,9 +61,10 @@ struct DevicesView: View {
     @State private var sendingCode = false
     @State private var renaming = false
     @State private var preview: URL?
+    @State private var path: [TrustedRoute] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path.forgeLayered()) {
             notices(deviceList)
             .onChange(of: anySheet) { if !anySheet { model.refreshTrustOffer() } }
             .quickLookPreview($preview)
@@ -118,9 +119,22 @@ struct DevicesView: View {
                     ServersDownNotice()
                 }
             }
-            if !model.trustedDevices.isEmpty {
+            if !model.trustedDevices.isEmpty || !model.trusting.isEmpty {
                 Section {
-                    ForEach(model.trustedDevices) { device in
+                    // Trusting from the offer's alert: the alert has gone,
+                    // so the row says the work is under way.
+                    ForEach(model.trusting.sorted(by: { $0.key < $1.key }), id: \.key) { entry in
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .frame(width: 28)
+                            Text(entry.value)
+                            Spacer()
+                            ForgeStatus("Trusting…", tone: .info)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("devices.trusting")
+                    }
+                    ForEach(model.trustedDevices.filter { model.trusting[$0.endpointId] == nil }) { device in
                         NavigationLink(value: TrustedRoute(endpointID: device.endpointId)) {
                             TrustedDeviceRow(device: device)
                         }
@@ -153,21 +167,15 @@ struct DevicesView: View {
         }
         .overlay { emptyState }
         .navigationTitle("Relay")
-        .navigationDestination(for: TrustedRoute.self) { route in
+        .forgeLayeredDestination(for: TrustedRoute.self) { route in
             TrustedDeviceView(model: model, endpointID: route.endpointID, preview: $preview)
         }
+        // Send and Receive work with anyone on this Wi-Fi, by word code;
+        // trusted devices are reached from their own screen. Pinned above
+        // the tab bar as floating buttons, not a bottom toolbar: inside a
+        // TabView on iOS 26 a bottom toolbar sits behind the floating tab bar.
+        .safeAreaInset(edge: .bottom, spacing: 0) { sendReceiveBar }
         .toolbar {
-            // Send and Receive work with anyone on this Wi-Fi, by word
-            // code; trusted devices are reached from their own screen.
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button("Receive", systemImage: "arrow.down.circle") { receivingCode = true }
-                    .labelStyle(.titleAndIcon)
-                    .accessibilityIdentifier("relay.receive")
-                Spacer()
-                Button("Send", systemImage: "arrow.up.circle") { sendingCode = true }
-                    .labelStyle(.titleAndIcon)
-                    .accessibilityIdentifier("relay.send")
-            }
             ToolbarItem(placement: .topBarLeading) {
                 Button("Rename This Device", systemImage: "pencil") { renaming = true }
                 .accessibilityIdentifier("devices.rename")
@@ -187,6 +195,31 @@ struct DevicesView: View {
         }
     }
 
+    /// Receive and Send, floating over the bottom of the list.
+    private var sendReceiveBar: some View {
+        HStack {
+            Button { receivingCode = true } label: {
+                Label("Receive", systemImage: "arrow.down.circle")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .contentShape(Capsule())
+            }
+            .relayFloatingButton()
+            .accessibilityIdentifier("relay.receive")
+            Spacer()
+            Button { sendingCode = true } label: {
+                Label("Send", systemImage: "arrow.up.circle")
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+            }
+            .relayProminentButton()
+            .accessibilityIdentifier("relay.send")
+        }
+        .labelStyle(.titleAndIcon)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
     /// What Relay tells the person once the screen is clear.
     private func notices(_ content: some View) -> some View {
         content
@@ -201,7 +234,7 @@ struct DevicesView: View {
                 ),
                 presenting: model.trustOffer
             ) { offer in
-                Button("Trust") { Task { await model.trust(offer) } }
+                Button("Trust") { model.startTrusting(offer) }
                     .accessibilityIdentifier("trustOffer.trust")
                 Button("Not Now", role: .cancel) { model.dismissTrustOffer() }
                     .accessibilityIdentifier("trustOffer.notNow")
@@ -222,7 +255,7 @@ struct DevicesView: View {
                 ),
                 presenting: model.savedDataNotice
             ) { _ in
-                Button("OK") { Task { await model.dismissSavedDataNotice() } }
+                Button("OK") { model.startDismissingSavedDataNotice() }
                     .accessibilityIdentifier("savedData.ok")
             } message: { notice in
                 Text(notice.message)
@@ -236,7 +269,7 @@ struct DevicesView: View {
                 ),
                 presenting: model.awayNotice
             ) { _ in
-                Button("OK") { Task { await model.dismissAwayNotice() } }
+                Button("OK") { model.startDismissingAwayNotice() }
                     .accessibilityIdentifier("awayNotice.ok")
             } message: { notice in
                 Text(notice)
@@ -302,6 +335,7 @@ struct TransferRow: View {
     let model: RelayModel
     @Binding var preview: URL?
     @Environment(\.openURL) private var openURL
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         Button {
@@ -311,7 +345,7 @@ struct TransferRow: View {
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon)
-                    .foregroundStyle(transfer.direction == .sent ? Color.accentColor : .green)
+                    .foregroundStyle(transfer.direction == .sent ? theme.colors.accent.solid : .green)
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(RelayFormat.title(transfer.item))
@@ -347,7 +381,7 @@ struct TransferRow: View {
                 .accessibilityIdentifier("history.cancel")
             }
             Button("Remove from History", systemImage: "trash", role: .destructive) {
-                Task { await model.remove(transfer) }
+                model.startRemoving(transfer)
             }
             .accessibilityIdentifier("history.remove")
         }
@@ -360,11 +394,13 @@ struct TransferRow: View {
         }
     }
 
-    /// Waiting in the outbox, or on its way.
+    /// Waiting in the outbox, or on its way. One left in the recipient's
+    /// mailbox isn't: it arrives whatever this device does, so it can't be
+    /// cancelled.
     private var isPending: Bool {
         switch transfer.status {
         case .waiting, .inProgress: true
-        case .done, .failed: false
+        case .inMailbox, .done, .failed: false
         }
     }
 

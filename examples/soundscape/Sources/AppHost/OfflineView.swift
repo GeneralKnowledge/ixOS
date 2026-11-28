@@ -55,18 +55,26 @@ struct AlbumDownloadButton: View {
 
 /// A small sign on a song's row: on the phone, coming, or failed.
 struct DownloadBadge: View {
-    let model: ListenModel
-    let track: LibraryTrack
+    let state: DownloadState
+
+    init(model: ListenModel, track: LibraryTrack) {
+        let state = model.downloadState(track.id)
+        // As before: the downloaded sign only once the track says so.
+        self.state = state == .downloaded && !track.downloaded ? .notDownloaded : state
+    }
+
+    /// Several songs as one (an album): see `ListenModel.downloadState(of:)`.
+    init(state: DownloadState) {
+        self.state = state
+    }
 
     var body: some View {
-        switch model.downloadState(track.id) {
+        switch state {
         case .downloaded:
-            if track.downloaded {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Downloaded")
-            }
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Downloaded")
         case .downloading:
             ProgressView()
                 .controlSize(.mini)
@@ -93,7 +101,7 @@ struct DownloadsView: View {
     let model: ListenModel
     let player: TakePlayer
 
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingRemoveAll = false
 
     private var offline: OfflineSummary { model.offline }
@@ -110,10 +118,10 @@ struct DownloadsView: View {
             Section {
                 ForEach(offline.tracks, id: \.track.id) { item in
                     TrackRow(model: model, player: player, track: item.track,
-                             showDetails: { details = item.track.id }) {
+                             showDetails: { openSurface(ListenRoute.track(item.track.id)) }) {
                         let index = playable.firstIndex { $0.id == item.track.id }
                         if let index {
-                            player.play(model.queue(playable), from: index)
+                            player.play(model.queue(playable, from: index))
                         } else {
                             player.play(model.queue([item.track]))
                         }
@@ -139,9 +147,6 @@ struct DownloadsView: View {
             }
         }
         .navigationTitle("Downloaded")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if !offline.tracks.isEmpty {
                 ToolbarItem(placement: .primaryAction) {

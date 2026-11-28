@@ -83,7 +83,7 @@ pub(crate) struct StoredSession {
 }
 
 pub(crate) fn local_day(now: LocalTime) -> i64 {
-    (now.ms + i64::from(now.utc_offset_minutes) * 60_000).div_euclid(DAY_MS)
+    forge_runtime::time::local_day(now.ms, now.utc_offset_minutes)
 }
 
 fn recent_session(s: &StoredSession) -> RecentSession {
@@ -188,6 +188,17 @@ impl Stored {
     fn today_index(&self, now: LocalTime) -> Option<usize> {
         let day = local_day(now);
         self.plans.iter().position(|p| p.day == day)
+    }
+
+    /// The plan holding activity `activity_id`: today's, or yesterday's, so
+    /// a session started before midnight and saved after it still counts
+    /// for the activity it was started from. Older plans are history.
+    fn plan_with_activity(&self, activity_id: u64, now: LocalTime) -> Option<usize> {
+        let today = local_day(now);
+        self.plans.iter().position(|p| {
+            (p.day == today || p.day == today - 1)
+                && p.activities.iter().any(|a| a.id == activity_id)
+        })
     }
 
     /// Makes sure today has a plan, building one if needed. Returns whether
@@ -377,7 +388,7 @@ impl Stored {
         })?;
         if let Some(activity_id) = activity_id {
             let activity = self
-                .today_index(now)
+                .plan_with_activity(activity_id, now)
                 .and_then(|i| {
                     self.plans[i]
                         .activities
@@ -414,7 +425,9 @@ impl Stored {
         let e = self.check_recordable(exercise_id, activity_id, now)?;
         let session_id = self.take_id();
         if let Some(activity_id) = activity_id {
-            let index = self.today_index(now).expect("checked above");
+            let index = self
+                .plan_with_activity(activity_id, now)
+                .expect("checked above");
             let activity = self.plans[index]
                 .activities
                 .iter_mut()
@@ -521,16 +534,13 @@ impl Stored {
 
     pub fn progress_summary(&self, now: LocalTime) -> ProgressSummary {
         let today = local_day(now);
-        let offset = i64::from(now.utc_offset_minutes) * 60_000;
+        let day_of = |ms: i64| forge_runtime::time::local_day(ms, now.utc_offset_minutes);
         let week: Vec<&StoredSession> = self
             .sessions
             .iter()
-            .filter(|s| today - (s.completed_at_ms + offset).div_euclid(DAY_MS) < 7)
+            .filter(|s| today - day_of(s.completed_at_ms) < 7)
             .collect();
-        let mut days: Vec<i64> = week
-            .iter()
-            .map(|s| (s.completed_at_ms + offset).div_euclid(DAY_MS))
-            .collect();
+        let mut days: Vec<i64> = week.iter().map(|s| day_of(s.completed_at_ms)).collect();
         days.sort_unstable();
         days.dedup();
         let mut skills: Vec<SkillProgress> = self
@@ -555,10 +565,9 @@ impl Stored {
         // Local day 0, 1 January 1970, was a Thursday.
         let weekday = |day: i64| (day + 3).rem_euclid(7);
         let week_of = |day: i64| (day - weekday(day)).div_euclid(7);
-        let offset = i64::from(now.utc_offset_minutes) * 60_000;
         let mut practised: BTreeMap<i64, std::collections::BTreeSet<i64>> = BTreeMap::new();
         for s in &self.sessions {
-            let day = (s.completed_at_ms + offset).div_euclid(DAY_MS);
+            let day = forge_runtime::time::local_day(s.completed_at_ms, now.utc_offset_minutes);
             practised.entry(week_of(day)).or_default().insert(day);
         }
         let this_week = week_of(today);

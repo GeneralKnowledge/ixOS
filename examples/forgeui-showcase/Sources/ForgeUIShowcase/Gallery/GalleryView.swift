@@ -6,8 +6,8 @@ import SwiftUI
 /// and its page in GalleryPages.swift.
 enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
     case colors, layout, typography
-    case buttons, iconButtons, textFields, formFields
-    case cards, rows, badges, headers
+    case buttons, iconButtons, textFields, formFields, choices, ratings
+    case cards, rows, badges, headers, thumbnails, stats, progress
     case states, notices, dialogs
 
     var id: String { rawValue }
@@ -22,8 +22,8 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
     var group: Group {
         switch self {
         case .colors, .layout, .typography: .foundations
-        case .buttons, .iconButtons, .textFields, .formFields: .controls
-        case .cards, .rows, .badges, .headers: .content
+        case .buttons, .iconButtons, .textFields, .formFields, .choices, .ratings: .controls
+        case .cards, .rows, .badges, .headers, .thumbnails, .stats, .progress: .content
         case .states, .notices, .dialogs: .feedback
         }
     }
@@ -37,10 +37,15 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .iconButtons: "Icon Buttons"
         case .textFields: "Text Fields"
         case .formFields: "Form Fields"
+        case .choices: "Choices"
+        case .ratings: "Ratings"
         case .cards: "Cards"
         case .rows: "Rows"
         case .badges: "Badges and Status"
         case .headers: "Headers"
+        case .thumbnails: "Thumbnails"
+        case .stats: "Stats"
+        case .progress: "Progress"
         case .states: "Empty, Loading, Error"
         case .notices: "Notices"
         case .dialogs: "Alerts, Dialogs, Sheets"
@@ -56,10 +61,15 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .iconButtons: "Round, icon-only actions"
         case .textFields: "Bordered fields outside a form"
         case .formFields: "Labels with help and validation"
+        case .choices: "Chips and tiles, one or several"
+        case .ratings: "Stars to show or set"
         case .cards: "Raised, grouped surfaces"
         case .rows: "Settings and list rows"
         case .badges: "Tinted labels and status dots"
         case .headers: "Section and detail headers"
+        case .thumbnails: "Covers, photos, artwork"
+        case .stats: "A figure with its name"
+        case .progress: "SwiftUI's ProgressView, styled"
         case .states: "When there is nothing to show yet"
         case .notices: "A problem in a screen that still works"
         case .dialogs: "Native presentation, themed"
@@ -75,10 +85,15 @@ enum GalleryPage: String, CaseIterable, Identifiable, Hashable {
         case .iconButtons: "plus.circle.fill"
         case .textFields: "character.cursor.ibeam"
         case .formFields: "list.bullet.rectangle.fill"
+        case .choices: "checklist"
+        case .ratings: "star.fill"
         case .cards: "rectangle.stack.fill"
         case .rows: "list.bullet"
         case .badges: "tag.fill"
         case .headers: "textformat.size"
+        case .thumbnails: "photo.fill"
+        case .stats: "number"
+        case .progress: "chart.bar.fill"
         case .states: "tray.fill"
         case .notices: "exclamationmark.bubble.fill"
         case .dialogs: "rectangle.portrait.on.rectangle.portrait.fill"

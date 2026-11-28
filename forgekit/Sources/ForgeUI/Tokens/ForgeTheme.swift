@@ -40,16 +40,19 @@ public struct ForgeRadius: Hashable, Sendable {
     public var m: Double
     /// Cards and sheets.
     public var l: Double
+    /// Large floating surfaces: overlays over artwork, full-width cards.
+    public var xl: Double
 
-    public init(s: Double = 7, m: Double = 12, l: Double = 18) {
+    public init(s: Double = 7, m: Double = 12, l: Double = 18, xl: Double = 28) {
         self.s = s
         self.m = m
         self.l = l
+        self.xl = xl
     }
 
     public static let standard = ForgeRadius()
 
-    public var steps: [Double] { [s, m, l] }
+    public var steps: [Double] { [s, m, l, xl] }
 }
 
 /// Everything about how a ForgeUI app looks. Set it once at the root with

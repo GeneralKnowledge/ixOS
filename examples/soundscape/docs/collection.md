@@ -51,4 +51,5 @@ up each word as it is sung. Tapping a line plays from it. Without timings, the l
 
 ## Not in this PR
 
-Smart playlists, play counts on rows, sharing playlists, and import from other apps.
+Smart playlists (now built: [roadmap.md](roadmap.md#m10-as-built)), play counts on rows, sharing playlists, and import
+from other apps.

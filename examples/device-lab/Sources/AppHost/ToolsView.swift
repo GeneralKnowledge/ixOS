@@ -88,7 +88,7 @@ struct ToolsView: View {
             }
             Section {
                 NavigationLink {
-                    BonsaiHarnessView(model: harness)
+                    BonsaiHarnessView(model: harness, pythonLab: pythonLab)
                 } label: {
                     Label("Bonsai Harness", systemImage: "hammer")
                 }
@@ -98,13 +98,13 @@ struct ToolsView: View {
             }
             Section {
                 NavigationLink {
-                    A2uiLabView(model: a2uiLab)
+                    A2uiLabHome(readingPlan: a2uiLab, harness: harness.harness)
                 } label: {
                     Label("A2UI Lab", systemImage: "rectangle.3.group")
                 }
                 .accessibilityIdentifier("tools.a2uiLab")
             } footer: {
-                Text("An agent's reading plan drawn natively from A2UI messages, checked by the app, applied only when you confirm.")
+                Text("Agent proposals drawn natively from A2UI messages: a reading plan, Commonplace folders, a Soundscape playlist and the Bonsai result card. The app checks each one and applies it only when you confirm.")
             }
             Section {
                 NavigationLink {

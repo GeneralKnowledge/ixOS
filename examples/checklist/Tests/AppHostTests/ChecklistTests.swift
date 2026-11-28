@@ -90,6 +90,12 @@ final class ChecklistTests: XCTestCase {
             XCTAssertEqual(kind, .interrupted)
             XCTAssertEqual(Checklist.message(for: ChecklistError.Stopped(kind: kind)), ForgeErrors.describe(.interrupted))
         }
+        // The model's search stops quietly: a stop is not an error to show.
+        let stopped = await model.search("milk")
+        XCTAssertNil(stopped)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertTrue(ChecklistModel.isStop(CancellationError()))
+        XCTAssertFalse(ChecklistModel.isStop(ChecklistError.InUse))
         // Export may finish in the background.
         let url = await model.exportText()
         XCTAssertEqual(try String(contentsOf: try XCTUnwrap(url), encoding: .utf8), "[ ] Buy oat milk\n[ ] Call the vet\n")
@@ -172,6 +178,43 @@ final class ChecklistTests: XCTestCase {
         await eventually("background time held, then given back") { time.log == ["begin", "end"] }
 
         host.report(.active)
+        host.close()
+    }
+
+    /// CL-4: Swift turns the phone's local day into Rust's `YYYY-MM-DD`,
+    /// and the model's agenda follows it.
+    func testDueDatesFillTheAgendaOnTheLocalDay() async throws {
+        let host = Checklist.makeTemporaryHost()
+        await host.start()
+        let core = try XCTUnwrap(host.core)
+        let model = ChecklistModel(core: core)
+        await model.add("Post the parcel")
+        await model.add("Call the vet")
+        await model.add("Someday")
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date()
+        let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: now))
+        let nextWeek = try XCTUnwrap(calendar.date(byAdding: .day, value: 7, to: now))
+
+        try await model.setDue(model.items[0], to: now)
+        try await model.setDue(model.items[1], to: yesterday)
+        try await model.setDue(model.items[2], to: nextWeek)
+        XCTAssertEqual(model.items[0].due, ChecklistDay.string(from: now))
+        XCTAssertEqual(model.agenda.today.map(\.title), ["Post the parcel"])
+        XCTAssertEqual(model.agenda.overdue.map(\.title), ["Call the vet"])
+        XCTAssertEqual(model.agenda.upcoming.map(\.title), ["Someday"])
+
+        // A saved day reads back as the start of that local day.
+        let start = try XCTUnwrap(ChecklistDay.date(from: model.today))
+        XCTAssertEqual(ChecklistDay.string(from: start), model.today)
+        XCTAssertNil(ChecklistDay.date(from: "next week"))
+
+        // Done, or with its day removed, an item leaves the agenda.
+        await model.toggle(model.items[0])
+        try await model.setDue(model.items[1], to: nil)
+        XCTAssertNil(model.items[1].due)
+        XCTAssertTrue(model.agenda.today.isEmpty)
+        XCTAssertTrue(model.agenda.overdue.isEmpty)
         host.close()
     }
 }

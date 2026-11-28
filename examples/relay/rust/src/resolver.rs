@@ -266,12 +266,23 @@ pub struct RelayServers {
     /// be reached there, signed by its key, so a trusted device finds it by
     /// key alone.
     pub lookup_url: Option<String>,
+    /// A `relay-mailbox` server's endpoint id (N3): where trusted devices
+    /// leave items for this one while it can't be reached. Told to them
+    /// in the Hello; Hybrid only, like the others.
+    #[serde(default)]
+    #[uniffi(default)]
+    pub mailbox: Option<String>,
 }
 
 /// The servers Relay's maintainer runs: an iroh relay and a pkarr lookup
 /// server on one machine, with TLS (Let's Encrypt, through Caddy).
 const OWN_RELAY: &str = "https://relay.avedeus.ovh";
 const OWN_LOOKUP: &str = "https://lookup.avedeus.ovh/pkarr";
+/// The mailbox on the same machine, by endpoint id: its key is
+/// `device.key` in its data folder there, kept across updates
+/// (examples/relay/docs/relay-mailbox.md, "Running the mailbox").
+const OWN_MAILBOX: Option<&str> =
+    Some("d47c501b63457d5eae9083d0cfd00f5e44c1744b4e93da8f1ce60fe95dc1b553");
 
 /// Relay's own servers, for the "Use Relay's Servers" setting and
 /// `relay servers --own`. Nothing uses them until they are set.
@@ -280,6 +291,7 @@ pub fn own_relay_servers() -> RelayServers {
     RelayServers {
         relay_url: Some(OWN_RELAY.into()),
         lookup_url: Some(OWN_LOOKUP.into()),
+        mailbox: OWN_MAILBOX.map(Into::into),
     }
 }
 
@@ -287,6 +299,24 @@ impl RelayServers {
     /// The relay, if set and a valid URL.
     pub(crate) fn relay(&self) -> Option<iroh::RelayUrl> {
         self.relay_url.as_deref()?.parse().ok()
+    }
+
+    /// With the mailbox of Relay's own servers filled in when these are
+    /// Relay's own relay and lookup server: choices saved before the
+    /// mailbox ran there get it without being chosen again.
+    pub(crate) fn upgraded(mut self) -> Self {
+        if self.mailbox.is_none()
+            && self.relay_url.as_deref() == Some(OWN_RELAY)
+            && self.lookup_url.as_deref() == Some(OWN_LOOKUP)
+        {
+            self.mailbox = OWN_MAILBOX.map(Into::into);
+        }
+        self
+    }
+
+    /// The mailbox server, if set and a valid endpoint id.
+    pub(crate) fn mailbox(&self) -> Option<iroh::PublicKey> {
+        self.mailbox.as_deref()?.trim().parse().ok()
     }
 
     /// The lookup server, if set and a valid URL.
@@ -323,6 +353,11 @@ impl RelayServers {
                     return Err(format!("The {what} address must start with https://"));
                 }
             }
+        }
+        if let Some(id) = &self.mailbox {
+            id.trim()
+                .parse::<iroh::PublicKey>()
+                .map_err(|_| "The mailbox must be a server's endpoint id".to_string())?;
         }
         Ok(())
     }
@@ -723,10 +758,29 @@ mod tests {
         let own = RelayServers {
             relay_url: Some("https://relay.example.org".into()),
             lookup_url: Some("https://relay.example.org/pkarr".into()),
+            mailbox: Some(iroh::SecretKey::from_bytes(&[3; 32]).public().to_string()),
         };
         assert_eq!(own.in_mode(Hybrid), own);
         assert_eq!(own.in_mode(Private), RelayServers::default());
         assert_eq!(own.in_mode(Local), RelayServers::default());
+    }
+
+    /// Relay's own servers, chosen before the mailbox ran there, gain it;
+    /// anyone else's servers never do.
+    #[test]
+    fn a_choice_of_relays_own_servers_gains_its_mailbox() {
+        let before = RelayServers {
+            mailbox: None,
+            ..own_relay_servers()
+        };
+        assert_eq!(before.upgraded(), own_relay_servers());
+        assert!(own_relay_servers().mailbox().is_some());
+        let theirs = RelayServers {
+            relay_url: Some("https://relay.example.org".into()),
+            lookup_url: Some(OWN_LOOKUP.into()),
+            mailbox: None,
+        };
+        assert_eq!(theirs.clone().upgraded(), theirs);
     }
 
     #[test]
@@ -734,14 +788,22 @@ mod tests {
         let ok = RelayServers {
             relay_url: Some("https://relay.example.org".into()),
             lookup_url: Some("https://relay.example.org/pkarr".into()),
+            mailbox: Some(iroh::SecretKey::from_bytes(&[3; 32]).public().to_string()),
         };
         assert_eq!(ok.check(), Ok(()));
         assert!(ok.finds_by_key());
+        assert!(ok.mailbox().is_some());
         let bad = RelayServers {
             relay_url: Some("relay.example.org".into()),
             lookup_url: None,
+            mailbox: None,
         };
         assert!(bad.check().is_err());
+        let bad_mailbox = RelayServers {
+            mailbox: Some("mailbox.example.org".into()),
+            ..RelayServers::default()
+        };
+        assert!(bad_mailbox.check().is_err());
         assert!(!RelayServers::default().finds_by_key());
     }
 

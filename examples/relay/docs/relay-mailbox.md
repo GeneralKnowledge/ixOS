@@ -78,12 +78,14 @@ SealedItem {
 }
 ```
 
-- **The mailbox key.** Each device makes a separate X25519 key for the
+- **The mailbox key.** Each device has a separate X25519 key for the
   mailbox. It sends that key, signed by its endpoint key, to trusted
   devices in the Hello they already exchange. The server never sees it,
   so only trusted devices can seal items the device will open. Keeping it
   separate from the endpoint key avoids reusing one key for two kinds of
-  cryptography, and lets it be rotated without re-pairing.
+  cryptography. It is derived from the device key (HKDF-SHA256, label
+  `relay/mailbox/1 derived`), so there is no second secret to keep in
+  the Keychain, back up or lose, and it is the same every time.
 - **Encryption.** HPKE (RFC 9180) base mode, X25519 with ChaCha20-Poly1305.
   The outer `id`, `to`, `from` and `expires` are bound in as associated
   data, so the server can't move an item to someone else or stretch its
@@ -113,10 +115,13 @@ Only devices the recipient trusts can leave anything. Otherwise anyone
 with an iroh key could fill a closed device's mailbox and crowd out the
 devices that matter.
 
-- For each device it trusts, the recipient makes a random 32-byte
-  **deposit pass** and sends it to that device in their Hello, over the
-  connection that is already encrypted. It registers only the pass's
-  SHA-256 with the mailbox.
+- For each device it trusts, the recipient has a 32-byte **deposit
+  pass**, derived from its device key and that device's id (so each
+  device's pass is different and nothing new is stored), and sends it to
+  that device in their Hello, with the mailbox server's endpoint id,
+  over the connection that is already encrypted and authenticated (which
+  is why the pass and server need no signature of their own). It
+  registers only the pass's SHA-256 with the mailbox.
 - Passes are scoped to their recipient. Only the recipient can register
   or deregister its passes: the server takes the recipient from the iroh
   connection, never from the request. A deposit must carry a pass
@@ -125,8 +130,7 @@ devices that matter.
   quotas above apply per pass, so one trusted device, even a misbehaving
   one, can't use up the whole mailbox.
 - Revoking a device deregisters its pass at once, and forgetting a device
-  does the same. A device that rotates its mailbox key rotates its passes
-  too.
+  does the same. Trusting it again registers the same pass again.
 - The server never learns the trust graph in advance: a pass is just a
   hash until someone uses it. It learns which pairs actually send, as the
   relay does.
@@ -160,6 +164,33 @@ one step:
    again: the recipient leaves a fresh receipt and acknowledges it, so
    only one is ever kept and the server deletes the copy.
 
+**Built so far (step 3, part 2).** Messages, notes, files and folders go
+through the mailbox. A file or folder goes as all its blobs in one sealed
+item, up to 50 MB together for now (sealing holds it in memory a few
+times; streaming would let it reach the server's 100 MB). The receiver
+stores each blob by its own BLAKE3 hash and saves only the content the
+item names, so a blob that isn't what it claims is never saved; then it
+is in the received folder and the conversation as a direct delivery
+would leave it. Anything bigger waits for a direct route and still holds
+back the items queued after it for that device. An item left in the
+mailbox no longer holds up the items after it, so a device that stays
+away gets the whole queue there (up to the first file over 50 MB). Only
+Hybrid uses the mailbox. Relay tries it directly again whenever the device
+is seen, connects, or Relay comes to the foreground; the mailbox copy is
+then dropped on collection as a duplicate. A message left in the mailbox
+shows **In the Mailbox** under its bubble until the receipt makes it
+Delivered (the message keeps an `in_mailbox` flag, set in the same
+transaction that records the delivery as left); `relay messages` and
+`relay listen` say the same. Notes in history and **Not confirmed** aren't
+labelled yet: a note shows as waiting, and after 30 days an unconfirmed
+item ends as any undelivered item does. When the mailbox lets an item expire (7 days), the
+next collecting round tries it directly and leaves it again. An item the
+recipient won't take (from a device it no longer takes from) is deleted
+with no receipt, so the sender's delivery doesn't show Sent. A recipient
+that doesn't know the sender's mailbox can't leave a receipt: the
+sender's delivery then ends when the two next meet directly, and that
+retry is answered without saving the item twice.
+
 ### Collecting
 
 - **iPhone:** when Relay opens or comes to the foreground, and then every
@@ -179,9 +210,11 @@ one step:
   is in the 45-day memory, so it isn't saved again, and the receipt is
   left again (the server stores one per id) before the acknowledgement.
 - A revoked sender's items are dropped and acknowledged without being
-  saved. A device that has been revoked no longer has the recipient's
-  current mailbox key once that key rotates on revoke, so it can't seal
-  anything new to it.
+  saved. A revoked device still knows the recipient's mailbox key (it
+  doesn't rotate), but its pass is deregistered, so the server refuses
+  anything new from it, and the recipient would drop it anyway. Rotating
+  the key on revoke would add nothing to those two checks, and would cut
+  off every other trusted device until they next met directly.
 
 ## Steps
 
@@ -197,14 +230,17 @@ Each step is a PR, Linux-tested before the phone sees it.
    include a device registering a pass for someone else (refused), a
    pass used for another recipient (refused), and an acknowledgement
    from anyone but the recipient (refused).
-3. **The client.** The mailbox key goes in the Hello, the outbox gains its
-   new step, and collecting and receipts are added. The CLI gets
+3. **The client**, in two PRs. Part 1: the mailbox key, each device's
+   pass and the mailbox server go in the Hello (an optional field older
+   builds skip), each device keeps the other's on its saved device, and
+   Relay's servers gain the mailbox. Part 2: the outbox gains its new
+   step, registering passes, collecting and receipts are added. The CLI gets
    `relay status` lines and `relay servers --mailbox`. An end-to-end test
    covers a sender, a closed recipient and the server, then the recipient
    opening.
 4. **Running it.** Deploy `relay-mailbox` on Hetzner as a systemd service,
-   only with Reuben's go-ahead for the server. Then Relay's Servers
-   includes it.
+   only with Reuben's go-ahead for the server (given 2026-11-22). Then
+   Relay's Servers includes it. Steps in [Running the mailbox](#running-the-mailbox).
 5. **The phone run** (about 15 minutes, Device Lab, 5G with Tailscale
    off):
    - stop the laptop's listener, send a message and a photo from the
@@ -237,3 +273,46 @@ These go ahead as recommended unless he says otherwise:
 2. **How long items are kept:** 7 days.
 3. **Biggest item through the mailbox:** 100 MB, so photos and short
    videos fit and larger files still go direct.
+
+## Running the mailbox
+
+On Relay's server (the Hetzner box behind relay.avedeus.ovh), as a
+systemd service, [`deploy/relay-mailbox.service`](../deploy/relay-mailbox.service).
+It needs no Caddy route and no change to the relay or the lookup server:
+devices dial it by its key over iroh, straight to UDP 7850 or through the
+relay, and it publishes where it is on the lookup server.
+
+1. Build it on Linux (x86_64, the box's architecture), from
+   `examples/relay/rust`. On the shared laptop, through the build queue:
+
+   ```bash
+   forge queue run --note "relay-mailbox deploy" -- \
+     cargo build --release --features server --bin relay-mailbox
+   ```
+
+2. Copy the binary and the unit to the box (`hetzner` on the tailnet, Tailscale SSH), install and (re)start it:
+
+   ```bash
+   scp target/release/relay-mailbox ../deploy/relay-mailbox.service root@hetzner:/root/
+   ssh root@hetzner '
+     install -m 755 /root/relay-mailbox /usr/local/bin/relay-mailbox &&
+     install -m 644 /root/relay-mailbox.service /etc/systemd/system/ &&
+     systemctl daemon-reload && systemctl enable relay-mailbox &&
+     systemctl restart relay-mailbox &&
+     systemctl --no-pager status relay-mailbox'
+   ```
+
+3. Read its endpoint id from
+   `journalctl -r -u relay-mailbox | grep -m1 'relay-mailbox [0-9a-f]'`. That id is
+   the mailbox's address in Relay's Servers (step 3 compiles it in), so
+   **keep `/var/lib/relay-mailbox/device.key`**: a new key is a new
+   mailbox, and every device would need an update to find it.
+
+Running since 2026-11-22 as endpoint
+`d47c501b63457d5eae9083d0cfd00f5e44c1744b4e93da8f1ce60fe95dc1b553`, which
+Relay's Servers include. With `DynamicUser` its state lives in
+`/var/lib/private/relay-mailbox` (`/var/lib/relay-mailbox` links there).
+
+An update is steps 1 and 2 again; the key and the waiting items stay in
+`/var/lib/relay-mailbox`. If the host firewall is on, allow UDP 7850.
+

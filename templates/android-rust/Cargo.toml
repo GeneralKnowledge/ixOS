@@ -41,3 +41,7 @@ tempfile = "3.14"
 # Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
 lto = true
 codegen-units = 1
+
+# App code has no unsafe Rust; UniFFI's generated scaffolding passes this too.
+[lints.rust]
+unsafe_code = "forbid"

@@ -24,6 +24,7 @@ struct ChatView: View {
     var focusMessage: String? = nil
 
     @State private var draft = ""
+    @Environment(\.forgeTheme) private var theme
     @State private var draftLoaded = false
     @State private var replyingTo: ChatMessage?
     @State private var editing: ChatMessage?
@@ -31,6 +32,7 @@ struct ChatView: View {
     @State private var stashedDraft = ""
     @State private var deleting: ChatMessage?
     @State private var searching = false
+    @State private var showingGroup = false
     @State private var jumpTarget: String?
     @State private var highlighted: String?
     /// Whether the end of the transcript is on screen. A new message
@@ -50,6 +52,7 @@ struct ChatView: View {
     /// The attachment open in Quick Look.
     @State private var previewURL: URL?
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Records voice messages (Forge's audio module).
     @State private var recorder = ForgeAudioRecorder(maxDuration: 300)
     @State private var microphoneDenied = false
@@ -79,9 +82,9 @@ struct ChatView: View {
                 .overlay(alignment: .bottom) {
                     if newBelow {
                         Button(newMessagesLabel, systemImage: "arrow.down") {
-                            withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                            withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .relayProminentButton()
                         .buttonBorderShape(.capsule)
                         .controlSize(.small)
                         .padding(.bottom, 8)
@@ -118,7 +121,7 @@ struct ChatView: View {
 
     private func reachedBottom(_ reached: Bool) {
         atBottom = reached
-        if reached { withAnimation { newBelow = false } }
+        if reached { withForgeAnimation(.standard, reduceMotion: reduceMotion) { newBelow = false } }
     }
 
     private var newMessagesLabel: String {
@@ -134,7 +137,7 @@ struct ChatView: View {
                 VStack { Divider() }
                 Text(count == 1 ? "1 new message" : "\(count) new messages")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(theme.colors.accent.text)
                 VStack { Divider() }
             }
             .padding(.vertical, 8)
@@ -169,15 +172,15 @@ struct ChatView: View {
                     // Stay where you are reading; the pill counts what came
                     // in, and the divider marks where it starts.
                     if !newBelow { firstUnread = messages.last?.id }
-                    withAnimation { newBelow = true }
+                    withForgeAnimation(.standard, reduceMotion: reduceMotion) { newBelow = true }
                     return
                 }
-                withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
             .onChange(of: composing) { _, focused in
                 // The keyboard is coming up: keep the newest message in view.
                 if focused && editing == nil {
-                    withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                    withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                 }
             }
             .onChange(of: jumpTarget) { _, target in
@@ -187,12 +190,12 @@ struct ChatView: View {
     }
 
     private func jump(to target: String, proxy: ScrollViewProxy) {
-        withAnimation { proxy.scrollTo(target, anchor: .center) }
+        withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(target, anchor: .center) }
         highlighted = target
         jumpTarget = nil
         Task {
             try? await Task.sleep(for: .seconds(1.5))
-            withAnimation { if highlighted == target { highlighted = nil } }
+            withForgeAnimation(.standard, reduceMotion: reduceMotion) { if highlighted == target { highlighted = nil } }
         }
     }
 
@@ -228,6 +231,12 @@ struct ChatView: View {
                 searching = true
             }
             .accessibilityIdentifier("chat.search")
+            if ChatModel.isGroup(conversationId) {
+                Button("Group Info", systemImage: "person.3") {
+                    showingGroup = true
+                }
+                .accessibilityIdentifier("chat.groupInfo")
+            }
             if muted {
                 Button("Unmute", systemImage: "bell") {
                     model.setMuted(conversationId, false)
@@ -261,6 +270,9 @@ struct ChatView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { moreMenu }
             }
+            .sheet(isPresented: $showingGroup, onDismiss: { Task { await model.refresh() } }) {
+                GroupInfoView(model: model, conversationId: conversationId)
+            }
             .sheet(isPresented: $searching) {
                 MessageSearchSheet(model: model, conversationId: conversationId) { found in
                     searching = false
@@ -274,7 +286,9 @@ struct ChatView: View {
                 presenting: deleting
             ) { message in
                 Button(message.status == .sent ? "Delete for Everyone" : "Delete", role: .destructive) {
-                    Task { await model.delete(message) }
+                    // The dialog closes at once; the bubble says "Deleting…"
+                    // until the server answers.
+                    model.startDeleting(message)
                 }
             }
     }
@@ -481,18 +495,35 @@ struct ChatView: View {
         replyingTo = nil
     }
 
+    /// Nothing started since a send cleared the composer: no text, files,
+    /// reply or edit. Only then does a refused send come back.
+    private var composerIsEmpty: Bool {
+        draft.isEmpty && staged.isEmpty && replyingTo == nil && editing == nil
+    }
+
+    /// Clears the composer at once, and gives everything back if Rust
+    /// refuses it (too long, say), unless something new has been started
+    /// meanwhile: a refusal never loses what was written.
     private func send() {
         let text = draft
+        let answering = replyingTo
         if editing == nil && !staged.isEmpty {
             let sending = staged
-            let replyTo = replyingTo?.id
             staged = []
             replyingTo = nil
             draft = ""
-            // Rust copies the files into its store during the send, so the
-            // private copies go once it has finished, sent or not.
             Task {
-                await model.send(files: sending.map(\.outgoing), text: text, to: conversationId, replyTo: replyTo)
+                let kept = await model.send(
+                    files: sending.map(\.outgoing), text: text, to: conversationId, replyTo: answering?.id)
+                // Refused: the files and caption come back to the composer.
+                if !kept && composerIsEmpty {
+                    staged = sending
+                    draft = text
+                    replyingTo = answering
+                    return
+                }
+                // Rust copied the files into its store during the send, so
+                // the private copies can go.
                 sending.forEach { $0.release() }
             }
             return
@@ -501,22 +532,46 @@ struct ChatView: View {
         if let message = editing {
             editing = nil
             draft = stashedDraft
-            Task { await model.edit(message, to: text) }
+            // What the composer held besides the edit, for this submission
+            // only (a later edit replaces `stashedDraft`); unchanged, the
+            // edit comes back (files staged before it stay staged).
+            let draftBefore = draft
+            let stagedBefore = staged.map(\.id)
+            let replyBefore = replyingTo?.id
+            Task {
+                // Failed (the alert says why): back to editing, with the edit.
+                let saved = await model.edit(message, to: text)
+                if !saved, editing == nil, draft == draftBefore,
+                   staged.map(\.id) == stagedBefore, replyingTo?.id == replyBefore {
+                    editing = message
+                    draft = text
+                }
+            }
             return
         }
-        let replyTo = replyingTo?.id
         replyingTo = nil
         draft = ""
         // Not tied to the view: leaving the room does not cancel the send.
-        Task { await model.send(text, to: conversationId, replyTo: replyTo) }
+        Task {
+            let kept = await model.send(text, to: conversationId, replyTo: answering?.id)
+            if !kept && composerIsEmpty {
+                draft = text
+                replyingTo = answering
+            }
+        }
     }
 }
 
-/// Most files one message may carry (Rust's `MAX_ATTACHMENTS_PER_MESSAGE`).
-let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = 10
+/// Most files one message may carry, from Rust
+/// (`MAX_ATTACHMENTS_PER_MESSAGE`).
+let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = Int(chatMaxAttachmentsPerMessage())
 
 /// The reactions offered at the top of a bubble's menu.
 let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+
+/// What every trusted device's conversation id starts with (Rust's
+/// `device_conversation`).
+let deviceConversationPrefix = String(deviceConversationId(endpointId: "x").dropLast())
 
 /// What a bubble's menu and taps do.
 struct BubbleActions {
@@ -690,9 +745,9 @@ private struct ConnectionBanner: View {
 
     private func bar(_ notice: ForgeNotice) -> some View {
         notice
-            .padding(.horizontal)
+            .relayPassiveNotice()
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.bar)
     }
 }
 
@@ -723,10 +778,24 @@ private struct Composer: View {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (isEditing || staged.isEmpty)
     }
 
+    /// How far the text is over Rust's limit, counted as Rust counts
+    /// (Unicode scalars of the trimmed text, so an emoji may count as more
+    /// than one); 0 when it fits.
+    private var overLimit: Int {
+        let count = draft.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count
+        return max(0, count - MAX_MESSAGE_CHARS_SWIFT)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let problem {
                 ForgeNotice(problem, systemImage: "exclamationmark.circle")
+            }
+            if overLimit > 0 {
+                ForgeNotice(
+                    String(localized: "A message can be up to \(MAX_MESSAGE_CHARS_SWIFT) characters. Remove \(overLimit) to send it."),
+                    systemImage: "exclamationmark.circle")
+                    .accessibilityIdentifier("chat.tooLong")
             }
             if let context {
                 contextBar(context)
@@ -742,7 +811,7 @@ private struct Composer: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .relayFloatingBar()
     }
 
     /// Nothing to send yet: the send button becomes the microphone.
@@ -784,7 +853,7 @@ private struct Composer: View {
                 Button(isEditing ? "Save" : "Send", systemImage: isEditing ? "checkmark.circle.fill" : "arrow.up.circle.fill", action: send)
                     .labelStyle(.iconOnly)
                     .font(.title)
-                    .disabled(empty)
+                    .disabled(empty || overLimit > 0)
                     .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityIdentifier("chat.send")
             }
@@ -858,6 +927,7 @@ private struct MessageBubble: View {
     let quoted: Quote?
     let highlighted: Bool
     let actions: BubbleActions
+    @Environment(\.forgeTheme) private var theme
 
     private var live: Bool { message.status == .sent && !message.deleted }
 
@@ -882,12 +952,18 @@ private struct MessageBubble: View {
                 if !message.reactions.isEmpty && !message.deleted {
                     ReactionsRow(reactions: message.reactions, react: actions.react)
                 }
-                if delivery != nil || (message.edited && !message.deleted) {
+                if delivery != nil || (message.edited && !message.deleted) || model.deleting.contains(message.id) {
                     HStack(spacing: 4) {
                         if message.edited && !message.deleted {
                             Text("Edited").font(.caption2).foregroundStyle(.secondary)
                         }
-                        if let delivery { DeliveryLabel(delivery: delivery) }
+                        if model.deleting.contains(message.id) {
+                            ForgeStatus("Deleting…", tone: .info)
+                                .font(.caption2)
+                                .accessibilityIdentifier("chat.deleting")
+                        } else if let delivery {
+                            DeliveryLabel(delivery: delivery, groupText: groupDeliveryText)
+                        }
                     }
                     .padding(.horizontal, 4)
                 }
@@ -905,12 +981,14 @@ private struct MessageBubble: View {
         .accessibilityActions {
             if live {
                 Button("Reply", action: actions.reply)
-                ForEach(quickReactions, id: \.self) { emoji in
-                    Button("React \(emoji)") { actions.react(emoji) }
+                if changeable {
+                    ForEach(quickReactions, id: \.self) { emoji in
+                        Button("React \(emoji)") { actions.react(emoji) }
+                    }
                 }
             }
-            if message.isMine && live { Button("Edit", action: actions.edit) }
-            if message.isMine && !message.deleted { Button("Delete", action: actions.delete) }
+            if message.isMine && live && changeable { Button("Edit", action: actions.edit) }
+            if unsendable { Button("Delete", action: actions.delete) }
             if !message.deleted {
                 ForEach(Array(message.attachments.filter(\.isAudio).enumerated()), id: \.offset) {
                     _, attachment in
@@ -948,7 +1026,7 @@ private struct MessageBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .foregroundStyle(message.isMine ? Color.white : Color.primary)
+            .foregroundStyle(ink)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous).fill(fill)
             )
@@ -957,12 +1035,14 @@ private struct MessageBubble: View {
 
     @ViewBuilder private var menu: some View {
         if live {
-            ControlGroup {
-                ForEach(quickReactions, id: \.self) { emoji in
-                    Button(emoji) { actions.react(emoji) }
+            if changeable {
+                ControlGroup {
+                    ForEach(quickReactions, id: \.self) { emoji in
+                        Button(emoji) { actions.react(emoji) }
+                    }
                 }
+                .controlGroupStyle(.palette)
             }
-            .controlGroupStyle(.palette)
             Button("Reply", systemImage: "arrowshape.turn.up.left", action: actions.reply)
         }
         if !message.deleted && !message.body.isEmpty {
@@ -979,24 +1059,48 @@ private struct MessageBubble: View {
                 ) { actions.open(attachment) }
             }
         }
-        if message.isMine && live {
+        if message.isMine && live && changeable {
             Button("Edit", systemImage: "pencil", action: actions.edit)
         }
         if message.status == .failed {
             Button("Try Again", systemImage: "arrow.clockwise", action: actions.retry)
         }
-        if message.isMine && !message.deleted {
+        if unsendable {
             Button("Delete", systemImage: "trash", role: .destructive, action: actions.delete)
         }
     }
 
+    /// A trusted device's conversation goes through Relay's outbox, which
+    /// can't yet edit, react to or take back a delivered message (Rust
+    /// refuses, and for a delete says "Sign up first."), so the menu leaves
+    /// those out there. Android does the same (relay-android.md).
+    private var inDeviceConversation: Bool {
+        message.conversationId.hasPrefix(deviceConversationPrefix)
+            || ChatModel.isGroup(message.conversationId)
+    }
+
+    /// Whether Edit and reactions are offered.
+    private var changeable: Bool { !inDeviceConversation }
+
+    /// Whether Delete is offered: ours, and in a device's conversation only
+    /// when it never went out.
+    private var unsendable: Bool {
+        message.isMine && !message.deleted
+            && (!inDeviceConversation || message.status == .failed)
+    }
+
     private var fill: Color {
         guard message.isMine else { return .incomingBubble }
-        switch message.status {
-        case .sending: return .accentColor.opacity(0.6)
-        case .sent: return .accentColor
-        case .failed: return .red
-        }
+        // Sending keeps the full accent: at 60% the text fell to 2.8:1, and
+        // the delivery caption already says Sending.
+        return message.status == .failed ? theme.colors.tone(.danger).solid : theme.colors.accent.solid
+    }
+
+    /// Text on the bubble: onAccent (white in light mode, midnight in dark)
+    /// on ours, the danger tone's on a failed one.
+    private var ink: Color {
+        guard message.isMine else { return .primary }
+        return message.status == .failed ? theme.colors.tone(.danger).onSolid : theme.colors.accent.onSolid
     }
 
     private var accessibilityText: String {
@@ -1018,8 +1122,19 @@ private struct MessageBubble: View {
         for reaction in message.reactions {
             text += ", \(reaction.emoji) \(reaction.count)"
         }
-        if let delivery { text += ", \(DeliveryLabel.text(delivery))" }
+        if model.deleting.contains(message.id) {
+            text += ", deleting"
+        } else if let delivery {
+            text += ", \(groupDeliveryText ?? DeliveryLabel.text(delivery))"
+        }
         return text
+    }
+
+    /// In a group, how many members have it ("Delivered to 2 of 3"), for
+    /// the label and VoiceOver alike.
+    private var groupDeliveryText: String? {
+        guard delivery == .sent || delivery == .sending else { return nil }
+        return model.groupDelivery(message)
     }
 }
 
@@ -1028,23 +1143,22 @@ private struct QuoteView: View {
     let quote: Quote
     /// Drawn on our own (tinted) bubble.
     let onMine: Bool
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         HStack(spacing: 6) {
             Rectangle()
-                .fill(onMine ? Color.white.opacity(0.8) : Color.accentColor)
+                .fill(onMine ? AnyShapeStyle(.foreground.opacity(0.8)) : AnyShapeStyle(theme.colors.accent.solid))
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 1) {
                 Text(author).font(.caption.bold())
                 Text(text).font(.caption).lineLimit(2)
             }
-            .opacity(0.85)
+            // Full strength on our bubble: dimmed it fell below 4.5:1.
+            .opacity(onMine ? 1 : 0.85)
         }
         .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
-        )
+        .background { RelayInset(onMine: onMine) }
         .accessibilityAddTraits(.isButton)
     }
 
@@ -1067,23 +1181,16 @@ private struct ReactionsRow: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(reactions, id: \.emoji) { reaction in
-                Button {
-                    react(reaction.emoji)
-                } label: {
+                // A chip that is on while one of the reactions is yours;
+                // tapping adds or takes back yours (Rust decides).
+                Toggle(isOn: Binding(get: { reaction.mine }, set: { _ in react(reaction.emoji) })) {
                     Text("\(reaction.emoji) \(reaction.count)")
                         .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(
-                                reaction.mine ? Color.accentColor.opacity(0.25) : Color.incomingBubble)
-                        )
-                        .overlay {
-                            if reaction.mine { Capsule().strokeBorder(Color.accentColor) }
-                        }
                 }
-                .buttonStyle(.plain)
+                .toggleStyle(.forgeChoice)
+                .controlSize(.small)
                 .accessibilityLabel("\(reaction.emoji), \(reaction.count)\(reaction.mine ? ", including you" : "")")
+                .accessibilityIdentifier("chat.reaction.\(reaction.emoji)")
             }
         }
         .padding(.horizontal, 4)
@@ -1113,6 +1220,7 @@ private struct MessageSearchSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+            .listStyle(.plain)
             .overlay {
                 if !query.isEmpty && results.isEmpty {
                     if resultsFor == query {
@@ -1190,9 +1298,11 @@ struct SearchResultRow: View {
 
 private struct DeliveryLabel: View {
     let delivery: ChatDelivery
+    /// "Delivered to 2 of 3" in a group chat, instead of the plain words.
+    var groupText: String? = nil
 
     var body: some View {
-        Text(Self.text(delivery))
+        Text(groupText ?? Self.text(delivery))
             .font(.caption2)
             .foregroundStyle(delivery == .failed ? Color.red : Color.secondary)
             .padding(.horizontal, 4)
@@ -1201,6 +1311,8 @@ private struct DeliveryLabel: View {
     static func text(_ delivery: ChatDelivery) -> String {
         switch delivery {
         case .sending: return String(localized: "Sending…")
+        // Its device couldn't be reached: it collects it from its mailbox.
+        case .inMailbox: return String(localized: "In the Mailbox")
         case .sent: return String(localized: "Delivered")
         case .read: return String(localized: "Read")
         case .failed: return String(localized: "Not Delivered. Tap to Try Again.")

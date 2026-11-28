@@ -23,6 +23,8 @@ public final class RelayModel {
         case remove(transfer: UInt64)
         case revoke(endpointID: String)
         case forgetDevice(endpointID: String)
+        /// Trust (or trust again) a device: Try Again on a failed trust.
+        case trust(endpointID: String, name: String)
     }
 
     public var alert: ForgeAlert<Action>?
@@ -86,7 +88,7 @@ public final class RelayModel {
         connectionMode = core.connectionMode()
         servers = core.servers()
         serverHealth = core.serverHealth()
-        trustOffer = core.trustOffer()
+        refreshTrustOffer()
         savedDataNotice = core.savedDataNotice()
         awayNotice = core.awayFromHomeNotice()
     }
@@ -101,6 +103,13 @@ public final class RelayModel {
         await perform { try await $0.dismissSavedDataNotice() }
     }
 
+    /// The notice's OK: it closes at once and the model remembers the
+    /// answer.
+    public func startDismissingSavedDataNotice() {
+        savedDataNotice = nil
+        Task { await dismissSavedDataNotice() }
+    }
+
     /// An upgrade turned Relay's servers on (N2): said once, until the
     /// person dismisses it.
     public private(set) var awayNotice: String?
@@ -108,6 +117,13 @@ public final class RelayModel {
     public func dismissAwayNotice() async {
         awayNotice = nil
         await perform { try await $0.dismissAwayFromHomeNotice() }
+    }
+
+    /// The notice's OK: it closes at once and the model remembers the
+    /// answer.
+    public func startDismissingAwayNotice() {
+        awayNotice = nil
+        Task { await dismissAwayNotice() }
     }
 
     /// Whether anything is still on its way, so the screen refreshes its
@@ -119,7 +135,7 @@ public final class RelayModel {
     /// Whether anything waits in the outbox for a trusted device, so the
     /// screen notices when it goes.
     public var isWaiting: Bool {
-        transfers.contains { $0.status == .waiting }
+        transfers.contains { $0.status == .waiting || $0.status == .inMailbox }
     }
 
     /// The haptic for what arrived between two reads of the history: success
@@ -133,14 +149,14 @@ public final class RelayModel {
             // New since the last read, or still on its way then.
             let wasRunning: Bool
             switch before[transfer.id] {
-            case .none, .some(.inProgress), .some(.waiting): wasRunning = true
+            case .none, .some(.inProgress), .some(.waiting), .some(.inMailbox): wasRunning = true
             case .some(.done), .some(.failed): wasRunning = false
             }
             guard wasRunning else { continue }
             switch transfer.status {
             case .done: kind = kind ?? .success
             case .failed: kind = .failure
-            case .inProgress, .waiting: break
+            case .inProgress, .waiting, .inMailbox: break
             }
         }
         return kind
@@ -160,11 +176,42 @@ public final class RelayModel {
             await perform { try await $0.revokeDevice(endpointId: id) }
         case .forgetDevice(let id):
             await perform { try await $0.forgetDevice(endpointId: id) }
+        case .trust(let id, let name):
+            // As the first attempt: no Trust prompt for it while it runs.
+            trustOffer = nil
+            await trust(endpointID: id, name: name)
+            refreshTrustOffer()
         }
     }
 
     public func remove(_ transfer: Transfer) async {
         await perform { try await $0.removeTransfer(id: transfer.id) }
+    }
+
+    /// Remove from History: a received file still here goes with its entry
+    /// (Rust deletes Relay's copy), so that asks first; anything else goes
+    /// at once.
+    public func askToRemove(_ transfer: Transfer) async {
+        // Any received file asks first, whether or not it has landed yet:
+        // the list this row came from may be a moment old.
+        guard transfer.direction == .received, case .file(let name, _, _) = transfer.item else {
+            await remove(transfer)
+            return
+        }
+        alert = .confirm(
+            "Delete “\(name)”?",
+            message: "Removing it from History deletes Relay's copy on this device. Anything you saved elsewhere stays.",
+            confirm: "Delete",
+            action: .remove(transfer: transfer.id),
+            identifier: "history.confirmRemove",
+            destructive: true
+        )
+    }
+
+    /// Remove from History from the row's menu, which closes at once: the
+    /// model asks first or runs the (local, quick) write itself.
+    public func startRemoving(_ transfer: Transfer) {
+        Task { await askToRemove(transfer) }
     }
 
     /// Reports a failure the views ran into themselves.
@@ -274,27 +321,57 @@ public final class RelayModel {
     /// Re-reads the trust offer: the sending side learns the other's name
     /// a moment after its code send ends.
     public func refreshTrustOffer() {
-        trustOffer = core.trustOffer()
+        // An offer stays in Rust until its trust is saved; don't ask again
+        // while it is being trusted.
+        trustOffer = core.trustOffer().flatMap { trusting[$0.endpointId] == nil ? $0 : nil }
     }
 
     /// The person answered Trust.
     public func trust(_ offer: TrustOffer) async {
         trustOffer = nil
-        await perform { try await $0.trustDevice(endpointId: offer.endpointId) }
+        await trust(endpointID: offer.endpointId, name: offer.name)
         // The next device waiting to be trusted, if any.
         refreshTrustOffer()
+    }
+
+    /// Trust from the trust offer's alert, which closes at once: the list
+    /// shows "Trusting…" for the device until Rust answers (`trusting`).
+    public func startTrusting(_ offer: TrustOffer) {
+        trusting[offer.endpointId] = offer.name
+        Task { await trust(offer) }
+    }
+
+    /// Devices being trusted right now, by endpoint id, with their names:
+    /// the list shows each as a pending row, since the alert or button that
+    /// asked has gone.
+    public private(set) var trusting: [String: String] = [:]
+
+    /// Trusts a device. A failure that might pass (the other device is out
+    /// of reach) offers Try Again in the alert.
+    private func trust(endpointID: String, name: String) async {
+        trusting[endpointID] = name
+        defer { trusting[endpointID] = nil }
+        do {
+            try await core.trustDevice(endpointId: endpointID)
+            reload()
+            feedback.play(.success)
+        } catch {
+            log.warn("trust failed: \(error)")
+            alert = .failure(error, retry: .trust(endpointID: endpointID, name: name))
+            feedback.play(.failure)
+        }
     }
 
     /// The person answered Not Now: nothing is remembered, and the next
     /// device waiting to be trusted, if any, is offered.
     public func dismissTrustOffer() {
         core.dismissTrustOffer()
-        trustOffer = core.trustOffer()
+        refreshTrustOffer()
     }
 
     /// Trust Again, for a revoked device: the only way it is trusted again.
     public func trustAgain(_ device: Device) async {
-        await perform { try await $0.trustDevice(endpointId: device.endpointId) }
+        await trust(endpointID: device.endpointId, name: device.name)
     }
 
     public func askToRevoke(_ device: Device) {
@@ -430,6 +507,8 @@ public final class RelayModel {
             switch ServerChoice(servers) {
             case .relays:
                 "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through Relay's server, which can't read it but sees that two devices are connected, when and how much."
+            case .own where servers.relayUrl == nil:
+                "Your devices reach each other directly when they can, from anywhere: your lookup server tells trusted devices where to find this one. With no relay server, some networks keep them apart."
             case .own:
                 "Your devices reach each other from anywhere. When there's no direct way, an encrypted connection passes through your own server, which can't read it but sees that two devices are connected, when and how much."
             case .none:
@@ -511,6 +590,10 @@ public final class RelayModel {
 
     public private(set) var codeReceive: CodeReceive = .idle
 
+    /// The code receive in hand: one stopped (or replaced) while it looked
+    /// for its sender is dropped when the sender turns up.
+    private var receiveAttempt = 0
+
     public var isReceivingCode: Bool {
         switch codeReceive {
         case .finding, .receiving: true
@@ -528,8 +611,13 @@ public final class RelayModel {
             codeReceive = .failed(Self.message(error))
             return
         }
+        receiveAttempt += 1
+        let attempt = receiveAttempt
         codeReceive = .finding
-        switch await find(number) {
+        let sender = await find(number)
+        // Stopped while looking: nothing more.
+        guard attempt == receiveAttempt, case .finding = codeReceive else { return }
+        switch sender {
         case .none:
             codeReceive = .failed("No sender with code number \(number) on this Wi-Fi. Check the sender is still waiting, on the same network.")
         case .several:
@@ -557,8 +645,15 @@ public final class RelayModel {
         }
     }
 
+    /// Stop: while looking for the sender, stops looking (Rust hasn't been
+    /// asked yet); while receiving, Rust stops.
     public func cancelCodeReceive() {
-        core.cancelCodeReceive()
+        if case .finding = codeReceive {
+            receiveAttempt += 1
+            codeReceive = .idle
+        } else {
+            core.cancelCodeReceive()
+        }
     }
 
     public func resetCodeReceive() {
@@ -600,6 +695,7 @@ public final class RelayModel {
     /// Starts sending the files and folders at `paths` with one new code;
     /// the receiver gets them in one folder when there are several.
     public func send(paths: [String]) {
+        staging = 0
         do {
             try core.sendPathsWithCode(paths: paths)
             codeSend = core.codeSendStatus()
@@ -609,21 +705,51 @@ public final class RelayModel {
         }
     }
 
+    /// The pick being copied in before Rust has it (0: none). Each pick gets
+    /// its own number, so Stop, or a newer pick, drops an older one.
+    private var staging = 0
+    private var picks = 0
+
     /// Shows that a picked file is being made ready (copied in) before Rust
-    /// has it.
-    public func preparing(name: String) {
+    /// has it. Pass the number it returns to `send(paths:staged:)` or
+    /// `failSend(_:staged:)`.
+    @discardableResult
+    public func preparing(name: String) -> Int {
+        picks += 1
+        staging = picks
         codeSend = .preparing(name: name, size: 0)
+        return picks
+    }
+
+    /// Whether this pick is still the one being made ready: not stopped
+    /// and not replaced by a newer pick.
+    public func isStaging(_ pick: Int) -> Bool {
+        pick != 0 && pick == staging
+    }
+
+    /// Sends a pick once it is copied in, unless it was stopped or replaced
+    /// meanwhile.
+    public func send(paths: [String], staged pick: Int) {
+        guard pick == staging else { return }
+        send(paths: paths)
     }
 
     public func failSend(_ reason: String) {
+        staging = 0
         codeSend = .failed(reason: reason)
     }
 
+    /// A pick that couldn't be read, unless it was stopped or replaced.
+    public func failSend(_ reason: String, staged pick: Int) {
+        guard pick == staging else { return }
+        failSend(reason)
+    }
+
     public func refreshCodeSend() {
-        let now = core.codeSendStatus()
-        // Still copying the picked file in: Rust hasn't been asked yet.
-        if case .idle = now, case .preparing = codeSend { return }
-        codeSend = now
+        // Still copying the picked file in: Rust hasn't been asked yet, and
+        // what it says is about the send before.
+        if staging != 0 { return }
+        codeSend = core.codeSendStatus()
         refreshTrustOffer()
     }
 
@@ -632,8 +758,15 @@ public final class RelayModel {
         core.codeSendNearby(senders: senders)
     }
 
+    /// Stop: while the pick copies in, drops it; once Rust sends, Rust
+    /// stops.
     public func cancelCodeSend() {
-        core.cancelCodeSend()
+        if staging != 0 {
+            staging = 0
+            codeSend = .idle
+        } else {
+            core.cancelCodeSend()
+        }
     }
 
     /// When the sheet opens: picks up a send still running in Rust (its code
@@ -752,11 +885,13 @@ public enum RelayFormat {
         }
     }
 
-    /// "Waiting for MacBook", "Sending 40%", "Sent", "Received", "Failed: …".
+    /// "Waiting for MacBook", "In the Mailbox", "Sending 40%", "Sent", "Received", "Failed: …".
     public static func status(_ transfer: Transfer) -> String {
         switch transfer.status {
         case .waiting:
             return "Waiting for \(transfer.peerName)"
+        case .inMailbox:
+            return "In the Mailbox"
         case .inProgress(let done):
             let verb = transfer.direction == .sent ? "Sending" : "Receiving"
             if case .file(_, let size, _) = transfer.item, size > 0 {

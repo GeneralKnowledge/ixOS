@@ -29,7 +29,7 @@ type = { id = "bookForm.title", text = "Dune" }
 type = { id = "bookForm.totalPages", text = "400" }
 
 [[step]]
-tap = { id = "bookForm.save" }
+tap = { id = "bookForm.confirm" }
 
 # Saving opens the new book.
 [[step]]

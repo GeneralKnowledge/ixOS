@@ -14,10 +14,15 @@ struct GalleryPageView: View {
         case .iconButtons: IconButtonsPage()
         case .textFields: TextFieldsPage()
         case .formFields: FormFieldsPage()
+        case .choices: ChoicesPage()
+        case .ratings: RatingsPage()
         case .cards: CardsPage()
         case .rows: RowsPage()
         case .badges: BadgesPage()
         case .headers: HeadersPage()
+        case .thumbnails: ThumbnailsPage()
+        case .stats: StatsPage()
+        case .progress: ProgressPage()
         case .states: StatesPage()
         case .notices: NoticesPage()
         case .dialogs: DialogsPage()
@@ -232,6 +237,13 @@ private struct ButtonsPage: View {
         // A spinner in place of the title while saving:
         ForgeButton("Save", isWorking: model.isSaving, action: save)
             .buttonStyle(.forgePrimary)
+
+        // Async work: disabled at once, a spinner after 0.4 s:
+        ForgeButton("Sync") { await model.sync() }
+            .buttonStyle(.forgeSecondary)
+
+        // The look on something that isn't a Button:
+        Menu { … } label: { Label("New", systemImage: "plus").forgeButtonLook(.primary) }
         """) {
             VStack(spacing: theme.spacing.l) {
                 ForgeButton("Save Changes", systemImage: "checkmark", role: kind == .destructive ? .destructive : nil, isWorking: working) {
@@ -244,6 +256,23 @@ private struct ButtonsPage: View {
                 Text("Tapped \(taps) times")
                     .font(.footnote)
                     .foregroundStyle(theme.colors.textSecondary)
+                Divider()
+                // A fast action never shows a spinner; a slow one always does.
+                HStack(spacing: theme.spacing.m) {
+                    ForgeButton("Quick (0.1 s)") { try? await Task.sleep(for: .milliseconds(100)); taps += 1 }
+                        .buttonStyle(.forge(.secondary, expands: true))
+                        .accessibilityIdentifier("gallery.buttons.asyncQuick")
+                    ForgeButton("Slow (3 s)") { try? await Task.sleep(for: .seconds(3)); taps += 1 }
+                        .buttonStyle(.forge(.secondary, expands: true))
+                        .accessibilityIdentifier("gallery.buttons.asyncSlow")
+                }
+                Menu {
+                    Button("Note") { taps += 1 }
+                    Button("Folder") { taps += 1 }
+                } label: {
+                    Label("New", systemImage: "plus").forgeButtonLook(kind, expands: true)
+                }
+                .accessibilityIdentifier("gallery.buttons.menu")
                 Divider()
                 ForEach(ForgeButtonStyle.Kind.allCases) { each in
                     Button(each.name.capitalized) { taps += 1 }
@@ -381,6 +410,7 @@ private struct CardsPage: View {
                     Text("This week").font(.headline)
                     Text("4 of 6 tasks done").foregroundStyle(theme.colors.textSecondary)
                     ProgressView(value: 4, total: 6)
+                        .progressViewStyle(.forge)
                 }
                 GroupBox("Reading") {
                     HStack {
@@ -420,6 +450,7 @@ private struct RowsPage: View {
         }
         ForgeRow("Version", value: "1.0.0")
         ForgeRow(task.title) { ForgeBadge("High", tone: .danger) }
+        ForgeRow("Favourites", systemImage: "heart.fill", accent: .pink, value: "12")
         """) {
             ForgeRow(
                 "Notifications",
@@ -433,6 +464,10 @@ private struct RowsPage: View {
                 case .badge: ForgeBadge("New", tone: .info)
                 case .status: ForgeStatus("On", tone: .success)
                 }
+            }
+            // Accent tiles tell rows apart without meaning anything.
+            ForEach(ForgeAccent.allCases) { accent in
+                ForgeRow(accent.name, systemImage: "music.note.list", accent: accent, value: "12")
             }
         } options: {
             Toggle("Icon", isOn: $icon).accessibilityIdentifier("gallery.rows.icon")
@@ -678,6 +713,194 @@ private struct SampleSheet: View {
                     dismiss()
                 }
             })
+        }
+    }
+}
+
+private struct ChoicesPage: View {
+    enum Side: String, CaseIterable, Identifiable { case a, b; var id: String { rawValue } }
+    @State private var side = Side.a
+    @State private var unread = true
+    @State private var starred = false
+    @State private var disabled = false
+
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ComponentPage(title: "Choices", code: """
+        Button("A") { side = .a }
+            .buttonStyle(.forgeChoice(isSelected: side == .a, shape: .circle))
+        Toggle("Unread", isOn: $unread).toggleStyle(.forgeChoice)
+        """) {
+            VStack(alignment: .leading, spacing: theme.spacing.l) {
+                HStack(spacing: theme.spacing.m) {
+                    ForEach(Side.allCases) { option in
+                        Button { side = option } label: {
+                            Text(option.rawValue.uppercased())
+                                .font(.title2.bold())
+                                .frame(width: 48, height: 48)
+                        }
+                        .buttonStyle(.forgeChoice(isSelected: side == option, shape: .circle))
+                            .accessibilityIdentifier("gallery.choices.side.\(option.rawValue)")
+                    }
+                }
+                HStack(spacing: theme.spacing.s) {
+                    ForEach(Side.allCases) { option in
+                        Button {
+                            side = option
+                        } label: {
+                            Text("Take \(option.rawValue.uppercased())").frame(maxWidth: .infinity, minHeight: 56)
+                        }
+                        .buttonStyle(.forgeChoice(isSelected: side == option, shape: .tile))
+                        .accessibilityIdentifier("gallery.choices.tile.\(option.rawValue)")
+                    }
+                }
+                HStack(spacing: theme.spacing.s) {
+                    Toggle("Unread", isOn: $unread).toggleStyle(.forgeChoice)
+                        .accessibilityIdentifier("gallery.choices.unread")
+                    Toggle("Starred", isOn: $starred).toggleStyle(.forgeChoice(tone: .warning))
+                        .accessibilityIdentifier("gallery.choices.starred")
+                    Toggle("👍 3", isOn: $starred).toggleStyle(.forgeChoice).controlSize(.small)
+                        .accessibilityIdentifier("gallery.choices.small")
+                }
+            }
+            .disabled(disabled)
+        } options: {
+            Toggle("Disabled", isOn: $disabled)
+                .accessibilityIdentifier("gallery.choices.disabled")
+        }
+    }
+}
+
+private struct RatingsPage: View {
+    @State private var rating: Int? = 3
+    @State private var allowsClearing = true
+    @State private var disabled = false
+
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ComponentPage(title: "Ratings", code: """
+        ForgeRating(value: book.rating, identifier: "book.rating") { model.rate(book, $0) }
+        ForgeRating(value: 4, identifier: "review.rating")   // read-only
+        """) {
+            VStack(alignment: .leading, spacing: theme.spacing.m) {
+                ForgeRating(value: rating, allowsClearing: allowsClearing, identifier: "gallery.ratings.input") { rating = $0 }
+                    .font(.title3)
+                    .disabled(disabled)
+                ForgeRating("Read-only", value: 4, identifier: "gallery.ratings.readOnly")
+                Text(rating.map { "\($0) of 5" } ?? "Not rated")
+                    .forgeText(.metadata)
+            }
+        } options: {
+            Toggle("Tap again to clear", isOn: $allowsClearing)
+                .accessibilityIdentifier("gallery.ratings.allowsClearing")
+            Toggle("Disabled", isOn: $disabled)
+                .accessibilityIdentifier("gallery.ratings.disabled")
+        }
+    }
+}
+
+private struct ThumbnailsPage: View {
+    enum Phase: String, CaseIterable, Identifiable { case picture, empty, loading, failed; var id: String { rawValue } }
+    @State private var phase = Phase.picture
+
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ComponentPage(title: "Thumbnails", code: """
+        ForgeThumbnail(width: 44, aspectRatio: 2 / 3) {
+            ForgeRemoteImage(url: cover, maxPixels: 132) { $0.resizable().scaledToFill() } placeholder: { failed in
+                ForgeThumbnailPlaceholder(failed ? .failed : .loading, systemImage: "book.closed")
+            }
+        }
+        """) {
+            HStack(alignment: .top, spacing: theme.spacing.m) {
+                ForgeThumbnail(width: 60, aspectRatio: 2 / 3) { content("book.closed") }
+                ForgeThumbnail(width: 72) { content("photo") }
+                ForgeThumbnail(width: 56, shape: .circle) { content("person.fill") }
+                ForgeThumbnail(width: 56, shape: .square) { content("music.note") }
+            }
+        } options: {
+            OptionPicker(title: "State", id: "gallery.thumbnails.phase", values: Phase.allCases, label: { $0.rawValue.capitalized }, selection: $phase)
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ symbol: String) -> some View {
+        switch phase {
+        case .picture:
+            LinearGradient(colors: [theme.colors.accent.solid, theme.colors.tone(.info).solid], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .empty: ForgeThumbnailPlaceholder(systemImage: symbol)
+        case .loading: ForgeThumbnailPlaceholder(.loading, systemImage: symbol)
+        case .failed: ForgeThumbnailPlaceholder(.failed, systemImage: symbol)
+        }
+    }
+}
+
+private struct StatsPage: View {
+    @State private var hidden = false
+    @State private var overLimit = false
+
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ComponentPage(title: "Stats", code: """
+        ForgeStat("Distance", value: "4.2 km", spokenValue: "4.2 kilometres")
+        ForgeStat("Wind", value: "29", unit: "km/h", layout: .inline)
+            .forgeStatBackground(.hidden)
+        """) {
+            VStack(spacing: theme.spacing.m) {
+                HStack(spacing: theme.spacing.s) {
+                    ForgeStat("Distance", value: "4.2 km", spokenValue: "4.2 kilometres")
+                    ForgeStat("Time", value: "1:12:05", spokenValue: "1 hour 12 minutes")
+                    ForgeStat("Climb", value: "180 m", tone: overLimit ? .warning : nil)
+                }
+                ForgeStat("Wind", value: "29", unit: "km/h", layout: .inline)
+            }
+            .forgeStatBackground(hidden ? .hidden : .automatic)
+        } options: {
+            Toggle("No surface", isOn: $hidden)
+                .accessibilityIdentifier("gallery.stats.hidden")
+            Toggle("Toned figure", isOn: $overLimit)
+                .accessibilityIdentifier("gallery.stats.tone")
+        }
+    }
+}
+
+private struct ProgressPage: View {
+    @State private var done = 4.0
+    @State private var tone = ForgeTone.accent
+
+    @Environment(\.forgeTheme) private var theme
+
+    var body: some View {
+        ComponentPage(title: "Progress", code: """
+        ProgressView(value: done, total: 12) {
+            Text("Receiving 12 MB")
+        } currentValueLabel: {
+            Text("4 MB of 12 MB")
+        }
+        .progressViewStyle(.forge)
+        """) {
+            VStack(spacing: theme.spacing.l) {
+                ProgressView(value: done, total: 12) {
+                    Text("Receiving 12 MB")
+                } currentValueLabel: {
+                    Text("\(Int(done)) MB of 12 MB")
+                }
+                .progressViewStyle(.forge(tone: tone))
+                ProgressView(value: done, total: 12)
+                    .progressViewStyle(.forge(tone: tone))
+                ProgressView {
+                    Text("Preparing")
+                }
+                .progressViewStyle(.forge(tone: tone))
+            }
+        } options: {
+            Stepper("Done: \(Int(done))", value: $done, in: 0...12)
+                .accessibilityIdentifier("gallery.progress.done")
+            OptionPicker(title: "Tone", id: "gallery.progress.tone", values: ForgeTone.allCases, label: { $0.rawValue.capitalized }, selection: $tone)
         }
     }
 }

@@ -16,6 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::capability::Capability;
+use crate::mailbox::PeerMailbox;
 use crate::resolver::{ConnectionMode, RelayServers, RouteKind};
 
 /// What happens after a word-code transfer with a device (Settings).
@@ -109,6 +110,11 @@ pub struct SavedDevice {
     /// nothing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub grants: Vec<String>,
+    /// Its mailbox, as it last told this device in a Hello (N3): where to
+    /// leave items for it while it can't be reached. Cleared when it is
+    /// revoked, forgotten or trusted again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mailbox: Option<PeerMailbox>,
 }
 
 impl SavedDevice {
@@ -228,6 +234,7 @@ impl Devices {
                 d.introduced_by = None;
                 d.revoked_by = None;
                 d.grants.clear();
+                d.mailbox = None;
                 if !name.is_empty() {
                     d.name = name.into();
                 }
@@ -251,6 +258,7 @@ impl Devices {
                 revoked_by: None,
                 person: None,
                 grants: Vec::new(),
+                mailbox: None,
             }),
         }
     }
@@ -339,8 +347,9 @@ impl Devices {
     /// Devices it trusts that aren't trusted here are offered, never
     /// trusted by themselves: a recommendation, which the person decides.
     /// A device revoked here is never offered again. Devices it revoked
-    /// are revoked here, marked with who did it, so the person can see and
-    /// undo it; it can't revoke itself or this device (`me`).
+    /// are revoked here, trusted or forgotten, marked with who did it, so
+    /// the person can see and undo it; it can't revoke itself or this
+    /// device (`me`).
     pub fn introduced(&mut self, introducer: &str, me: &str, list: &DeviceList) -> Introduced {
         let mut done = Introduced::default();
         if !self
@@ -354,11 +363,14 @@ impl Devices {
                 continue;
             }
             if let Some(d) = self.get_mut(id) {
-                if d.trust == SavedTrust::Trusted {
+                // A forgotten device is revoked too: otherwise Pair
+                // Automatically would trust it again after a code transfer.
+                if matches!(d.trust, SavedTrust::Trusted | SavedTrust::Forgotten) {
                     d.trust = SavedTrust::Revoked;
                     d.addresses.clear();
                     d.revoked_by = Some(introducer.to_string());
                     d.grants.clear();
+                    d.mailbox = None;
                     done.revoked.push(id.clone());
                 }
             }
@@ -395,6 +407,7 @@ impl Devices {
                 d.addresses.clear();
                 d.revoked_by = None;
                 d.grants.clear();
+                d.mailbox = None;
                 true
             }
             None => false,
@@ -409,6 +422,7 @@ impl Devices {
                 d.trust = SavedTrust::Forgotten;
                 d.addresses.clear();
                 d.grants.clear();
+                d.mailbox = None;
                 true
             }
             Some(_) => true,
@@ -488,9 +502,24 @@ impl Devices {
 
     /// A trusted device said where it can be reached, and a connection with
     /// it used `route`.
-    pub fn met(&mut self, endpoint_id: &str, told: &[String], route: Option<RouteKind>) {
+    pub fn met(
+        &mut self,
+        endpoint_id: &str,
+        told: &[String],
+        route: Option<RouteKind>,
+        mailbox: Option<PeerMailbox>,
+        now_ms: i64,
+    ) {
         if let Some(d) = self.get_mut(endpoint_id) {
             if d.trust == SavedTrust::Trusted {
+                // Saved, so "seen 2 min ago" survives a restart of this
+                // device (in memory it was only `RelayCore::reached`).
+                d.last_seen_ms = Some(d.last_seen_ms.map_or(now_ms, |t| t.max(now_ms)));
+                if let Some(newer) = mailbox {
+                    if d.mailbox.as_ref().is_none_or(|m| m.replaced_by(&newer)) {
+                        d.mailbox = Some(newer);
+                    }
+                }
                 let told = crate::resolver::clean(told);
                 if !told.is_empty() {
                     d.told = told;
@@ -512,6 +541,45 @@ impl Devices {
 
 #[cfg(test)]
 mod tests {
+
+    /// N3 step 3: a trusted device's mailbox is kept from its Hello,
+    /// replaced only by a newer one, and dropped when trust ends.
+    #[test]
+    fn a_mailbox_is_kept_while_trusted() {
+        use crate::mailbox::MailboxIntro;
+        let laptop = iroh::SecretKey::from_bytes(&[2; 32]);
+        let me = iroh::SecretKey::from_bytes(&[1; 32]).public();
+        let server = iroh::SecretKey::from_bytes(&[9; 32]).public();
+        let told = |at| {
+            MailboxIntro::new(&laptop, &me, &server, at)
+                .verify(&laptop.public())
+                .unwrap()
+        };
+        let id = laptop.public().to_string();
+        let mut devices = Devices::default();
+        // Not trusted: nothing kept.
+        devices.met(&id, &[], None, Some(told(1)), 1);
+        assert!(devices.get(&id).is_none());
+        devices.trust(&id, "Laptop", 1);
+        devices.met(&id, &[], None, Some(told(5)), 70);
+        // Meeting is being seen, saved with the record.
+        assert_eq!(devices.get(&id).unwrap().last_seen_ms, Some(70));
+        assert_eq!(devices.get(&id).unwrap().mailbox, Some(told(5)));
+        // An older one, or the same again, changes nothing.
+        devices.met(&id, &[], None, Some(told(2)), 60);
+        devices.met(&id, &[], None, Some(told(9)), 60);
+        assert_eq!(
+            devices.get(&id).unwrap().last_seen_ms,
+            Some(70),
+            "only forward"
+        );
+        assert_eq!(devices.get(&id).unwrap().mailbox, Some(told(5)));
+        // A Hello without one keeps what is known.
+        devices.met(&id, &[], None, None, 80);
+        assert!(devices.get(&id).unwrap().mailbox.is_some());
+        assert!(devices.revoke(&id));
+        assert_eq!(devices.get(&id).unwrap().mailbox, None);
+    }
 
     #[test]
     fn an_introducer_offers_and_revokes_but_never_trusts_or_unseats_itself() {
@@ -551,6 +619,35 @@ mod tests {
         let given = devices.list_for("tablet");
         assert!(given.trusted.iter().all(|(id, _)| id != "tablet"));
         assert!(!given.revoked.contains(&"tablet".to_string()));
+    }
+
+    /// A device forgotten here and revoked by an introducer is revoked here
+    /// too, so Pair Automatically can't trust it again after a code
+    /// transfer (found while planning the trust model,
+    /// docs/research/unsafe-and-verification.md).
+    #[test]
+    fn an_introducers_revoke_reaches_a_forgotten_device() {
+        let mut devices = Devices {
+            policy: PairingPolicy::PairAutomatically,
+            ..Devices::default()
+        };
+        devices.trust("laptop", "Laptop", 1);
+        assert!(devices.set_introduces("laptop", true));
+        devices.trust("old", "Old", 1);
+        assert!(devices.forget("old"));
+        let list = DeviceList {
+            trusted: vec![],
+            revoked: vec!["old".into()],
+        };
+        let done = devices.introduced("laptop", "me", &list);
+        assert_eq!(done.revoked, ["old"]);
+        assert_eq!(devices.standing("old"), Some(SavedTrust::Revoked));
+        assert_eq!(
+            devices.get("old").unwrap().revoked_by.as_deref(),
+            Some("laptop")
+        );
+        assert_eq!(devices.after_code("old", "Old", 5), AfterCode::Nothing);
+        assert_eq!(devices.standing("old"), Some(SavedTrust::Revoked));
     }
 
     #[test]

@@ -27,7 +27,7 @@ Where an app already has its own plan, this page summarises it and links it inst
 | Sketchbook | First run ever on an iPhone (S2) | Nothing new until it passes |
 | Weather | W1 passed 2026-11-21 | W2 alerts and next-hour rain (paused) |
 | Commonplace | C3 folders and OPML, C4 full articles | C5 per-feed settings and filters |
-| Checklist | Search | Due dates |
+| Checklist | Search; due dates and the agenda (built 2026-11-22) | Reminders for due items |
 | Pocket Library | The P4 sitting (PL-1 to PL-10), Read Aloud chapters | Full-text search in books and notes |
 | Urdu, Naturally | 0.1 (M1) | M2 free conversation |
 | Sums | R2: replay 39 sums, ask Calculator 16 new ones | R3 compare screens |
@@ -120,10 +120,10 @@ Plans: [Commonplace README](../examples/commonplace/README.md), [Android ports p
 
 ### Checklist
 
-The smallest app on the runtime. It has no plan of its own yet; this is its list. It is the first user of recurring schedules and App Intents, and the second of notifications and widgets.
+The smallest app on the runtime ([README](../examples/checklist/README.md)). It has no plan of its own; this is its list. It is the first user of recurring schedules and App Intents, and the second of notifications and widgets.
 
 1. Step 0: search (ticking and Clear Done Items passed on 2026-11-16).
-2. **Due dates and an agenda**: Today, Upcoming, Overdue, all in Rust.
+2. **Due dates and an agenda**: Today, Upcoming, Overdue, all in Rust. Built on 2026-11-22 (CL-4); waits for the phone.
 3. **Reminders for due items**: local notifications, replaced when a date changes. The second user of notifications after Good Dog, and the evidence for whatever they share.
 4. **Recurring items**: every day, week or month, and "after done". The first user of recurring schedules; Good Dog's training rhythm is the second.
 5. **Several lists**, each with its own items.
@@ -169,6 +169,8 @@ Plan: bonsai-harness-plan.md ([#357](https://github.com/GeneralKnowledge/ixOS/pu
 1. Step 0: H1 to H3, one task end to end (hello, one test, a seeded bug fix) on the phone.
 2. **H2 a reliable model interface**, H4 planning and several tasks, H5 recovery and replanning, H6 context management.
 3. H7 a small multi-file project, then H8 the benchmark (his expenses-app task word for word).
+
+Python Lab itself: [python-lab-workspace-plan.md](../examples/device-lab/docs/python-lab-workspace-plan.md), stages PL1 (workspace and interactive console, which also delivers H7's Python Lab half) to PL4.
 
 Framework it touches: llama.cpp stays in Device Lab (`LlamaCppModel`) until a second app runs GGUF models; Urdu, Naturally's M2 is the likely one, if Apple's model can't hold Urdu.
 

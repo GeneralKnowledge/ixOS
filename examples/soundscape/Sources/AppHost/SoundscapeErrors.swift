@@ -10,7 +10,11 @@ public enum SoundscapeErrors {
         switch error {
         case .EmptyName: return "Give it a name."
         case .NameTooLong(let max): return "Names can be up to \(max) characters."
-        case .OutOfRange: return "That is out of range."
+        case .OutOfRange(let setting):
+            if songFields.contains(setting) {
+                return "Keep the \(setting) to \(maxFieldChars) characters or fewer."
+            }
+            return "That is out of range."
         case .Audio: return "That file can't be used."
         case .InUse: return "Soundscape is open in another copy of the app."
         case .Corrupt: return "Your music library couldn't be read."
@@ -27,6 +31,13 @@ public enum SoundscapeErrors {
         case .Stopped: return "Stopped."
         }
     }
+
+    /// The longest title, artist, album or genre Rust keeps for a song
+    /// (`library::MAX_FIELD_CHARS`), from Rust.
+    nonisolated public static let maxFieldChars = Int(songFieldMaxChars())
+
+    /// The song fields Rust names when one is too long (`TrackEdit::merge`).
+    nonisolated static let songFields: Set<String> = ["title", "artist", "album", "genre"]
 
     /// Rust's reasons start lower case; the screen shows a sentence.
     nonisolated static func sentence(_ text: String) -> String {

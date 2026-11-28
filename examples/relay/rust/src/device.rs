@@ -67,6 +67,11 @@ pub(crate) enum DeviceMsg {
         name: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         addresses: Vec<String>,
+        /// How to leave items in this device's mailbox while it can't be
+        /// reached (N3 step 3), for the other device alone. Left out when
+        /// it uses no mailbox, so older devices read it unchanged.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mailbox: Option<crate::mailbox::MailboxIntro>,
     },
     Note {
         /// Chosen by the sender, kept through retries (the outbox's id).
@@ -128,6 +133,25 @@ pub(crate) enum DeviceMsg {
         trusted: Vec<(String, String)>,
         revoked: Vec<String>,
     },
+    /// A message in a group chat (`group`, N7), by the id chat-core gave
+    /// it, kept through retries. Taken only from a member of the group.
+    GroupMessage {
+        group: [u8; 16],
+        id: String,
+        body: String,
+        reply_to: Option<String>,
+    },
+    /// The whole group as its admin now has it: members are (endpoint id,
+    /// name). Taken only from the admin, and only when newer.
+    GroupUpdate {
+        group: [u8; 16],
+        version: u64,
+        name: String,
+        admin: String,
+        members: Vec<(String, String)>,
+    },
+    /// The sender has left the group.
+    GroupLeave { group: [u8; 16] },
 }
 
 impl DeviceMsg {
@@ -216,7 +240,14 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn reached(&self, from: &str);
     /// A trusted device said where it can be reached, and connected over
     /// `route`.
-    fn met(&self, _from: &str, _addresses: Vec<String>, _route: Option<RouteKind>) {}
+    fn met(
+        &self,
+        _from: &str,
+        _addresses: Vec<String>,
+        _route: Option<RouteKind>,
+        _mailbox: Option<crate::mailbox::PeerMailbox>,
+    ) {
+    }
     /// The model this device answers asks with, if it answers any.
     fn model(&self) -> Option<Arc<dyn LanguageModel>> {
         None
@@ -230,6 +261,13 @@ pub(crate) trait DeviceInbound: Send + Sync + 'static {
     fn received_before(&self, from: &str, id: &[u8; 16]) -> bool;
     /// A note arrived; returns when it is saved, with its id remembered.
     fn note(&self, from: &str, id: [u8; 16], text: String) -> Result<(), RelayError>;
+    /// A group item arrived (N7); returns when it is saved, or why it
+    /// isn't taken.
+    fn group(&self, _from: &str, _item: crate::group::GroupItem) -> Result<(), RelayError> {
+        Err(RelayError::Declined {
+            reason: "This device doesn't take group chats".into(),
+        })
+    }
     /// A conversation message arrived; returns when it is in the log (a
     /// message whose id is there already is not added again).
     fn message(
@@ -505,9 +543,13 @@ impl DeviceHandler {
             .map_err(connection)?;
         match hear(&mut recv, STEP).await? {
             DeviceMsg::Hello {
-                version, addresses, ..
+                version,
+                addresses,
+                mailbox,
+                ..
             } if version == VERSION => {
-                self.host.met(them, addresses, route_of(conn));
+                let mailbox = told_mailbox(conn, mailbox);
+                self.host.met(them, addresses, route_of(conn), mailbox);
             }
             DeviceMsg::Hello { .. } => {
                 let reason = "The other device's Relay is a different version; update both".into();
@@ -526,6 +568,7 @@ impl DeviceHandler {
                 version: VERSION,
                 name,
                 addresses: node.addresses(),
+                mailbox: node.mailbox_intro(&conn.remote_id()),
             },
         )
         .await?;
@@ -635,6 +678,23 @@ impl DeviceHandler {
                 let from = them.to_string();
                 let message = crate::device_chat::PeerMessage { id, body, reply_to };
                 match tokio::task::spawn_blocking(move || host.message(&from, message))
+                    .await
+                    .map_err(connection)?
+                {
+                    Ok(()) => DeviceMsg::Done,
+                    Err(err) => DeviceMsg::Refused {
+                        reason: err.saved_reason(),
+                    },
+                }
+            }
+            group @ (DeviceMsg::GroupMessage { .. }
+            | DeviceMsg::GroupUpdate { .. }
+            | DeviceMsg::GroupLeave { .. }) => {
+                let host = Arc::clone(&self.host);
+                let from = them.to_string();
+                let item =
+                    crate::group::incoming(group).ok_or_else(|| connection("not a group item"))?;
+                match tokio::task::spawn_blocking(move || host.group(&from, item))
                     .await
                     .map_err(connection)?
                 {
@@ -823,6 +883,8 @@ pub(crate) enum Outgoing {
     Note(String),
     /// A conversation message; it carries its own id.
     Message(crate::device_chat::PeerMessage),
+    /// A group item (N7), answered Done or Refused.
+    Group(DeviceMsg),
     /// Files and folders as one item, already in the blob store (the
     /// outbox keeps them there).
     Stored(crate::code_send::Offer),
@@ -839,6 +901,8 @@ pub(crate) struct Sent {
     pub route: Option<RouteKind>,
     /// The address it was reached at, when the route is direct.
     pub at: Option<std::net::SocketAddr>,
+    /// Its mailbox, when it told one and signed it.
+    pub mailbox: Option<crate::mailbox::PeerMailbox>,
 }
 
 /// Sends one item, `id`, to a trusted device at `to`, on a route `mode`
@@ -878,11 +942,12 @@ pub(crate) async fn send(
     }
     let result = exchange(node, &conn, them, my_name, id, item, report, &stop)
         .await
-        .map(|(name, addresses)| {
+        .map(|(name, addresses, mailbox)| {
             let path = crate::resolver::path_of(&conn).or(first_path);
             Sent {
                 name,
                 addresses,
+                mailbox,
                 route: path.map(|(kind, _)| kind),
                 at: path.and_then(|(_, at)| at),
             }
@@ -1003,7 +1068,24 @@ impl TextOut for Pipe {
     }
 }
 
-/// Connects to a trusted device at `to` and says Hello.
+/// The mailbox the device at the other end of `conn` told, if it signed
+/// it with its own key: one it didn't sign is ignored, never saved.
+fn told_mailbox(
+    conn: &Connection,
+    told: Option<crate::mailbox::MailboxIntro>,
+) -> Option<crate::mailbox::PeerMailbox> {
+    match told?.verify(&conn.remote_id()) {
+        Ok(saved) => Some(saved),
+        Err(e) => {
+            log::info!("device: a mailbox intro wasn't accepted: {e}");
+            None
+        }
+    }
+}
+
+/// Says Hello on a connection to a trusted device. Its Hello back is
+/// kept as a listener keeps the dialler's: where it can be reached, and its
+/// mailbox, so asking a device anything is enough to learn its mailbox.
 async fn hello(
     node: &Node,
     conn: &Connection,
@@ -1016,11 +1098,28 @@ async fn hello(
             version: VERSION,
             name: my_name,
             addresses: node.addresses(),
+            mailbox: node.mailbox_intro(&conn.remote_id()),
         },
     )
     .await?;
     match hear(&mut recv, STEP).await? {
-        DeviceMsg::Hello { .. } => Ok((send, recv)),
+        DeviceMsg::Hello {
+            version,
+            addresses,
+            mailbox,
+            ..
+        } => {
+            if version == VERSION {
+                let mailbox = told_mailbox(conn, mailbox);
+                node.devices.met(
+                    &conn.remote_id().to_string(),
+                    addresses,
+                    route_of(conn),
+                    mailbox,
+                );
+            }
+            Ok((send, recv))
+        }
         DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
         _ => Err(connection("no hello")),
     }
@@ -1123,7 +1222,7 @@ async fn exchange(
     item: Outgoing,
     report: impl Fn(u64),
     stop: &AtomicBool,
-) -> Result<(String, Vec<String>), RelayError> {
+) -> Result<(String, Vec<String>, Option<crate::mailbox::PeerMailbox>), RelayError> {
     let (mut send, mut recv) = conn.open_bi().await.map_err(connection)?;
     say(
         &mut send,
@@ -1131,13 +1230,21 @@ async fn exchange(
             version: VERSION,
             name: my_name,
             addresses: node.addresses(),
+            mailbox: node.mailbox_intro(&them),
         },
     )
     .await?;
-    let (their_name, their_addresses) = match hear(&mut recv, STEP).await? {
+    let (their_name, their_addresses, their_mailbox) = match hear(&mut recv, STEP).await? {
         DeviceMsg::Hello {
-            name, addresses, ..
-        } => (name, crate::resolver::clean(&addresses)),
+            name,
+            addresses,
+            mailbox,
+            ..
+        } => (
+            name,
+            crate::resolver::clean(&addresses),
+            told_mailbox(conn, mailbox),
+        ),
         DeviceMsg::Refused { reason } => return Err(RelayError::Declined { reason }),
         _ => return Err(connection("no hello")),
     };
@@ -1155,6 +1262,10 @@ async fn exchange(
             say(&mut send, &msg).await?;
             hear(&mut recv, STEP).await?
         }
+        Outgoing::Group(msg) => {
+            say(&mut send, &msg).await?;
+            hear(&mut recv, STEP).await?
+        }
         Outgoing::Stored(offer) => {
             lock(&node.device_allowed)
                 .entry(them)
@@ -1169,7 +1280,7 @@ async fn exchange(
     };
     send.finish().ok();
     match ending {
-        DeviceMsg::Done => Ok((their_name, their_addresses)),
+        DeviceMsg::Done => Ok((their_name, their_addresses, their_mailbox)),
         DeviceMsg::Refused { reason } => Err(RelayError::Declined { reason }),
         _ => Err(connection("unexpected answer")),
     }
@@ -1237,6 +1348,7 @@ mod tests {
                     version: 1,
                     name: "Laptop".into(),
                     addresses: vec![],
+                    mailbox: None,
                 },
                 include_str!("../fixtures/device-1/hello.hex"),
             ),
@@ -1245,6 +1357,7 @@ mod tests {
                     version: 1,
                     name: "Laptop".into(),
                     addresses: vec!["100.72.135.124:4000".into()],
+                    mailbox: None,
                 },
                 include_str!("../fixtures/device-1/hello-addresses.hex"),
             ),
@@ -1299,6 +1412,32 @@ mod tests {
                 },
                 include_str!("../fixtures/device-1/status.hex"),
             ),
+            (
+                DeviceMsg::GroupMessage {
+                    group: [7; 16],
+                    id: "m1".into(),
+                    body: "hi".into(),
+                    reply_to: None,
+                },
+                include_str!("../fixtures/device-1/group-message.hex"),
+            ),
+            (
+                DeviceMsg::GroupUpdate {
+                    group: [7; 16],
+                    version: 2,
+                    name: "Family".into(),
+                    admin: "aa".into(),
+                    members: vec![
+                        ("aa".into(), "Phone".into()),
+                        ("bb".into(), "Laptop".into()),
+                    ],
+                },
+                include_str!("../fixtures/device-1/group-update.hex"),
+            ),
+            (
+                DeviceMsg::GroupLeave { group: [7; 16] },
+                include_str!("../fixtures/device-1/group-leave.hex"),
+            ),
         ]
     }
 
@@ -1330,6 +1469,7 @@ mod tests {
                 version: 1,
                 name: "Laptop".into(),
                 addresses: vec![],
+                mailbox: None,
             }
         );
     }
@@ -1523,6 +1663,15 @@ mod tests {
         name: &str,
         host: Arc<dyn DeviceInbound>,
     ) -> Arc<Node> {
+        test_node_using(dir, name, host, &crate::resolver::RelayServers::default()).await
+    }
+
+    async fn test_node_using(
+        dir: &std::path::Path,
+        name: &str,
+        host: Arc<dyn DeviceInbound>,
+        servers: &crate::resolver::RelayServers,
+    ) -> Arc<Node> {
         let key_dir = dir.join(name);
         let link = NodeLink::default();
         let node = Arc::new(
@@ -1531,13 +1680,144 @@ mod tests {
                 &key_dir.join("store"),
                 host,
                 Arc::clone(&link),
-                &crate::resolver::RelayServers::default(),
+                servers,
             )
             .await
             .unwrap(),
         );
         let _ = link.set(Arc::downgrade(&node));
         node
+    }
+
+    /// Takes notes from anyone, and keeps the mailbox each Hello told.
+    #[derive(Default)]
+    struct KeepsMailbox(std::sync::Mutex<Vec<(String, Option<crate::mailbox::PeerMailbox>)>>);
+
+    impl DeviceInbound for KeepsMailbox {
+        fn rights(&self, from: &str) -> Option<Rights> {
+            TrustsAll.rights(from)
+        }
+        fn my_name(&self) -> String {
+            TrustsAll.my_name()
+        }
+        fn status(&self, _: &str) -> StatusReport {
+            StatusReport::default()
+        }
+        fn reached(&self, _: &str) {}
+        fn met(
+            &self,
+            from: &str,
+            _: Vec<String>,
+            _: Option<RouteKind>,
+            mailbox: Option<crate::mailbox::PeerMailbox>,
+        ) {
+            lock(&self.0).push((from.to_string(), mailbox));
+        }
+        fn folder(&self) -> PathBuf {
+            PathBuf::from("/nonexistent")
+        }
+        fn received_before(&self, _: &str, _: &[u8; 16]) -> bool {
+            false
+        }
+        fn note(&self, _: &str, _: [u8; 16], _: String) -> Result<(), RelayError> {
+            Ok(())
+        }
+        fn message(&self, _: &str, _: crate::device_chat::PeerMessage) -> Result<(), RelayError> {
+            Ok(())
+        }
+        fn begin_file(&self, _: &str, _: &str, _: u64) -> Result<u64, RelayError> {
+            Err(RelayError::Refused)
+        }
+        fn progress(&self, _: u64, _: u64) {}
+        fn finish_file(
+            &self,
+            _: u64,
+            _: &str,
+            _: [u8; 16],
+            _: [u8; 32],
+            _: Result<String, String>,
+        ) {
+        }
+    }
+
+    /// N3 step 3: each side's Hello tells the other its mailbox (key,
+    /// that device's own pass, the server), and each keeps the other's;
+    /// a device with no mailbox tells nothing.
+    #[test]
+    fn the_hello_tells_each_side_the_others_mailbox() {
+        use crate::mailbox::{DepositPass, MailboxKey};
+        let dir = tempfile::tempdir().unwrap();
+        let server = iroh::SecretKey::from_bytes(&[9; 32]).public();
+        let servers = crate::resolver::RelayServers {
+            mailbox: Some(server.to_string()),
+            ..Default::default()
+        };
+        let host = Arc::new(KeepsMailbox::default());
+        crate::code::TOKIO.block_on(async {
+            let listener =
+                test_node_using(dir.path(), "listener", Arc::clone(&host) as _, &servers).await;
+            let sender = test_node_using(dir.path(), "sender", Arc::new(NoDevices), &servers).await;
+            let sent = send(
+                &sender,
+                listener.endpoint.addr(),
+                ConnectionMode::Hybrid,
+                "sender".into(),
+                [5; 16],
+                Outgoing::Note("hi".into()),
+                |_| {},
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+            .unwrap();
+            // The sender keeps the listener's mailbox.
+            let theirs = sent.mailbox.expect("the listener told its mailbox");
+            let listener_key = listener.endpoint.secret_key();
+            assert_eq!(
+                theirs.key(),
+                Some(MailboxKey::of_device(listener_key).public())
+            );
+            assert_eq!(
+                theirs.pass(),
+                Some(DepositPass::for_peer(listener_key, &sender.id()))
+            );
+            assert_eq!(theirs.server(), Some(server));
+            // And the listener the sender's, with the listener's own pass.
+            let told = lock(&host.0).clone();
+            assert_eq!(told.len(), 1);
+            assert_eq!(told[0].0, sender.id().to_string());
+            let mine = told[0].1.clone().expect("the sender told its mailbox");
+            let sender_key = sender.endpoint.secret_key();
+            assert_eq!(mine.key(), Some(MailboxKey::of_device(sender_key).public()));
+            assert_eq!(
+                mine.pass(),
+                Some(DepositPass::for_peer(sender_key, &listener.id()))
+            );
+            sender.shutdown().await;
+            listener.shutdown().await;
+        });
+        // With no mailbox set, the Hello says nothing about one.
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(KeepsMailbox::default());
+        crate::code::TOKIO.block_on(async {
+            let listener = test_node(dir.path(), "listener", Arc::clone(&host) as _).await;
+            let sender = test_node(dir.path(), "sender", Arc::new(NoDevices)).await;
+            let sent = send(
+                &sender,
+                listener.endpoint.addr(),
+                ConnectionMode::Hybrid,
+                "sender".into(),
+                [6; 16],
+                Outgoing::Note("hi".into()),
+                |_| {},
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+            .unwrap();
+            assert_eq!(sent.mailbox, None);
+            assert_eq!(lock(&host.0)[0].1, None);
+            sender.shutdown().await;
+            listener.shutdown().await;
+        });
     }
 
     #[test]

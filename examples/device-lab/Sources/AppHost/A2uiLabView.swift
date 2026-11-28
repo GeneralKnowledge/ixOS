@@ -29,20 +29,16 @@ struct A2uiLabView: View {
                 Text("An agent's proposal, drawn natively from A2UI messages. The app checks every message, works out the changes itself, and applies them only when you confirm.")
                     .forgeText(.note)
 
-                if let problem = host.catalogProblem {
-                    ForgeNotice(problem, systemImage: "xmark.octagon", tone: .danger)
-                }
                 if let notice = model.notice {
                     ForgeNotice(notice.text, systemImage: icon(notice.kind), tone: tone(notice.kind))
                         .accessibilityIdentifier("a2uiLab.notice")
                 }
 
-                if let surface = host.surface, let catalog = host.catalog {
-                    A2uiSurfaceView(surface: surface, catalog: catalog)
+                if let surface = host.surface {
+                    A2uiSurfaceView(surface: surface, catalog: host.catalog)
                 } else {
                     Button("Show the Proposal") { model.start() }
                         .buttonStyle(.forge(.primary, expands: true))
-                        .disabled(host.catalog == nil)
                         .accessibilityIdentifier("a2uiLab.start")
                 }
 
@@ -56,7 +52,7 @@ struct A2uiLabView: View {
             .padding(theme.spacing.l)
         }
         .background(theme.colors.groupedBackground)
-        .navigationTitle("A2UI Lab")
+        .navigationTitle("Reading Plan")
         .inlineNavigationTitle()
         .sheet(isPresented: reviewing) {
             if let changeSet = model.changeSet {
@@ -150,13 +146,15 @@ struct A2uiReviewSheet: View {
                             Text(row.plan).forgeText(.body)
                             if let was = row.was {
                                 Text("Replaces: \(was)").forgeText(.note)
+                            } else {
+                                ForgeBadge("New plan", tone: .info)
                             }
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("a2uiLab.change.\(row.bookId)")
                     }
                 } header: {
-                    Text(changeSet.rows.count == 1 ? "1 change" : "\(changeSet.rows.count) changes")
+                    Text(header)
                 } footer: {
                     Text(footer)
                 }
@@ -175,6 +173,16 @@ struct A2uiReviewSheet: View {
                 }
             }
         }
+    }
+
+    /// "2 new plans, 1 change": a book with no saved plan isn't a change.
+    private var header: String {
+        let new = changeSet.rows.filter { $0.was == nil }.count
+        let changed = changeSet.rows.count - new
+        var parts: [String] = []
+        if new > 0 { parts.append(new == 1 ? "1 new plan" : "\(new) new plans") }
+        if changed > 0 { parts.append(changed == 1 ? "1 change" : "\(changed) changes") }
+        return parts.isEmpty ? "No changes" : parts.joined(separator: ", ")
     }
 
     private var footer: String {

@@ -25,22 +25,30 @@ longer asks for the microphone.
 | N1 | Jamendo ([plan](docs/sources.md)): Discover searches Jamendo with your own client ID (this week's popular until you type) and plays full tracks through the same player; Add to Library keeps a track with your music (playlists, favourites, edits, downloads where Jamendo allows), with its licence, credit and what it allows on its screen. The library now works without a take server | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | N2 | Internet Archive ([plan](docs/sources.md#internet-archive-as-built)): a Jamendo / Internet Archive switch in Discover; Archive albums and concerts open to their tracks (best MP3 of each), to play, add one or all to the library, and download unless the item is restricted | Rust tested on Linux against canned answers; live API not yet checked; Swift written, not yet built with xtool or run on a phone |
 | N3 | MusicBrainz: Identify Song looks a song up, ranks what MusicBrainz knows by title, artist and length, and links the one picked, with or without its details and cover; songs linked to the same recording list each other | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone; live API checked from the laptop (2026-11-19) |
-| N4 | A small fixed test catalogue | Planned |
-| N5 | One search for everything: the library's search also asks Jamendo and the Internet Archive, together, and shows their results below your own music, each source with its own section or its own reason it couldn't answer | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| N4 | A fixed test catalogue ([plan](docs/sources.md#test-catalogue-as-built)): Discover's menu opens eight tracks Soundscape writes itself (4 seconds, 10 minutes, no artwork, no tags, two recordings of one work, the same recording in another format, stream only) in WAV, AIFF and CAF, each saying what it checks; they play, add, merge and download like any catalogue's, with no network | Rust tested on Linux (files checked with ffprobe); Swift written, not yet built with xtool or run on a phone |
+| N5 | One search for everything: the library's search also asks Jamendo and the Internet Archive, together, and shows their results below your own music, each source with its own section or its own reason it couldn't answer | Rust tested on Linux; built for iPhone and looked at on the phone (2026-11-21) |
+| N6 | More from Jamendo: Now Playing on a Jamendo song offers more by its artist and more in its genre; Discover browses Jamendo by genre | Rust tested on Linux; passed on the phone (2026-11-22) |
+| N7 | Exploring Jamendo ([sources](docs/sources.md#exploring-jamendo-as-built-rust)): shelves beyond this week's popular (Picks, New Releases, Rising, Popular This Month, Instrumental, All-Time), artists to discover, Because You Like, and artist pages as Albums, EPs and Singles, with singles that share a cover grouped into one album | Rust tested on Linux against canned answers; live API not checked; Swift written, not yet built with xtool or run on a phone |
+| N7 | One song, several sources ([reconciliation](docs/architecture.md#reconciliation-as-built)): Same Song, Several Sources lists songs that look like one song (the same MusicBrainz recording, or the same title, artist and length) to Merge or Keep Apart; a merged song lists every source's recordings, your own file plays, favourites, playlists, history and downloads follow it, and Separate brings a source back as its own song (favourites and playlists stay with the kept song) | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M7 | Studio removed: Soundscape opens straight on your library; no microphone permission | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M6 | Carry on where you left off: the queue, the song and how far into it survive closing the app, and it opens paused there | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 | M8 | Sleep timer: pause after 15 to 90 minutes or at the end of this song, fading out over the last 10 seconds | Swift written, not yet built with xtool or run on a phone |
 | M9 | Between songs: no gap (the next song is loaded early and starts the moment one ends) or a 2 to 12 second crossfade, kept as a setting | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| S1-S3 | The redesign ([design](docs/design.md)): four tabs (Listen, Library, Discover, Search), the mini-player above the tab bar, a Listen home of artwork shelves, the Library by kind with an album grid, and a full-screen Now Playing in the artwork's colours with lyrics in place, a queue sheet, volume and AirPlay | Swift written, not yet built with xtool or run on a phone |
+| S3.5 | Everyday Polish ([design](docs/design.md#everyday-polish-s35-reuben-2026-11-22-2128)): Save as Playlist from Up Next, one song menu everywhere, a heart on the mini-player, Undo after removing, saved stations, recent searches, download signs on albums | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| S4-S6 | Album and artist pages in their artwork's colours with Top Songs (ranked in Rust) and More by; Discover as an editorial page (Top This Week, Start a Station, New in your genres); a first native-finish pass (Magic Tap, larger text layouts) | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| M10 | Smart Playlists ([roadmap](docs/roadmap.md#m10-smart-playlists)): playlists made from rules (title, artist, album, genre, plays, length, date added, last played, favourite; all or any; a sort and a limit) that update themselves, an editor that counts the songs matching as you go, and four built in: Recently Added, Most Played, Never Played and Forgotten Favourites. Play counts are kept per song, past the history's 2,000 plays | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
+| R1 | Radio ([design](docs/design.md#radio-reuben-2026-11-22-2028-and-2036)): nonstop stations from a genre, a song or an artist, mixed in Rust (likes, favourites and plays weighted up, two in five songs new, no artist twice within four songs, disliked songs never), Like and Dislike in Now Playing, Hear Nonstop Music on Listen | Rust tested on Linux; Swift written, not yet built with xtool or run on a phone |
 
 ## How the work is split
 
 - **Rust owns the state and the rules** (`rust/src`): the library (`library.rs`),
   favourites, playlists and history (`collection.rs`), what is kept on the phone
-  (`offline.rs`), the queue (`queue.rs`) and what was playing (`playback.rs`),
+  (`offline.rs`), the queue (`queue.rs`), the radio's mix (`station.rs`) and what was playing (`playback.rs`),
   the catalogues (`jamendo.rs`, `archive.rs`, rights in `catalogue.rs`), the take
   server's client (`listen.rs`) and lyrics (`lyrics.rs`). All of it is tested on Linux.
-- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player and Now
-  Playing, the lock screen and interruptions, and blind A/B of two takes.
+- **AVPlayer plays** (`TakePlayer.swift`): the queue, the mini-player (`MiniPlayer.swift`) and Now
+  Playing (`NowPlaying.swift`), the lock screen and interruptions, and blind A/B of two takes.
 
 ## Rust
 
@@ -58,6 +66,9 @@ cargo test --manifest-path examples/soundscape/rust/Cargo.toml
 | `Sources/AppHost/LibraryView.swift` | Songs, albums and artists, search, a song's screen with its recordings and licence |
 | `Sources/AppHost/CollectionView.swift` | Your Music: favourites, playlists, history, To Pick |
 | `Sources/AppHost/DiscoverView.swift` | Jamendo and the Internet Archive |
+| `Sources/AppHost/DiscoverHome.swift` | Discover before a search: Top This Week and its shelves |
+| `Sources/AppHost/AlbumArtistPages.swift` | An album and an artist as pages in their artwork's colours |
+| `Sources/AppHost/SongActions.swift` | The one song menu (Play Next to Go to Artist) used everywhere |
 | `Sources/AppHost/OfflineView.swift`, `MusicImporter.swift` | Downloads, and importing your own files |
 | `Sources/AppHost/TakePlayer.swift` | AVPlayer: queue, lock screen, interruptions, saving what plays |
 | `Sources/AppHost/SoundscapeErrors.swift` | Rust's errors in words |

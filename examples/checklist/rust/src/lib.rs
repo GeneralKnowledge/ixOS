@@ -4,10 +4,11 @@
 //! this file is the API the SwiftUI app calls, built on the application
 //! runtime (`forge_app`):
 //!
-//! - **Commands** (`add`, `toggle`, `rename`, `remove`, `clear_done`) run one
+//! - **Commands** (`add`, `toggle`, `rename`, `set_due`, `remove`,
+//!   `clear_done`) run one
 //!   at a time on the runtime's command thread. Each saves before it
 //!   returns; the runtime then raises the revision and announces `Changed`.
-//! - **Queries** (`items`, `summary`) read a [`Published`] snapshot and
+//! - **Queries** (`items`, `summary`, `agenda`) read a [`Published`] snapshot and
 //!   never wait for a command.
 //! - **Work**: `search` is on-screen work (stopped by the background, by
 //!   the host's cancellation, by shutdown); `export_text` writes a file to
@@ -26,7 +27,7 @@ use std::sync::Arc;
 use forge_app::{Cancellation, DataDirectory, Document, ErrorKind, Published, Runtime};
 
 use checklist::Checklist;
-pub use checklist::{Item, Summary, MAX_TITLE_CHARS};
+pub use checklist::{Agenda, Item, Summary, MAX_TITLE_CHARS};
 
 // No namespace argument: UniFFI takes the library's name (checklist_core), so this
 // crate keeps its own bindings when another app links it.
@@ -49,6 +50,9 @@ struct CsvRow {
     /// "Yes" when done; anything else (or a missing column) is not done.
     #[serde(rename = "Done", default)]
     done: String,
+    /// The day it is due, `YYYY-MM-DD`; empty (or a missing column) for none.
+    #[serde(rename = "Due", default)]
+    due: String,
 }
 
 /// What `import_csv` did: how many items it added, and why it skipped the
@@ -68,6 +72,8 @@ pub enum ChecklistError {
     EmptyTitle,
     #[error("titles are at most {max} characters")]
     TitleTooLong { max: u32 },
+    #[error("\"{day}\" is not a day (use YYYY-MM-DD)")]
+    InvalidDay { day: String },
     #[error("no item with id {id}")]
     NotFound { id: u64 },
     #[error("the checklist is open in another copy of the app")]
@@ -90,7 +96,9 @@ forge_app::app_error_conversions!(ChecklistError: Stopped, OpenError, DocumentEr
 #[uniffi::export]
 pub fn checklist_error_kind(error: ChecklistError) -> ErrorKind {
     match error {
-        ChecklistError::EmptyTitle | ChecklistError::TitleTooLong { .. } => ErrorKind::Invalid,
+        ChecklistError::EmptyTitle
+        | ChecklistError::TitleTooLong { .. }
+        | ChecklistError::InvalidDay { .. } => ErrorKind::Invalid,
         ChecklistError::NotFound { .. } => ErrorKind::NotFound,
         ChecklistError::InUse => ErrorKind::Unavailable,
         ChecklistError::Corrupt { .. } => ErrorKind::Corrupt,
@@ -164,6 +172,14 @@ impl ChecklistCore {
         Summary::of(&self.items.get())
     }
 
+    /// The items not yet done that have a due day, split into overdue, due
+    /// `today` and upcoming. `today` is the phone's local day
+    /// (`YYYY-MM-DD`): Swift knows the time zone, Rust doesn't need to.
+    /// Never waits for a command.
+    pub fn agenda(&self, today: String) -> Agenda {
+        checklist::agenda(&self.items.get(), &today)
+    }
+
     /// Adds an item at the end; returns its id.
     pub async fn add(&self, title: String) -> Result<u64, ChecklistError> {
         self.rt
@@ -182,6 +198,16 @@ impl ChecklistCore {
         self.rt
             .command("rename", move |state| {
                 state.change(|list| list.rename(id, &title))
+            })
+            .await
+    }
+
+    /// Sets the local day an item is due (`YYYY-MM-DD`), or clears it with
+    /// none. A day that isn't one is refused (`InvalidDay`).
+    pub async fn set_due(&self, id: u64, due: Option<String>) -> Result<(), ChecklistError> {
+        self.rt
+            .command("set-due", move |state| {
+                state.change(|list| list.set_due(id, due.as_deref()))
             })
             .await
     }
@@ -246,7 +272,7 @@ impl ChecklistCore {
             .await
     }
 
-    /// Writes the checklist as a spreadsheet (Item, Done) for sharing;
+    /// Writes the checklist as a spreadsheet (Item, Done, Due) for sharing;
     /// returns the file's path. Finishing work, like `export_text`.
     pub async fn export_csv(
         &self,
@@ -267,6 +293,7 @@ impl ChecklistCore {
                     .map(|item| CsvRow {
                         item: item.title.clone(),
                         done: if item.done { "Yes" } else { "No" }.into(),
+                        due: item.due.clone().unwrap_or_default(),
                     })
                     .collect();
                 let bytes = forge_storage::csv_file::to_csv(&rows)?;
@@ -282,7 +309,7 @@ impl ChecklistCore {
     }
 
     /// Adds the rows of a spreadsheet at `path` (an "Item" column, and
-    /// optionally "Done") after the existing items, in one save. Rows it
+    /// optionally "Done" and "Due") after the existing items, in one save. Rows it
     /// can't use are skipped and listed; it adds nothing if none are usable.
     pub async fn import_csv(&self, path: String) -> Result<CsvImportSummary, ChecklistError> {
         // Read the file outside the command, so a slow file doesn't hold up
@@ -312,12 +339,24 @@ impl ChecklistCore {
                             already += 1;
                             continue;
                         }
+                        // A row with a day that isn't one is skipped whole,
+                        // not added without its day.
+                        let due = row.due.trim();
+                        if !due.is_empty() {
+                            if let Err(err) = checklist::valid_day(due) {
+                                skipped.push(format!("Line {line}: {err}"));
+                                continue;
+                            }
+                        }
                         match list.add(&row.item) {
                             Ok(id) => {
                                 added += 1;
                                 known.insert(same_title(&row.item));
                                 if is_yes(&row.done) {
                                     list.toggle(id)?;
+                                }
+                                if !due.is_empty() {
+                                    list.set_due(id, Some(due))?;
                                 }
                             }
                             Err(err) => skipped.push(format!("Line {line}: {err}")),
@@ -339,9 +378,14 @@ impl ChecklistCore {
     }
 }
 
-/// A title as compared for duplicates: trimmed, ignoring case.
+/// A title as compared for duplicates: tidied the way a saved title is
+/// (runs of spaces, tabs and line breaks become one space), ignoring case.
 fn same_title(title: &str) -> String {
-    title.trim().to_lowercase()
+    title
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 /// The line number a "Line N: ..." note starts with, for sorting.

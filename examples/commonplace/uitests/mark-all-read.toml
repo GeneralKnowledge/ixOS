@@ -6,13 +6,13 @@
 # address with the laptop's. Starts on an empty, throwaway library.
 
 name = "Mark all as read"
-app = "org.forgemobile.agentlab"
+app = "org.forgemobile.devicelab"
 
 [[step]]
 terminate = {}
 
 [[step]]
-launch = { args = ["-ForgeTemporaryData"] }
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "commonplace"] }
 
 [[step]]
 tap = { id = "feeds.add" }
@@ -21,7 +21,7 @@ tap = { id = "feeds.add" }
 type = { id = "addFeed.url", text = "http://192.168.1.169:8765/rss.xml" }
 
 [[step]]
-tap = { id = "addFeed.save" }
+tap = { id = "addFeed.confirm" }
 
 # The new feed's timeline opens, everything unread.
 [[step]]

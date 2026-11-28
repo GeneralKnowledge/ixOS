@@ -57,6 +57,9 @@ public struct RelayRoot: View {
             // Messaging's haptics, whichever tab is showing: a message in
             // another chat, a message that failed to send.
             .forgeFeedback(chat.feedback)
+            // Relay's muted blue (RelayColors), for every tab and for
+            // Device Lab, which shows this root in a sheet.
+            .forgeTheme(RelayColors.theme)
     }
 
     private var tabs: some View {
@@ -89,6 +92,7 @@ public struct RelayRoot: View {
                 .tag(Tab.settings)
             }
         }
+        .relayTabBarMinimizes()
     }
 
     /// Sign-up, the conversations, a spinner, or a recovery screen.

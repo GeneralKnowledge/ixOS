@@ -5,10 +5,11 @@ import ForgeUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A trusted device in the navigation stack, by endpoint id (paired
-/// devices are pushed by their `String` device id).
-struct TrustedRoute: Hashable {
+/// A trusted device in the navigation stack, by endpoint id.
+struct TrustedRoute: ForgeSurfaceRoute {
     let endpointID: String
+    /// One screen per device, however it is reached.
+    var surfaceID: String? { "device:\(endpointID)" }
 }
 
 /// The trust look: a filled shield and the word, so it never rests on
@@ -25,11 +26,12 @@ struct TrustBadge: View {
 /// it is on this network now.
 struct TrustedDeviceRow: View {
     let device: Device
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "laptopcomputer.and.iphone")
-                .foregroundStyle(device.presence == .offline ? .secondary : Color.accentColor)
+                .foregroundStyle(device.presence == .offline ? AnyShapeStyle(.secondary) : AnyShapeStyle(theme.colors.accent.solid))
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.person.map { "\($0) (\(device.name))" } ?? device.name)
@@ -64,8 +66,8 @@ struct RevokedDeviceRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Trust Again") {
-                Task { await model.trustAgain(device) }
+            ForgeButton("Trust Again") {
+                await model.trustAgain(device)
             }
             .buttonStyle(.borderless)
             .accessibilityIdentifier("revoked.trustAgain")
@@ -416,6 +418,7 @@ struct TrustedDeviceView: View {
     @State private var asking = false
     /// "This Is a Person" turned on, before a name is saved.
     @State private var namingPerson = false
+    @State private var savingPerson = false
     @State private var personName = ""
     @State private var syncing = false
     @State private var synced: String?
@@ -564,12 +567,19 @@ struct TrustedDeviceView: View {
                         .onSubmit {
                             let name = personName.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !name.isEmpty else { return }
+                            savingPerson = true
                             Task {
                                 await model.setPerson(name, for: device)
+                                savingPerson = false
                                 namingPerson = false
                             }
                         }
+                        .disabled(savingPerson)
                         .accessibilityIdentifier("trusted.personName")
+                    if savingPerson {
+                        ForgeStatus("Saving…", tone: .info)
+                            .accessibilityIdentifier("trusted.savingPerson")
+                    }
                 }
             } header: {
                 Text("Whose Device")

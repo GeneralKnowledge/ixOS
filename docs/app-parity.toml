@@ -21,12 +21,6 @@ wave = 4
 reason = "GD requirements without a scenario yet; written with GD2b's phone run"
 
 [[lag]]
-app = "sketchbook"
-rule = "requirements"
-wave = 4
-reason = "Written as the Soundscape and Sketchbook features are finished"
-
-[[lag]]
 app = "soundscape"
 rule = "requirements"
 wave = 4
@@ -86,3 +80,108 @@ app = "sketchbook"
 rule = "share-file"
 status = "not-applicable"
 reason = "Its export screen previews the image and offers Save to Photos and Quick Look besides Share; sharing is one action of three, not a ready-to-share step"
+
+[[lag]]
+app = "good-dog"
+rule = "document"
+wave = 4
+reason = "Written before Document existed; its own save logic over JsonFile (half-baked audit H10). Moves when Good Dog's store next changes"
+
+[[lag]]
+app = "pocket-library"
+rule = "document"
+wave = 4
+reason = "Written before Document existed; JsonFile with its own migration (half-baked audit H10). Moves when the library's schema next changes"
+
+[[lag]]
+app = "sums"
+rule = "document"
+wave = 4
+reason = "Saves its history through its own JsonFile (half-baked audit H10). Moves if Sums gets more than the reference's behaviour"
+
+[[lag]]
+app = "good-dog"
+rule = "choice"
+status = "not-applicable"
+reason = "The session outcome is a Form section of rows with a checkmark, iOS's own one-of-several list (Settings), not chips or tiles; the trait is the native row's"
+
+[[lag]]
+app = "weather"
+rule = "choice"
+status = "not-applicable"
+reason = "The page dots are a page indicator over the sky, not a choice control; each dot marks the page shown"
+
+[[lag]]
+app = "checklist"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "5 buttons (Clear Done, exports, add) await quick local writes; move to async ForgeButton or model commands when Checklist's screens are next touched (ForgeUI 0.2 item 9)"
+
+[[lag]]
+app = "commonplace"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "10 sites (Mark All Read, move feed, full-text toggle, folder menus); full text waits on the network, so it moves first, with its Try Again (UI Finish Audit E2), when Commonplace is next touched"
+
+[[lag]]
+app = "fieldkit"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Delete note (row action) and the GPX and GeoJSON exports (a menu): a pending row and model command when FieldKit's trip screen is next touched"
+
+[[lag]]
+app = "good-dog"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "17 sites (Today swap and shorten, goal pause and resume, Erase All), all local writes; moved screen by screen as Good Dog's GD work touches them"
+
+[[lag]]
+app = "pocket-library"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Reader chapter buttons and the Personal Voice request; moved with the next reader change"
+
+[[lag]]
+app = "sketchbook"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Duplicate (a menu) and undo and redo (toolbar, with a result to show); moved with Sketchbook's next change"
+
+[[lag]]
+app = "soundscape"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "17 sites (Discover add, Keep on Phone, downloads, client ID); Discover's add and downloads wait on the network and move first, with Try Again (UI Finish Audit E2), at Soundscape's next player change"
+
+[[lag]]
+app = "sums"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "The calculator keys run Rust's engine in well under 0.4 s and must take the next tap at once; a key-press model command replaces the Task when Sums is next touched"
+
+[[lag]]
+app = "urdu-naturally"
+rule = "silent-wait"
+status = "deferred"
+wave = 5
+reason = "Record, Start Over and the name setting; moved with the app's next Settings change (the same change as UI Finish Audit E4)"
+
+[[lag]]
+app = "forgeui-showcase"
+rule = "silent-wait"
+status = "not-applicable"
+reason = "The Simulate menu exists to show the loading and failed states: the screen shows ForgeStateView.loading while the model reloads"
+
+[[lag]]
+app = "forgeui-showcase"
+rule = "layered-navigation"
+status = "not-applicable"
+reason = "A plain SwiftUI app on ForgeUI only, with no ForgeAppKit; its gallery and screen catalogue push one level, never the same thing twice"

@@ -38,6 +38,10 @@ public func makeChatHost(storageDirectory: String? = nil, useKeychain: Bool? = n
     )
 }
 
+/// Longest message text, in Unicode scalars, from Rust (chat-core's
+/// `MAX_BODY_CHARS`): the composer says so before Rust would refuse it.
+public let MAX_MESSAGE_CHARS_SWIFT = Int(chatMaxMessageChars())
+
 /// Swift-side attachment failures, in the same log as Rust's
 /// (`forge device logs`, the live stream).
 let attachmentLog = ForgeLog("Attachments")
@@ -198,6 +202,15 @@ public final class ChatModel {
         showAccount(account)
     }
 
+    /// Joins a room host's rooms with a word code (N4): the account is
+    /// this device's key there, over Relay. `host` is the host's server
+    /// address or key; empty uses the current account's server.
+    public func joinRoom(host: String, code: String, displayName: String) async throws {
+        guard let core else { throw ChatError.ShutDown }
+        let account = try await core.joinRoom(host: host, code: code, displayName: displayName)
+        showAccount(account)
+    }
+
     /// Forgets the account and its chats on this device.
     public func signOut() {
         guard let core else { return }
@@ -241,11 +254,113 @@ public final class ChatModel {
         actionError = ForgeFailure(title: "Something Went Wrong", message: message)
     }
 
+    // MARK: Group chats (N7, docs/relay-groups.md)
+
+    /// Why a group change was refused, in words.
+    public struct GroupRefusal: Error, Equatable {
+        public let message: String
+        public init(_ message: String) { self.message = message }
+    }
+
+    /// What every group chat's conversation id starts with (Rust's
+    /// `group_conversation`).
+    nonisolated public static let groupConversationPrefix =
+        String(groupConversationId(groupId: "x").dropLast())
+
+    /// Whether `conversationId` is a group chat.
+    nonisolated public static func isGroup(_ conversationId: String) -> Bool {
+        conversationId.hasPrefix(groupConversationPrefix)
+    }
+
+    /// The group a conversation id names.
+    nonisolated public static func groupId(_ conversationId: String) -> String? {
+        isGroup(conversationId) ? String(conversationId.dropFirst(groupConversationPrefix.count)) : nil
+    }
+
+    /// Whether group chats can be made here: Relay is open.
+    public var hasGroups: Bool { relay != nil }
+
+    /// The trusted devices a group can include, by name.
+    public func groupCandidates() -> [Device] {
+        (relay?.devices() ?? []).filter(\.trusted).sorted { $0.name < $1.name }
+    }
+
+    /// Makes a group of this device and `members` (endpoint ids) and
+    /// returns its conversation id, ready to open. Throws so the sheet can
+    /// stay open with what was typed.
+    public func createGroup(name: String, members: [String]) async throws -> String {
+        guard let relay else { throw ChatError.ShutDown }
+        let group = try await relay.createGroup(name: name, members: members)
+        await refresh()
+        return group.conversationId
+    }
+
+    /// The group behind `conversationId`, as this device has it now.
+    public func group(_ conversationId: String) async -> RelayGroup? {
+        guard let relay, let id = Self.groupId(conversationId) else { return nil }
+        return try? await relay.group(id: id)
+    }
+
+    /// Adds trusted devices to a group (its admin only).
+    public func addGroupMembers(_ group: RelayGroup, _ members: [String]) async -> RelayGroup? {
+        guard let relay else { return nil }
+        do {
+            return try await relay.addGroupMembers(id: group.id, members: members)
+        } catch {
+            actionError = Self.failure(error)
+            return nil
+        }
+    }
+
+    /// Removes a member from a group (its admin only).
+    public func removeGroupMember(_ group: RelayGroup, _ member: String) async -> RelayGroup? {
+        guard let relay else { return nil }
+        do {
+            return try await relay.removeGroupMember(id: group.id, member: member)
+        } catch {
+            actionError = Self.failure(error)
+            return nil
+        }
+    }
+
+    /// Renames a group (its admin only): the group, or why not in words
+    /// for the rename sheet to show under its field.
+    public func renameGroup(_ group: RelayGroup, _ name: String) async -> Result<RelayGroup, GroupRefusal> {
+        guard let relay else { return .failure(GroupRefusal("Relay isn't open.")) }
+        do {
+            let renamed = try await relay.renameGroup(id: group.id, name: name)
+            await refresh()
+            return .success(renamed)
+        } catch {
+            return .failure(GroupRefusal(Self.failure(error).message))
+        }
+    }
+
+    /// Leaves a group: the conversation stays, read-only.
+    public func leaveGroup(_ group: RelayGroup) async {
+        guard let relay else { return }
+        do {
+            try await relay.leaveGroup(id: group.id)
+        } catch {
+            actionError = Self.failure(error)
+        }
+    }
+
+    /// "Delivered to 2 of 3" for one of our messages in a group, or nil.
+    public func groupDelivery(_ message: ChatMessage) -> String? {
+        guard message.isMine, let relay, let id = Self.groupId(message.conversationId),
+            let d = try? relay.groupDelivery(id: id, messageId: message.id), d.of > 1
+        else { return nil }
+        return "Delivered to \(d.delivered) of \(d.of)"
+    }
+
     // MARK: Conversation list
 
     /// Re-lists rooms from the server (pull to refresh, and on resume).
     public func refresh() async {
-        guard let core, account != nil else { return }
+        // Relay alone (no server account) still lists its device and
+        // group conversations.
+        guard let core, account != nil || relay != nil else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
@@ -253,6 +368,9 @@ public final class ChatModel {
             listError = nil
         } catch {
             listError = Self.describe(error)
+            // What Rust kept, which includes devices and groups listed
+            // just now even when the server couldn't be reached.
+            conversations = core.cachedConversations()
         }
         hasListed = true
     }
@@ -304,6 +422,12 @@ public final class ChatModel {
         } catch {
             actionError = Self.failure(error)
         }
+    }
+
+    /// Mark as Read from a swipe or menu, which closes at once: the unread
+    /// dot goes when Rust has marked it here and on the server.
+    public func startMarkingRead(_ conversationId: String) {
+        Task { await markRead(conversationId) }
     }
 
     /// Shows the room as unread until it is opened (a swipe).
@@ -381,20 +505,25 @@ public final class ChatModel {
     /// Sends `text`, as an answer to `replyTo` if given. The bubble
     /// appears through `.messageReceived`. Offline, it waits in Rust's
     /// outbox (still "Sending…") and goes out when the server is back, even
-    /// after a relaunch. Sending clears the room's draft.
-    public func send(_ text: String, to conversationId: String, replyTo: String? = nil) async {
-        guard let core else { return }
+    /// after a relaunch. Sending clears the room's draft. False when Rust
+    /// refused it before keeping it (too long, say): no bubble holds the
+    /// words, so the screen gives the text back.
+    @discardableResult
+    public func send(_ text: String, to conversationId: String, replyTo: String? = nil) async -> Bool {
+        guard let core else { return false }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
+        guard !body.isEmpty else { return false }
         sendError[conversationId] = nil
-        sentCount += 1
+        defer { updateWaitingCount() }
         do {
             _ = try await core.sendReply(
                 conversationId: conversationId, body: body, replyTo: replyTo)
+            sentCount += 1
+            return true
         } catch {
             sendError[conversationId] = Self.describe(error)
+            return !Self.refusedBeforeKeeping(error)
         }
-        updateWaitingCount()
     }
 
     /// Sends a failed (or still waiting) message again now.
@@ -411,22 +540,27 @@ public final class ChatModel {
 
     /// Sends photos and documents (copied into Rust's attachment store at
     /// once), with `text` as an optional caption. Like `send`, they wait in
-    /// the outbox while the server cannot be reached.
+    /// the outbox while the server cannot be reached. False when Rust
+    /// refused them before keeping them, so the screen gives the files and
+    /// caption back.
+    @discardableResult
     public func send(
         files: [ChatOutgoingFile], text: String, to conversationId: String, replyTo: String? = nil
-    ) async {
-        guard let core, !files.isEmpty else { return }
+    ) async -> Bool {
+        guard let core, !files.isEmpty else { return false }
         sendError[conversationId] = nil
-        sentCount += 1
+        defer { updateWaitingCount() }
         do {
             _ = try await core.sendFiles(
                 conversationId: conversationId,
                 body: text.trimmingCharacters(in: .whitespacesAndNewlines),
                 replyTo: replyTo, files: files)
+            sentCount += 1
+            return true
         } catch {
             sendError[conversationId] = Self.describe(error)
+            return !Self.refusedBeforeKeeping(error)
         }
-        updateWaitingCount()
     }
 
     /// The attachment's file on this iPhone, fetching it from the server
@@ -445,20 +579,37 @@ public final class ChatModel {
         }
     }
 
-    /// Replaces the text of one of our sent messages, for everyone.
-    public func edit(_ message: ChatMessage, to text: String) async {
-        guard let core else { return }
+    /// Replaces the text of one of our sent messages, for everyone. False
+    /// when it failed (the alert says why), so the screen keeps the edit.
+    @discardableResult
+    public func edit(_ message: ChatMessage, to text: String) async -> Bool {
+        guard let core else { return false }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty, body != message.body else { return }
+        guard !body.isEmpty, body != message.body else { return true }
         do {
             upsert(try await core.editMessage(messageId: message.id, body: body))
+            return true
         } catch {
             actionError = Self.failure(error)
+            return false
         }
     }
 
     /// Deletes one of our messages for everyone (a "deleted" placeholder
     /// stays). One that was never sent is simply removed.
+    /// Messages being deleted right now: the confirmation dialog that asked
+    /// has closed, so the bubble shows "Deleting…" until Rust answers.
+    public private(set) var deleting: Set<String> = []
+
+    /// Delete from the confirmation dialog, which closes at once.
+    public func startDeleting(_ message: ChatMessage) {
+        deleting.insert(message.id)
+        Task {
+            await delete(message)
+            deleting.remove(message.id)
+        }
+    }
+
     public func delete(_ message: ChatMessage) async {
         guard let core else { return }
         do {
@@ -636,6 +787,20 @@ public final class ChatModel {
 
     // MARK: Helpers
 
+    /// Whether Rust refused a message before keeping it: by its rules (too
+    /// long, too many files, a reply to a message that is gone), because
+    /// there is no account or the app is closing, or because a picked file
+    /// couldn't be copied in (`Storage`, before any file went). Rust
+    /// promises that every other failure leaves a bubble that says
+    /// "Not Sent" and can be retried (a file that went missing after the
+    /// message was kept is `NotSent`, not `InvalidInput`).
+    nonisolated static func refusedBeforeKeeping(_ error: Error) -> Bool {
+        switch error as? ChatError {
+        case .InvalidInput?, .NotSignedIn?, .Storage?, .ShutDown?: return true
+        default: return false
+        }
+    }
+
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, or
     /// ForgeKit's `-ForgeTemporaryData`, so one argument works for every app
     /// in Device Lab).
@@ -674,6 +839,7 @@ public final class ChatModel {
         case .NotFound: return "That conversation no longer exists."
         case .UnsupportedOnHost: return "This isn't available on this iPhone."
         case .InvalidInput(let reason): return "Check your input: \(reason)"
+        case .NotSent(let reason): return "It wasn't sent: \(reason). It's kept here as not sent."
         case .NotSignedIn: return "Sign up first."
         case .Unauthorized:
             return "The server no longer knows this account. Sign out and sign up again."

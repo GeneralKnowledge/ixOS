@@ -4,6 +4,8 @@ Review of the ixOS platform base at `91fa41c` (main, 2026-11-08), done as the "i
 
 **Verdict in one paragraph.** ixOS does not need a rewrite. The individual primitives are good and, where this review could test them on Linux, correct: event streams, cancellation scopes, the lifecycle state machine, atomic JSON writes and SQLite transactions all held under model-based tests and repeated `SIGKILL`s. What is missing is the layer that turns primitives into a platform: nothing in the framework owns *work* (who runs it, in what order, with what priority and budget), nothing models the *fate of the process* (must-finish work, suspension, relaunch recovery), and nothing owns *data as a whole* (one writer per directory, files and records committed together, backup and protection classes). Today each app answers those questions itself, and the answers differ. One storage bug is serious enough to fix before anything else: a locked SQLite file is treated as corrupt, and the user's data is moved aside (S1).
 
+**Status (2026-11-22).** The Phase 4 decision was never taken as one decision; the open items were picked up piecemeal by later plans. Their current state is kept in the [half-baked work audit](audits/half-baked-work-audit.md) (H5 to H18), and this page is no longer updated: read the audit, not the status blocks below, for what is still open.
+
 **Status (2026-11-16).** Since the follow-up below, more findings have been closed or narrowed by later work. The tables keep their original wording.
 
 - **R1 fixed:** `forge-app`'s `Runtime` is the framework command model (serial command thread, published snapshots, commit then publish), and every app is on it.

@@ -170,6 +170,7 @@ pub fn last_used_in(dir: &Path, udid: &str) -> Option<SystemTime> {
 }
 
 /// Whether a process with this id exists.
+#[allow(unsafe_code)]
 pub fn pid_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {

@@ -71,6 +71,9 @@ pub struct ChatCore {
     /// Conversations with trusted devices (`crate::device_chat`), one
     /// client each, beside the server account's.
     devices: Mutex<DeviceChats>,
+    /// Relay's core, for an account on a room host (N4): rooms go over
+    /// its node. Set by `use_relay`, which may come after the session.
+    room_relay: crate::rooms::RelaySlot,
     /// Held by the lifecycle thread while it applies a phase change, and
     /// set to true by shutdown (`end`). Once shutdown returns, that thread
     /// never takes the core again, so dropping the owner's last reference
@@ -167,6 +170,7 @@ impl ChatCore {
             user_id: registered.user_id,
             display_name: registered.display_name,
             token: registered.token,
+            room: None,
         };
         self.ensure_running()?;
         self.sign_out_locked(&mut self.lock(), false)?;
@@ -190,11 +194,9 @@ impl ChatCore {
         self.ensure_running()?;
         let stored = self.credentials.load()?.ok_or(ChatError::NotSignedIn)?;
         let account = stored.public();
+        let repo = self.account_repo(&stored);
         let checked = background("chat-check-account", move || {
-            server_repo(&stored.server_url)
-                .with_token(&stored.token)
-                .identity()
-                .map_err(ChatError::from)
+            repo.identity().map_err(ChatError::from)
         })
         .await;
         match checked {
@@ -231,6 +233,85 @@ impl ChatCore {
             }
         })));
         self.devices_lock().relay = Some(Arc::downgrade(&relay));
+        *forge_runtime::lock(&self.room_relay) = Arc::downgrade(&relay);
+        // An account on the old HTTP API moves to this device's key on
+        // its server's room host, once, in the background (N4).
+        let me = Arc::downgrade(&self);
+        std::thread::Builder::new()
+            .name("chat-move-account".into())
+            .spawn(move || match ChatCore::move_to_room(&me) {
+                Ok(true) => forge_runtime::logging::info!(target: "chat", "the account moved onto Relay"),
+                Ok(false) => {}
+                Err(e) => forge_runtime::logging::info!(target: "chat", "the account stays on HTTP for now: {e}"),
+            })
+            .ok();
+    }
+
+    /// Joins a room host's rooms with a word code from `chat-server
+    /// invite` (N4). `host` is the host's address: its server URL
+    /// (`http://…`, asked where its rooms are) or its key (64 hex
+    /// characters); empty uses the current account's server. The account
+    /// is this device's key there; a different account on this device is
+    /// signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+    pub async fn join_room(
+        &self,
+        host: String,
+        code: String,
+        display_name: String,
+    ) -> Result<ChatAccount, ChatError> {
+        self.ensure_running()?;
+        if !self.has_relay() {
+            return Err(ChatError::UnsupportedOnHost {
+                detail: "joining a room needs Relay".into(),
+            });
+        }
+        let current = self.credentials.load()?;
+        let host = match host.trim() {
+            "" => current
+                .as_ref()
+                .map(|a| a.server_url.clone())
+                .filter(|url| url.starts_with("http"))
+                .ok_or(ChatError::InvalidInput {
+                    reason: "enter the room host's address".into(),
+                })?,
+            typed => typed.to_string(),
+        };
+        let slot = Arc::clone(&self.room_relay);
+        let (found, joined, server_url) = background("chat-join-room", move || {
+            let (found, server_url) = find_room_host(&host)?;
+            let transport = crate::rooms::RoomTransport::with_slot(slot, found.clone());
+            let joined = crate::rooms::join_with(&transport, &code, &display_name)?;
+            Ok::<_, ChatError>((found, joined, server_url))
+        })
+        .await?;
+        let stored = StoredAccount {
+            server_url,
+            user_id: joined.user_id,
+            display_name: joined.display_name,
+            token: String::new(),
+            room: Some(found),
+        };
+        let same = current
+            .as_ref()
+            .is_some_and(|c| c.user_id == stored.user_id);
+        let mut session = self.lock();
+        self.ensure_running()?;
+        if same {
+            if let Some(old) = session.take() {
+                old.client.shutdown();
+            }
+        } else {
+            self.sign_out_locked(&mut session, false)?;
+        }
+        self.credentials.save(&stored)?;
+        let opened = self.open_session(&stored)?;
+        let account = opened.account.clone();
+        *session = Some(opened);
+        drop(session);
+        self.events.publish(ChatEvent::AccountChanged {
+            account: Some(account.clone()),
+        });
+        Ok(account)
     }
 
     /// The on-device assistant. Works without an account, and keeps its
@@ -258,6 +339,18 @@ impl ChatCore {
         let devices = self.device_clients();
         let alerts = self.alerts();
         let result = background("chat-list", move || {
+            // Devices and groups first: a server that can't be reached
+            // mustn't keep them from being listed (and cached, for
+            // `cached_conversations`).
+            let mut on_relay = Vec::new();
+            for (client, user_id) in devices {
+                match client.list_conversations() {
+                    Ok(list) => {
+                        on_relay.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
+                    }
+                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
+                }
+            }
             let mut out = Vec::new();
             if let Some((client, user_id)) = server {
                 let list = client.list_conversations().map_err(ChatError::from)?;
@@ -266,14 +359,7 @@ impl ChatCore {
                 }
                 out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)));
             }
-            for (client, user_id) in devices {
-                match client.list_conversations() {
-                    Ok(list) => {
-                        out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
-                    }
-                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
-                }
-            }
+            out.extend(on_relay);
             Ok(out)
         })
         .await;
@@ -683,6 +769,19 @@ pub fn chat_message_link(conversation_id: String, message_id: String) -> String 
     alerts::message_link(&conversation_id, &message_id)
 }
 
+/// The longest message text, in characters (Unicode scalars), so the
+/// composer can say so before Rust refuses it.
+#[uniffi::export]
+pub fn chat_max_message_chars() -> u32 {
+    chat_core::MAX_BODY_CHARS as u32
+}
+
+/// The most files one message may carry.
+#[uniffi::export]
+pub fn chat_max_attachments_per_message() -> u32 {
+    chat_core::MAX_ATTACHMENTS_PER_MESSAGE as u32
+}
+
 /// The conversation in Chats of the trusted device `endpoint_id` (its
 /// device screen's Message button opens it).
 #[uniffi::export]
@@ -821,6 +920,10 @@ impl ChatCore {
             return;
         };
         let Ok(client) = self.client() else { return };
+        // Finishing work until the reply is in the outbox (or the room marked read), so
+        // `background_work_pending` says so: the host holds background time, and Android's
+        // receiver keeps the process until then.
+        let finishing = self.rt.finishing(None);
         let work = match response.action_id.as_str() {
             "reply" => {
                 let Some(text) = response.text.filter(|t| !t.trim().is_empty()) else {
@@ -834,6 +937,7 @@ impl ChatCore {
                         if let Err(e) = client.send_reply(&room, &text, reply_to.as_deref()) {
                             forge_runtime::logging::warn!("reply from a notification failed: {e}");
                         }
+                        drop(finishing);
                     })
             }
             "read" => std::thread::Builder::new()
@@ -842,6 +946,7 @@ impl ChatCore {
                     if let Err(e) = client.mark_read(&room) {
                         forge_runtime::logging::warn!("mark read from a notification failed: {e}");
                     }
+                    drop(finishing);
                 }),
             _ => return,
         };
@@ -891,6 +996,7 @@ impl ChatCore {
             _on_shutdown: Mutex::new(None),
             services,
             devices: Mutex::new(DeviceChats::default()),
+            room_relay: Arc::default(),
             lifecycle_gate: Arc::new(Mutex::new(false)),
         };
         if let Some(stored) = core.credentials.load()? {
@@ -1024,6 +1130,9 @@ impl ChatCore {
     /// The client of the conversation: a trusted device's, or the server
     /// account's.
     fn route(&self, conversation_id: &str) -> Result<(ChatClient, String), ChatError> {
+        if let Some(group) = crate::group::conversation_group(conversation_id) {
+            return self.group_client(group);
+        }
         match crate::device_chat::conversation_device(conversation_id) {
             Some(endpoint_id) => self.device_client(endpoint_id),
             None => self.client_and_user(),
@@ -1070,14 +1179,21 @@ impl ChatCore {
             .filter(|d| d.trusted)
             .map(|d| d.endpoint_id)
             .collect();
+        let groups: Vec<String> = relay
+            .record
+            .get()
+            .groups
+            .iter()
+            .map(|g| crate::group::group_conversation(&g.id))
+            .collect();
         self.devices_lock().clients.retain(|id, client| {
-            let keep = trusted.contains(id);
+            let keep = trusted.contains(id) || groups.contains(id);
             if !keep {
                 client.shutdown();
             }
             keep
         });
-        trusted
+        let mut clients: Vec<(ChatClient, String)> = trusted
             .iter()
             .filter_map(|id| match self.device_client(id) {
                 Ok(found) => Some(found),
@@ -1086,7 +1202,36 @@ impl ChatCore {
                     None
                 }
             })
-            .collect()
+            .collect();
+        clients.extend(groups.iter().filter_map(|conversation| {
+            let group = crate::group::conversation_group(conversation)?;
+            match self.group_client(group) {
+                Ok(found) => Some(found),
+                Err(e) => {
+                    forge_runtime::logging::warn!("a group conversation didn't open: {e}");
+                    None
+                }
+            }
+        }));
+        clients
+    }
+
+    /// The client of group `group`'s conversation, opened on first use.
+    /// It is kept with the device conversations, by conversation id.
+    fn group_client(&self, group: &str) -> Result<(ChatClient, String), ChatError> {
+        self.ensure_running()?;
+        let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
+        let conversation_id = crate::group::group_conversation(group);
+        if let Some(client) = self.devices_lock().clients.get(&conversation_id) {
+            return Ok((client.clone(), crate::device_chat::ME.to_string()));
+        }
+        if relay.record.get().group(group).is_none() {
+            return Err(ChatError::NotFound { conversation_id });
+        }
+        let repo = relay.group_repo(group).map_err(|e| ChatError::Storage {
+            reason: e.to_string(),
+        })?;
+        self.open_relay_client(&relay, &conversation_id, Arc::new(repo))
     }
 
     /// The client of `endpoint_id`'s conversation, opened on first use.
@@ -1110,7 +1255,27 @@ impl ChatCore {
             .map_err(|e| ChatError::Storage {
                 reason: e.to_string(),
             })?;
-        let directory = self.storage_directory.join("devices").join(endpoint_id);
+        self.open_relay_client(&relay, endpoint_id, Arc::new(repo))
+    }
+
+    /// Opens the client of one of Relay's own conversations (a device's,
+    /// kept by its endpoint id, or a group's, by its conversation id) on
+    /// `repo`, live while Relay is open.
+    fn open_relay_client(
+        &self,
+        relay: &Arc<crate::RelayCore>,
+        key: &str,
+        repo: Arc<dyn chat_core::ChatRepo>,
+    ) -> Result<(ChatClient, String), ChatError> {
+        let user_id = crate::device_chat::ME.to_string();
+        let conversation_id = match crate::group::conversation_group(key) {
+            Some(_) => key.to_string(),
+            None => crate::device_chat::device_conversation(key),
+        };
+        let directory = self
+            .storage_directory
+            .join("devices")
+            .join(key.replace(':', "-"));
         std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", directory.display()),
         })?;
@@ -1122,7 +1287,7 @@ impl ChatCore {
         let hub = self.events.clone();
         let events_user = user_id.clone();
         let client = ChatClient::open(
-            Arc::new(repo),
+            repo,
             ChatStore::in_directory(directory),
             config,
             move |event: chat_core::ChatEvent| hub.publish(types::event(event, &events_user)),
@@ -1135,14 +1300,12 @@ impl ChatCore {
             forge_runtime::logging::warn!("a device conversation isn't live: {e}");
         }
         let mut devices = self.devices_lock();
-        if let Some(opened) = devices.clients.get(endpoint_id) {
+        if let Some(opened) = devices.clients.get(key) {
             // Opened by another command meanwhile: keep that one.
             client.shutdown();
             return Ok((opened.clone(), user_id));
         }
-        devices
-            .clients
-            .insert(endpoint_id.to_string(), client.clone());
+        devices.clients.insert(key.to_string(), client.clone());
         Ok((client, user_id))
     }
 
@@ -1156,6 +1319,94 @@ impl ChatCore {
             .as_ref()
             .map(|s| (s.client.clone(), s.account.user_id.clone()))
             .ok_or(ChatError::NotSignedIn)
+    }
+
+    /// The repo of an account: over `relay/room/1` on its room host, or
+    /// the old HTTP API with its token.
+    fn account_repo(&self, stored: &StoredAccount) -> HttpRepo {
+        match &stored.room {
+            Some(host) => HttpRepo::new(
+                Arc::new(crate::rooms::RoomTransport::with_slot(
+                    Arc::clone(&self.room_relay),
+                    host.clone(),
+                )),
+                crate::rooms::ROOM_BASE_URL,
+            ),
+            None => server_repo(&stored.server_url).with_token(&stored.token),
+        }
+    }
+
+    /// Moves a token account to this device's key on its server's room
+    /// host, keeping its rooms and history (here and on the server). False
+    /// when there is nothing to move, or the core closed meanwhile. Blocks:
+    /// call it off the main thread. The core is held only to read and to
+    /// commit, never across the network, so closing it isn't held up.
+    fn move_to_room(me: &std::sync::Weak<ChatCore>) -> Result<bool, ChatError> {
+        let (stored, slot) = {
+            let Some(core) = me.upgrade() else {
+                return Ok(false);
+            };
+            (core.credentials.load()?, Arc::clone(&core.room_relay))
+        };
+        let Some(stored) = stored else {
+            return Ok(false);
+        };
+        if stored.room.is_some() || stored.token.is_empty() {
+            return Ok(false);
+        }
+        // The host is asked the same way, and over the same connection
+        // security, as the server the token already goes to on every
+        // request: a lookup over plain HTTP is no weaker than the token's
+        // own use there.
+        let (host, _) = find_room_host(&stored.server_url)?;
+        let transport = crate::rooms::RoomTransport::with_slot(slot, host.clone());
+        let moved = match crate::rooms::claim_with(&transport, &stored.token) {
+            // Moved already (the answer was lost, or saving it failed):
+            // the host knows this device's key, and no token is needed.
+            Err(chat_core::ChatError::Http { status: 401, .. }) => {
+                crate::rooms::claim_with(&transport, "")?
+            }
+            other => other?,
+        };
+        if moved.user_id != stored.user_id {
+            return Err(ChatError::BadResponse {
+                reason: "the room host moved a different account".into(),
+            });
+        }
+        let moved = StoredAccount {
+            token: String::new(),
+            room: Some(host),
+            ..stored
+        };
+        let Some(core) = me.upgrade() else {
+            return Ok(false);
+        };
+        core.commit_move(moved)
+    }
+
+    /// Changes the signed-in account over to its moved form, if it is
+    /// still the account that was moved.
+    fn commit_move(&self, moved: StoredAccount) -> Result<bool, ChatError> {
+        let mut session = self.lock();
+        // Checked under the lock: a shutdown that got there first wins.
+        self.ensure_running()?;
+        // Still the account that was moved: then it changes over, its
+        // chats staying where they are.
+        if self.credentials.load()?.as_ref().map(|a| &a.user_id) != Some(&moved.user_id) {
+            return Ok(false);
+        }
+        self.credentials.save(&moved)?;
+        if let Some(old) = session.take() {
+            old.client.shutdown();
+        }
+        let opened = self.open_session(&moved)?;
+        let account = opened.account.clone();
+        *session = Some(opened);
+        drop(session);
+        self.events.publish(ChatEvent::AccountChanged {
+            account: Some(account),
+        });
+        Ok(true)
     }
 
     /// Where an account's chats are kept.
@@ -1178,7 +1429,7 @@ impl ChatCore {
         std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", directory.display()),
         })?;
-        let repo = server_repo(&stored.server_url).with_token(&stored.token);
+        let repo = self.account_repo(stored);
         let config = ChatConfig {
             user: stored.display_name.clone(),
             user_id: stored.user_id.clone(),
@@ -1266,21 +1517,64 @@ fn watch_all(client: &ChatClient, alerts: &alerts::Alerts) {
 /// The chat server's API, through URLSession once the host has installed
 /// the `http` service (on iOS), and through ureq before that and in tests.
 fn server_repo(server_url: impl Into<String>) -> HttpRepo {
+    HttpRepo::new(http_client(), server_url)
+}
+
+/// Who the chat path says it is to the chat server, through either client.
+const CHAT_USER_AGENT: &str = concat!("forge-chat-example/", env!("CARGO_PKG_VERSION"));
+
+fn http_client() -> Arc<dyn forge_net::HttpClient> {
     static CLIENT: std::sync::OnceLock<Arc<native::http::PreferInstalled>> =
         std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         Arc::new(native::http::HttpService::prefer_installed(
-            Arc::new(forge_net::UreqClient::with_user_agent(concat!(
-                "forge-chat-example/",
-                env!("CARGO_PKG_VERSION")
-            ))),
-            |client| client,
+            Arc::new(forge_net::UreqClient::with_user_agent(CHAT_USER_AGENT)),
+            |client| client.user_agent(CHAT_USER_AGENT),
         ))
     });
-    HttpRepo::new(
-        Arc::clone(client) as Arc<dyn forge_net::HttpClient>,
-        server_url,
-    )
+    Arc::clone(client) as Arc<dyn forge_net::HttpClient>
+}
+
+/// The room host at `address`, and how the account shows it: a key (64
+/// hex characters), or a server URL, which is asked where its rooms are
+/// (`GET /host`). Blocks.
+fn find_room_host(address: &str) -> Result<(crate::rooms::RoomHost, String), ChatError> {
+    let address = address.trim().trim_end_matches('/');
+    if address.len() == 64 && address.bytes().all(|b| b.is_ascii_hexdigit()) {
+        let host = crate::rooms::RoomHost {
+            endpoint_id: address.to_ascii_lowercase(),
+            relay_url: None,
+            addresses: Vec::new(),
+        };
+        return Ok((host, format!("relay:{}", &address[..8])));
+    }
+    let url = normalise_server_url(address)?;
+    let request = forge_net::Request::get(format!("{url}/host"))
+        .header("Accept", "application/json")
+        .timeout(std::time::Duration::from_secs(15));
+    let response = http_client()
+        .send(&request)
+        .map_err(|e| ChatError::from(chat_core::ChatError::from(e)))?;
+    if response.status == 404 {
+        return Err(ChatError::UnsupportedOnHost {
+            detail: "that server doesn't serve rooms over Relay yet; update it".into(),
+        });
+    }
+    if !(200..300).contains(&response.status) {
+        return Err(ChatError::Http {
+            status: response.status,
+            // cut: a server's error body, shown only as an error's reason
+            reason: String::from_utf8_lossy(&response.body)
+                .chars()
+                .take(200)
+                .collect(),
+        });
+    }
+    let host: crate::rooms::RoomHost =
+        serde_json::from_slice(&response.body).map_err(|e| ChatError::BadResponse {
+            reason: e.to_string(),
+        })?;
+    Ok((host, url))
 }
 
 /// Checks the server URL the user typed: http(s), no trailing slash.
@@ -1329,26 +1623,96 @@ impl ChatCore {
                 ),
             });
         }
-        for file in files {
+        // The caption too: it follows the files, and a refusal after they
+        // went would leave them sent with the screen still holding them.
+        if body.chars().count() > chat_core::MAX_BODY_CHARS {
+            return Err(ChatError::InvalidInput {
+                reason: format!(
+                    "message body is longer than {} characters",
+                    chat_core::MAX_BODY_CHARS
+                ),
+            });
+        }
+        // And the message the caption replies to, which can have been
+        // deleted meanwhile: chat-core would refuse it after the files went.
+        if let (false, Some(target)) = (body.is_empty(), reply_to.as_deref()) {
+            let found = relay
+                .device_messages(&endpoint_id)
+                .map_err(crate::device_chat::chat_error)?
+                .iter()
+                .any(|m| m.id == target && !m.deleted);
+            if !found {
+                return Err(ChatError::InvalidInput {
+                    reason: format!("no message {target:?} to reply to"),
+                });
+            }
+        }
+        // And the device: one that is no longer trusted would refuse the
+        // first file, with nothing sent and the screen told it was kept.
+        if relay.trusted(&endpoint_id).is_err() {
+            return Err(ChatError::InvalidInput {
+                reason: "that device is no longer trusted".into(),
+            });
+        }
+        // Every copy before the first send, so a copy that fails refuses
+        // the whole message rather than half of it (and leaves no copies).
+        let mut paths = Vec::with_capacity(files.len());
+        let mut dirs = Vec::new();
+        for file in &files {
             // Under the name the person sees: Relay names an item after its
             // file, and a picked photo waits under a temporary one.
-            let staged = named_copy(&file).map_err(|e| ChatError::Storage {
-                reason: e.to_string(),
-            })?;
-            let path = staged
-                .as_ref()
-                .map(|(_, path)| path.clone())
-                .unwrap_or_else(|| std::path::PathBuf::from(&file.path));
+            match named_copy(file) {
+                Ok(Some((dir, path))) => {
+                    dirs.push(dir);
+                    paths.push(path);
+                }
+                Ok(None) => paths.push(std::path::PathBuf::from(&file.path)),
+                Err(e) => {
+                    for dir in &dirs {
+                        let _ = std::fs::remove_dir_all(dir);
+                    }
+                    return Err(ChatError::Storage {
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        }
+        let count = paths.len();
+        for (sent, path) in paths.into_iter().enumerate() {
             // The staged copy stays in the temporary folder (the system
             // clears it): when Relay couldn't keep its own copy, the
             // conversation opens the file from there.
-            relay
-                .send_to_device(
+            let kept = std::sync::atomic::AtomicBool::new(false);
+            let result = relay
+                .send_to_device_kept(
                     endpoint_id.clone(),
                     vec![path.to_string_lossy().into_owned()],
+                    &kept,
                 )
-                .await
-                .map_err(crate::device_chat::chat_error)?;
+                .await;
+            if let Err(e) = result {
+                // A send can fail before its message is kept (nothing in
+                // the conversation) or after (the delivery was refused: a
+                // "Not Sent" message that can be retried). Only a first
+                // file that left nothing behind refuses the whole message,
+                // so the screen keeps it all. Otherwise files are in the
+                // conversation, and sending them again would repeat them:
+                // the screen lets the message go.
+                let kept = kept.load(std::sync::atomic::Ordering::SeqCst);
+                return Err(if sent == 0 && !kept {
+                    ChatError::Storage {
+                        reason: e.to_string(),
+                    }
+                } else if kept {
+                    crate::device_chat::chat_error(e).into()
+                } else {
+                    ChatError::Internal {
+                        reason: format!(
+                            "{sent} of {count} files went; the rest weren't sent ({e})"
+                        ),
+                    }
+                });
+            }
         }
         if !body.is_empty() {
             return self.send_reply(conversation_id, body, reply_to).await;
@@ -1385,6 +1749,9 @@ fn named_copy(
     ));
     std::fs::create_dir_all(&dir)?;
     let to = dir.join(name);
-    std::fs::copy(from, &to)?;
+    if let Err(e) = std::fs::copy(from, &to) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(e);
+    }
     Ok(Some((dir, to)))
 }

@@ -119,7 +119,7 @@ fn moves(record: &Record) -> Vec<Move> {
                     path: file.filter(|p| p.exists()).map(Path::to_path_buf),
                 });
             }
-            Payload::Message { .. } => {}
+            _ => {}
         }
     }
     let pending: HashSet<u64> = record.deliveries.iter().map(|d| d.transfer).collect();
@@ -240,6 +240,7 @@ mod tests {
                     text: "waiting".into(),
                 },
                 queued_ms: 4_000,
+                left_ms: None,
             },
             SavedDelivery {
                 id: "d5".into(),
@@ -253,6 +254,7 @@ mod tests {
                     hashes: Vec::new(),
                 },
                 queued_ms: 5_000,
+                left_ms: None,
             },
             // Its history entry was trimmed (the history keeps 500).
             files_delivery("d6", 0, "trimmed.pdf", 7),
@@ -288,6 +290,7 @@ mod tests {
                 hashes: Vec::new(),
             },
             queued_ms: 1_000 * transfer.max(6) as i64,
+            left_ms: None,
         }
     }
 

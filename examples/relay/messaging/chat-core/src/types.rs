@@ -98,6 +98,11 @@ pub struct Message {
     /// Files it carries (M3), in order. Their bytes are fetched separately.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<crate::Attachment>,
+    /// Relay only: one of our `Queued` messages that its device couldn't
+    /// be reached for, left in that device's mailbox to collect. Cleared
+    /// once it is `Sent` (or `Failed`). Always false for a chat server.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_mailbox: bool,
 }
 
 impl Message {
@@ -204,9 +209,16 @@ pub enum ChatError {
     /// transport that is not set up on this platform).
     #[error("not supported on this host: {detail}")]
     UnsupportedOnHost { detail: String },
-    /// The caller passed something unusable. Nothing was sent.
+    /// The caller passed something unusable. Nothing was sent and nothing
+    /// was kept: the composer can give the text back.
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
+    /// The message was kept on this device and marked `Failed`, but it
+    /// couldn't go for a reason that a retry won't fix by itself (one of
+    /// its files is no longer on this device). Unlike `InvalidInput`,
+    /// something was kept: the conversation shows it as not sent.
+    #[error("not sent: {reason}")]
+    NotSent { reason: String },
     /// The client was shut down; it accepts no more commands.
     #[error("the chat client has been shut down")]
     ShutDown,

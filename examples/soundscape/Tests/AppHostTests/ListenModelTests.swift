@@ -34,6 +34,15 @@ final class ListenModelTests: XCTestCase {
         XCTAssertEqual(model.phase, .ready)
     }
 
+    /// A song field that is too long says which one and the limit, so
+    /// Edit Song can explain it (defect hunt finding 4).
+    func testTooLongSongFieldNamesTheField() {
+        XCTAssertEqual(
+            SoundscapeErrors.describe(.OutOfRange(setting: "title")),
+            "Keep the title to \(SoundscapeErrors.maxFieldChars) characters or fewer.")
+        XCTAssertEqual(SoundscapeErrors.describe(.OutOfRange(setting: "files")), "That is out of range.")
+    }
+
     func testFormatting() {
         let take = Take(
             id: "a", label: "seed 1", audioUrl: "http://x/a.mp3", seed: 1, model: "xl-turbo", bpm: 92,
@@ -123,7 +132,8 @@ final class ListenModelTests: XCTestCase {
             return MusicFile(path: url.path, fileName: name, title: nil, artist: "Me", album: nil, number: nil,
                              genre: nil, durationSeconds: 90, artworkPath: nil)
         }
-        let result = try XCTUnwrap(await model.importMusic([try file("Demo_one.mp3", "a"), try file("x.txt", "b")]))
+        let resultResult = await model.importMusic([try file("Demo_one.mp3", "a"), try file("x.txt", "b")])
+        let result = try XCTUnwrap(resultResult)
         XCTAssertEqual(result.added.count, 1)
         XCTAssertEqual(TakeFormat.importSummary(result),
                        "Added 1 song. 1 couldn't be imported: x.txt: not a music file.")
@@ -151,5 +161,29 @@ final class ListenModelTests: XCTestCase {
         XCTAssertEqual(lyricLines(lyrics: "[chorus]\nOne more night").map(\.text), ["Chorus", "One more night"])
         XCTAssertTrue(countsAsPlayed(listened: 30, length: 200))
         XCTAssertFalse(countsAsPlayed(listened: 10, length: 200))
+    }
+
+    /// The smart playlist editor's draft gives Rust back the rules it was
+    /// made from (a length in minutes on screen, seconds in Rust), and each
+    /// rule reads as a sentence.
+    func testSmartPlaylistDraft() {
+        let rules = SmartRules(
+            matchAll: false,
+            rules: [
+                .text(field: .artist, test: .contains, value: "Hours"),
+                .number(field: .lengthSeconds, test: .atMost, value: 300),
+                .date(field: .lastPlayed, test: .notInLast, days: 60),
+                .favourite(favourite: true),
+            ],
+            sort: .mostPlayed,
+            limit: 25
+        )
+        let draft = SmartPlaylistDraft(name: "Mine", rules: rules)
+        XCTAssertEqual(draft.rules[1].number, 5)
+        XCTAssertEqual(draft.smartRules, rules)
+        XCTAssertEqual(TakeFormat.smartRule(rules.rules[0]), "Artist contains “Hours”")
+        XCTAssertEqual(TakeFormat.smartRule(rules.rules[1]), "Length at most 5:00")
+        XCTAssertEqual(TakeFormat.smartRule(rules.rules[2]), "Last played not in the last 60 days")
+        XCTAssertEqual(TakeFormat.smartRule(.text(field: .genre, test: .equals, value: "")), "Genre is empty")
     }
 }

@@ -29,6 +29,7 @@ struct DiscoverView: View {
     @State private var editingClientId = false
     @State private var attempt = 0
     @State private var opened = false
+    @State private var showingTestCatalogue = false
 
     /// Opens on `search` when given (More in Discover, from the library's
     /// search), else on the source's popular list.
@@ -69,12 +70,19 @@ struct DiscoverView: View {
         }
         .navigationTitle("Discover")
         .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Button("Test Catalogue", systemImage: "testtube.2") { showingTestCatalogue = true }
+                    .accessibilityIdentifier("discover.testCatalogue")
+            }
             if model.jamendoClientId != nil {
                 ToolbarItem(placement: .secondaryAction) {
                     Button("Jamendo Client ID", systemImage: "key") { editingClientId = true }
                         .accessibilityIdentifier("discover.clientId")
                 }
             }
+        }
+        .navigationDestination(isPresented: $showingTestCatalogue) {
+            TestCatalogueView(model: model, player: player)
         }
         .sheet(isPresented: $editingClientId) {
             NavigationStack {
@@ -94,14 +102,22 @@ struct DiscoverView: View {
     }
 
     private var list: some View {
-        List {
-            switch source {
-            case .jamendo: jamendo
-            case .archive: archive
+        Group {
+            // Before a search: Jamendo as an editorial page of shelves
+            // (S5); a search, or the Archive, is a list.
+            if source == .jamendo && query.isEmpty && !results.isEmpty {
+                DiscoverHome(model: model, player: player, popular: results)
+            } else {
+                List {
+                    switch source {
+                    case .jamendo: jamendo
+                    case .archive: archive
+                    }
+                }
             }
         }
         .searchable(text: $search, prompt: source == .jamendo ? "Search Jamendo" : "Search the Internet Archive")
-        .refreshable { attempt += 1 }
+        .refreshable { model.refreshJamendo(); attempt += 1 }
         .task(id: "\(source.rawValue)|\(model.jamendoClientId ?? "")|\(query)|\(attempt)") { await find() }
         .overlay {
             if let problem, empty {
@@ -118,6 +134,14 @@ struct DiscoverView: View {
     }
 
     @ViewBuilder private var jamendo: some View {
+        if query.isEmpty {
+            Section {
+                NavigationLink(value: ListenRoute.jamendoGenres) {
+                    Label("Browse by Genre", systemImage: "square.grid.2x2")
+                }
+                .accessibilityIdentifier("discover.genres")
+            }
+        }
         Section {
             PlayShuffleButtons(disabled: results.isEmpty) { shuffle in
                 player.play(model.queue(results), shuffle: shuffle)
@@ -126,7 +150,7 @@ struct DiscoverView: View {
         Section {
             ForEach(Array(results.enumerated()), id: \.element.id) { index, track in
                 CatalogueRow(model: model, player: player, track: track) {
-                    player.play(model.queue(results), from: index)
+                    player.play(model.queue(results, from: index))
                 }
             }
         } header: {
@@ -247,7 +271,7 @@ struct ArchiveItemView: View {
                 Section {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                         CatalogueRow(model: model, player: player, track: track) {
-                            player.play(model.queue(tracks), from: index)
+                            player.play(model.queue(tracks, from: index))
                         }
                     }
                 } footer: {
@@ -355,14 +379,7 @@ struct CatalogueRow: View {
             }
         }
         .contextMenu {
-            Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: true)
-            }
-            .accessibilityIdentifier("discover.playNext")
-            Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                player.add(model.queue([track]), next: false)
-            }
-            .accessibilityIdentifier("discover.addToQueue")
+            SongMenu(model: model, player: player, song: SongRef(track, model: model), identifier: "discover")
             if !added {
                 Button("Add to Library", systemImage: "plus") {
                     Task { await model.addToLibrary([track]) }
@@ -451,6 +468,201 @@ struct JamendoClientIdForm: View {
                 done?()
             } catch {
                 problem = ListenModel.message(error)
+            }
+        }
+    }
+}
+
+// MARK: Jamendo by artist and genre
+
+/// Jamendo's genres, each opening its most popular tracks this week.
+// MARK: Test catalogue
+
+/// The fixed test catalogue: eight tracks Soundscape makes itself (short,
+/// long, no artwork, no tags, two recordings of one work, the same
+/// recording twice, stream only), each saying what it checks. Works with no
+/// network and no Jamendo client ID.
+struct TestCatalogueView: View {
+    let model: ListenModel
+    let player: TakePlayer
+
+    @State private var tests: [TestTrack]?
+    @State private var problem: String?
+    @State private var attempt = 0
+
+    private var tracks: [CatalogueTrack] { tests?.map(\.track) ?? [] }
+
+    var body: some View {
+        List {
+            if let tests, !tests.isEmpty {
+                Section {
+                    PlayShuffleButtons(disabled: false) { shuffle in
+                        player.play(model.queue(tracks), shuffle: shuffle)
+                    }
+                    let missing = tracks.filter { !model.inLibrary($0.id) }
+                    Button {
+                        Task { await model.addToLibrary(missing) }
+                    } label: {
+                        Label(missing.isEmpty ? "All in Your Library" : "Add All to Library",
+                              systemImage: missing.isEmpty ? "checkmark.circle" : "plus.circle")
+                    }
+                    .disabled(missing.isEmpty)
+                    .accessibilityIdentifier("testCatalogue.addAll")
+                } footer: {
+                    Text("Tones Soundscape writes itself, in WAV, AIFF and CAF, so every check sounds the same on every phone. They take about 18 MB.")
+                }
+                ForEach(Array(tests.enumerated()), id: \.element.track.id) { index, test in
+                    Section {
+                        CatalogueRow(model: model, player: player, track: test.track) {
+                            player.play(model.queue(tracks, from: index))
+                        }
+                    } footer: {
+                        Text(test.checks)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Test Catalogue")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: attempt) {
+            switch await model.testCatalogue() {
+            case .success(let found):
+                tests = found
+                problem = nil
+            case .failure(let failure):
+                if !failure.stopped { problem = failure.message }
+            }
+        }
+        .onChange(of: model.resumes) {
+            // Making the files stopped by leaving the app starts again.
+            if tests == nil && problem == nil { attempt += 1 }
+        }
+        .overlay {
+            if let problem, tests == nil {
+                ForgeStateView.failed(
+                    "Can't Make the Test Catalogue", message: problem,
+                    retry: ForgeStateAction("Try Again", identifier: "testCatalogue.retry") { attempt += 1 }
+                )
+            } else if tests == nil {
+                ForgeStateView.loading("Making the Test Tracks")
+            }
+        }
+        .forgeFeedback(model.feedback)
+    }
+}
+
+struct JamendoGenresView: View {
+    let model: ListenModel
+
+    var body: some View {
+        List(model.jamendoGenres, id: \.tag) { genre in
+            NavigationLink(genre.name, value: ListenRoute.jamendoGenre(genre))
+                .accessibilityIdentifier("genres.genre")
+        }
+        .navigationTitle("Genres")
+    }
+}
+
+/// Jamendo tracks for one genre, or more like the song playing (by its
+/// artist, or in its genre), to play or add.
+struct JamendoTracksView: View {
+    enum Ask: Hashable {
+        case genre(JamendoGenre)
+        case more(trackId: String, by: JamendoMore)
+        case shelf(JamendoShelf)
+    }
+
+    let model: ListenModel
+    let player: TakePlayer
+    let ask: Ask
+
+    @State private var tracks: [CatalogueTrack]?
+    @State private var name: String?
+    @State private var problem: String?
+    @State private var attempt = 0
+
+    private var title: String {
+        switch ask {
+        case .genre(let genre): return genre.name
+        case .more(_, .artist): return name.map { "More by \($0)" } ?? "More by This Artist"
+        case .more(_, .genre): return name.map { "More \($0)" } ?? "More in This Genre"
+        case .shelf(let shelf): return jamendoShelfTitle(shelf: shelf)
+        }
+    }
+
+    var body: some View {
+        List {
+            if let problem, tracks != nil {
+                Section {
+                    Label(problem, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("jamendoTracks.problem")
+                }
+            }
+            if let tracks, !tracks.isEmpty {
+                Section {
+                    PlayShuffleButtons(disabled: false) { shuffle in
+                        player.play(model.queue(tracks), shuffle: shuffle)
+                    }
+                }
+                Section {
+                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                        CatalogueRow(model: model, player: player, track: track) {
+                            player.play(model.queue(tracks, from: index))
+                        }
+                    }
+                } header: {
+                    if case .genre = ask { Text("Popular This Week") }
+                } footer: {
+                    Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: attempt) { await load() }
+        .onChange(of: model.resumes) {
+            // A lookup stopped by leaving the app starts again on return.
+            if tracks == nil && problem == nil { attempt += 1 }
+        }
+        .refreshable { model.refreshJamendo(); attempt += 1 }
+        .overlay {
+            if let problem, tracks == nil {
+                ForgeStateView.failed(
+                    "Can't Ask Jamendo", message: problem,
+                    retry: ForgeStateAction("Try Again", identifier: "jamendoTracks.retry") { attempt += 1 }
+                )
+            } else if tracks == nil {
+                ForgeStateView.loading("Asking Jamendo")
+            } else if tracks?.isEmpty == true && problem == nil {
+                ForgeStateView.empty(
+                    "Nothing More on Jamendo", systemImage: "music.note",
+                    description: "Jamendo has no other songs here right now."
+                )
+            }
+        }
+        .forgeFeedback(model.feedback)
+    }
+
+    private func load() async {
+        problem = nil
+        switch ask {
+        case .genre(let genre):
+            switch await model.jamendoTracks(in: genre) {
+            case .success(let found): tracks = found
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
+        case .more(let trackId, let by):
+            switch await model.moreFromJamendo(trackId, by: by) {
+            case .success(let found):
+                name = found.name
+                tracks = found.tracks
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
+            }
+        case .shelf(let shelf):
+            switch await model.jamendoTracks(on: shelf) {
+            case .success(let found): tracks = found
+            case .failure(let failure): if !failure.stopped { problem = failure.message }
             }
         }
     }

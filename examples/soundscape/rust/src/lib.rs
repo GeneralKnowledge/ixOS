@@ -16,15 +16,22 @@ pub mod archive;
 pub mod catalogue;
 pub mod collection;
 pub mod jamendo;
+pub mod jamendo_cache;
+pub mod jamendo_explore;
 pub mod library;
 pub mod listen;
 pub mod lyrics;
+pub mod merge;
 mod model;
 pub mod musicbrainz;
 pub mod offline;
 pub mod playback;
+pub mod playlist_plan;
 pub mod queue;
 pub mod search;
+pub mod smart;
+pub mod station;
+pub mod test_catalogue;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,12 +48,18 @@ use collection::CollectionFile;
 pub use collection::{
     counts_as_played, MusicCollection, Playlist, PlaylistDetail, PlaylistEntry, RecentPlay,
 };
+pub use jamendo::{JamendoGenre, JamendoMore, JamendoMoreTracks, JamendoShelf};
+pub use jamendo_explore::{
+    JamendoArtist, JamendoArtistList, JamendoArtistPage, JamendoRelease, JamendoSimilarArtists,
+    ReleaseKind,
+};
 use library::LibraryFile;
 pub use library::{
     ArtworkTarget, AudioSource, Generation, ImportResult, Library, LibraryAlbum, LibraryArtist,
     LibrarySearch, LibraryTrack, MusicFile, Recording, RecordingKind, RecordingOrder, TrackDetail,
     TrackEdit,
 };
+pub use library::{DuplicateReason, DuplicateSongs, MergedSong};
 pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
     Take, TakeMark,
@@ -60,6 +73,12 @@ use playback::PlaybackFile;
 pub use playback::SavedPlayback;
 pub use queue::{PlayQueue, QueueEntry, QueueTrack, RepeatMode};
 pub use search::CatalogueSearch;
+pub use smart::{
+    SmartDateField, SmartDateTest, SmartEntry, SmartNumberField, SmartNumberTest, SmartPlaylist,
+    SmartPlaylistDetail, SmartRule, SmartRules, SmartSort, SmartTextField, SmartTextTest,
+};
+pub use station::{Feeling, Station, StationSeed};
+pub use test_catalogue::TestTrack;
 
 uniffi::setup_scaffolding!();
 
@@ -82,6 +101,8 @@ const COLLECTION_FILE: &str = "collection.json";
 const OFFLINE_FILE: &str = "offline.json";
 /// What was playing, to carry on after the app closes.
 const PLAYBACK_FILE: &str = "playback.json";
+/// Jamendo covers already compared, in the caches folder's `jamendo/`.
+const COVERS_FILE: &str = "covers.json";
 /// The largest music file imported.
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 /// The largest picture accepted as artwork.
@@ -89,6 +110,9 @@ const MAX_ARTWORK_BYTES: u64 = 20 * 1024 * 1024;
 /// The largest answer the take server may give (a library of a few hundred
 /// songs is well under this).
 const MAX_ANSWER_BYTES: u64 = 4 * 1024 * 1024;
+/// Who Soundscape says it is to the services it asks (MusicBrainz sends
+/// its own, in the form MusicBrainz asks for).
+const USER_AGENT: &str = "Soundscape/0.1 (ixOS)";
 
 /// What the command thread owns.
 struct State {
@@ -165,11 +189,42 @@ pub struct SoundscapeCore {
     imported: PathBuf,
     offline: Arc<Published<OfflineFile>>,
     downloads: PathBuf,
+    /// The test catalogue's files (`test_catalogue::FOLDER`).
+    test_files: PathBuf,
     progress: Arc<Mutex<Progress>>,
     playback: Arc<Published<PlaybackFile>>,
     /// True while `sync_downloads` runs, so a second one returns at once.
     syncing: Arc<AtomicBool>,
+    /// The app's HTTP client, with Jamendo's answers kept
+    /// (`jamendo_cache`).
     http: Arc<dyn HttpClient>,
+    answers: Arc<jamendo_cache::JamendoAnswers>,
+    /// Jamendo covers already compared (`jamendo_explore`), kept in the
+    /// caches folder across launches.
+    covers: Arc<jamendo_explore::Covers>,
+}
+
+/// A shelf's title in Discover.
+#[uniffi::export]
+pub fn jamendo_shelf_title(shelf: JamendoShelf) -> String {
+    jamendo::shelf_title(shelf)
+}
+
+/// Songs Jamendo suggests because of one you play: its title and tracks.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoBecause {
+    /// "Because You Like <artist>".
+    pub title: String,
+    /// The Jamendo track it starts from (`jamendo:<id>`).
+    pub from_track_id: String,
+    pub tracks: Vec<CatalogueTrack>,
+}
+
+/// The longest title, artist, album or genre a song keeps, in characters,
+/// so Edit Song can name the limit.
+#[uniffi::export]
+pub fn song_field_max_chars() -> u32 {
+    library::MAX_FIELD_CHARS as u32
 }
 
 #[uniffi::export]
@@ -309,7 +364,7 @@ impl SoundscapeCore {
     /// Favourites, playlists and recently played, as the library has them
     /// now. Never waits for a command.
     pub fn collection(&self) -> MusicCollection {
-        collection::build_collection(&self.collection.get(), &self.library())
+        collection::build_collection(&self.collection.get(), &self.library(), now_ms())
     }
 
     pub fn is_favourite(&self, id: String) -> bool {
@@ -345,6 +400,54 @@ impl SoundscapeCore {
         self.playlist(id)
     }
 
+    /// "Make me a playlist": the library's songs a playlist plan may use, as
+    /// JSON ([`playlist_plan::PlaylistSnapshot`]). JSON because it travels
+    /// through Swift to Device Lab's A2UI Lab, which reads it with these
+    /// same Rust types.
+    pub fn playlist_snapshot_json(&self) -> String {
+        serde_json::to_string(&playlist_plan::snapshot(&self.library())).unwrap_or_default()
+    }
+
+    /// Makes the playlist a confirmed plan ([`playlist_plan::PlaylistPlan`]
+    /// as JSON) describes, after checking it again against the library as
+    /// it is now. Searches, downloads and plays nothing.
+    pub async fn apply_playlist_plan_json(
+        &self,
+        plan_json: String,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        // The plan was checked in full before it was shown; failing here
+        // means the library changed since, or the plan was tampered with.
+        let refused = || SoundscapeError::OutOfRange {
+            setting: "the playlist plan".into(),
+        };
+        let plan: playlist_plan::PlaylistPlan =
+            serde_json::from_str(&plan_json).map_err(|_| refused())?;
+        let artwork = self.artwork_url();
+        let music = self.imported_url();
+        let test = self.test_url();
+        // The check and the write run in one command, so the songs checked
+        // are the songs the playlist gets: nothing removes one in between.
+        let id = self
+            .rt
+            .command("playlist-create", move |state| {
+                let library = library::build_library(
+                    state.library.value(),
+                    &library::Locate {
+                        artwork: &artwork,
+                        music: &music,
+                        test: &test,
+                    },
+                );
+                let snapshot = playlist_plan::snapshot(&library);
+                let (name, tracks) =
+                    playlist_plan::check(&snapshot, &plan).map_err(|_| refused())?;
+                let ids = tracks.iter().map(|t| t.id.clone()).collect();
+                state.change_collection(|c| c.create_playlist(&name, ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
     pub async fn rename_playlist(
         &self,
         id: u64,
@@ -365,6 +468,104 @@ impl SoundscapeCore {
             })
             .await?;
         Ok(self.collection())
+    }
+
+    /// Adds queued catalogue songs (a radio find) to the library, so they
+    /// can be favourites; anything else is left as it is.
+    pub async fn add_queued_to_library(
+        &self,
+        tracks: Vec<QueueTrack>,
+    ) -> Result<Library, SoundscapeError> {
+        let found: Vec<CatalogueTrack> = tracks
+            .into_iter()
+            .filter(|t| !self.in_library(t.track_id.clone()))
+            .filter_map(catalogue_track)
+            .collect();
+        if found.is_empty() {
+            return Ok(self.library());
+        }
+        self.add_catalogue_tracks(found).await
+    }
+
+    /// Undo for [`Self::delete_playlist`]: brings the playlist deleted
+    /// last back, under its old id.
+    pub async fn restore_playlist(&self, id: u64) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("playlist-restore", move |state| {
+                state.change_collection(|c| c.restore_playlist(id))
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Puts a playlist's songs back as they were, by track id in order
+    /// (Undo after removing one).
+    pub async fn set_playlist_tracks(
+        &self,
+        id: u64,
+        track_ids: Vec<String>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        self.rt
+            .command("playlist-set-tracks", move |state| {
+                state.change_collection(|c| c.set_playlist_tracks(id, track_ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
+    }
+
+    /// Makes a playlist of what is in the queue, in play order, each song
+    /// once. Catalogue songs not in the library yet are added to it (a
+    /// playlist only shows library songs); anything else the library
+    /// doesn't have, such as a take from the take server, is left out.
+    pub async fn save_queue_as_playlist(
+        &self,
+        name: String,
+        tracks: Vec<QueueTrack>,
+    ) -> Result<PlaylistDetail, SoundscapeError> {
+        if tracks.len() > collection::MAX_PLAYLIST_TRACKS {
+            return Err(SoundscapeError::range("playlist songs"));
+        }
+        let id = self
+            .rt
+            .command("playlist-from-queue", move |state| {
+                let lib = state.library.value();
+                let mut seen = std::collections::HashSet::new();
+                let mut ids = Vec::new();
+                let mut adding = Vec::new();
+                for track in tracks {
+                    if !seen.insert(track.track_id.clone()) {
+                        continue;
+                    }
+                    if lib.has_track(&track.track_id) {
+                        ids.push(track.track_id);
+                    } else if let Some(found) = catalogue_track(track) {
+                        ids.push(found.id.clone());
+                        adding.push(found);
+                    }
+                }
+                if ids.is_empty() {
+                    return Err(SoundscapeError::NotInLibrary { id: "queue".into() });
+                }
+                // What `create_playlist` would refuse is refused before any
+                // catalogue song joins the library.
+                model::clean_name(&name)?;
+                if state.collection.value().playlists.len() >= collection::MAX_PLAYLISTS {
+                    return Err(SoundscapeError::range("playlists"));
+                }
+                if !adding.is_empty() {
+                    let now = now_ms();
+                    state.change_library(|lib| {
+                        for (i, mut track) in adding.into_iter().enumerate() {
+                            track.added_ms = now + i as i64;
+                            lib.catalogue.entry(track.id.clone()).or_insert(track);
+                        }
+                        Ok(())
+                    })?;
+                }
+                state.change_collection(|c| c.create_playlist(&name, ids, now_ms()))
+            })
+            .await?;
+        self.playlist(id)
     }
 
     /// Adds songs at the end of a playlist.
@@ -409,8 +610,78 @@ impl SoundscapeCore {
         self.playlist(id)
     }
 
+    /// Every song a playlist keeps, in order, including those the library
+    /// no longer has (which `playlist` leaves out), so Undo can put back
+    /// exactly what was there.
+    pub fn playlist_track_ids(&self, id: u64) -> Result<Vec<String>, SoundscapeError> {
+        self.collection
+            .get()
+            .playlists
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.track_ids.clone())
+            .ok_or_else(|| collection::no_playlist(id))
+    }
+
     pub fn playlist(&self, id: u64) -> Result<PlaylistDetail, SoundscapeError> {
         collection::playlist_detail(&self.collection.get(), &self.library(), id)
+    }
+
+    // MARK: Smart playlists
+
+    /// A smart playlist (built in or yours) with the songs its rules let in
+    /// now.
+    pub fn smart_playlist(&self, id: String) -> Result<SmartPlaylistDetail, SoundscapeError> {
+        smart::detail(&self.collection.get(), &self.library(), &id, now_ms())
+    }
+
+    /// How many songs `rules` would let in now, for the editor.
+    pub fn smart_playlist_count(&self, rules: SmartRules) -> Result<u32, SoundscapeError> {
+        smart::check(&rules)?;
+        Ok(smart::songs(&rules, &self.collection.get(), &self.library(), now_ms()).len() as u32)
+    }
+
+    pub async fn create_smart_playlist(
+        &self,
+        name: String,
+        rules: SmartRules,
+    ) -> Result<SmartPlaylistDetail, SoundscapeError> {
+        let id = self
+            .rt
+            .command("smart-playlist-create", move |state| {
+                state.change_collection(|c| c.create_smart_playlist(&name, rules, now_ms()))
+            })
+            .await?;
+        self.smart_playlist(smart::stored_id(id))
+    }
+
+    /// Renames one of your smart playlists and replaces its rules.
+    pub async fn edit_smart_playlist(
+        &self,
+        id: String,
+        name: String,
+        rules: SmartRules,
+    ) -> Result<SmartPlaylistDetail, SoundscapeError> {
+        let number = smart::stored_number(&id).ok_or_else(|| smart::no_smart_playlist(&id))?;
+        self.rt
+            .command("smart-playlist-edit", move |state| {
+                state.change_collection(|c| c.edit_smart_playlist(number, &name, rules, now_ms()))
+            })
+            .await?;
+        self.smart_playlist(id)
+    }
+
+    pub async fn delete_smart_playlist(
+        &self,
+        id: String,
+    ) -> Result<MusicCollection, SoundscapeError> {
+        let number = smart::stored_number(&id).ok_or_else(|| smart::no_smart_playlist(&id))?;
+        self.rt
+            .command("smart-playlist-delete", move |state| {
+                state.change_collection(|c| c.delete_smart_playlist(number))
+            })
+            .await?;
+        Ok(self.collection())
     }
 
     /// Notes that a song was played (see `counts_as_played`).
@@ -429,11 +700,12 @@ impl SoundscapeCore {
             .await
     }
 
+    /// Forgets the history and the play counts.
     pub async fn clear_history(&self) -> Result<MusicCollection, SoundscapeError> {
         self.rt
             .command("collection-clear-history", move |state| {
                 state.change_collection(|c| {
-                    c.history.clear();
+                    c.clear_history();
                     Ok(())
                 })
             })
@@ -516,7 +788,12 @@ impl SoundscapeCore {
             progress.failures.clear();
         }
         loop {
-            let plan = offline::plan(&self.offline.get(), &self.kept_library());
+            // A song merged away whose offline choice hasn't moved yet (a
+            // save after the merge failed) still counts as wanted, under
+            // the song it joined, so its download isn't removed.
+            let mut wanted = self.offline.get().as_ref().clone();
+            merge::repair_offline(&self.library.get(), &mut wanted);
+            let plan = offline::plan(&wanted, &self.kept_library());
             self.remove_unwanted(plan.remove).await?;
             let next = {
                 let progress = self.progress();
@@ -662,22 +939,23 @@ impl SoundscapeCore {
 
     /// Removes a song the person added: an imported file (deleting
     /// Soundscape's copy; the original, wherever it was, is untouched) or a
-    /// catalogue track. Its download goes on the next pass.
+    /// catalogue track. Its download goes on the next pass. Kept, file
+    /// and all, until the next removal, for [`Self::restore_removed`].
     pub async fn remove_imported(&self, track_id: String) -> Result<Library, SoundscapeError> {
         self.rt
             .command("library-remove-imported", move |state| {
-                let lib = state.library.value();
-                if !lib.imported.contains_key(&track_id) && !lib.catalogue.contains_key(&track_id) {
-                    return Err(SoundscapeError::NotInLibrary { id: track_id });
-                }
-                state.change_library(|lib| {
-                    lib.imported.remove(&track_id);
-                    lib.catalogue.remove(&track_id);
-                    lib.edits.remove(&track_id);
-                    lib.artwork.remove(&track_id);
-                    lib.musicbrainz.remove(&track_id);
-                    Ok(())
-                })
+                state.change_library(|lib| lib.remove_added(&track_id))
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Undo for [`Self::remove_imported`]: puts the song removed last back,
+    /// file, changes and artwork included.
+    pub async fn restore_removed(&self, track_id: String) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("library-restore-removed", move |state| {
+                state.change_library(|lib| lib.restore_removed(&track_id))
             })
             .await?;
         Ok(self.library())
@@ -739,11 +1017,7 @@ impl SoundscapeCore {
         query: String,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
-        let client_id = self
-            .jamendo_client_id()
-            .ok_or_else(|| SoundscapeError::BadAddress {
-                reason: "add your Jamendo client ID first".into(),
-            })?;
+        let client_id = self.needs_jamendo_client_id()?;
         let http = Arc::clone(&self.http);
         let work = self.rt.foreground(cancellation.as_deref());
         self.rt
@@ -751,6 +1025,249 @@ impl SoundscapeCore {
                 jamendo::search(http.as_ref(), &client_id, &query, cancel)
             })
             .await
+    }
+
+    /// The fixed test catalogue (`test_catalogue`): its files are written
+    /// the first time (about 18 MB, a second or two), then reused.
+    /// On-screen work.
+    pub async fn test_catalogue(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<TestTrack>, SoundscapeError> {
+        let dir = self.test_files.clone();
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("test-catalogue", work, move |_| {
+                test_catalogue::ensure(&dir)?;
+                Ok(test_catalogue::tracks(&dir))
+            })
+            .await
+    }
+
+    /// The genres Discover offers for Jamendo, in the order shown.
+    pub fn jamendo_genres(&self) -> Vec<JamendoGenre> {
+        jamendo::genres()
+    }
+
+    /// Jamendo tracks in the genre `tag` (such as `jazz`), this week's
+    /// most popular first. On-screen work.
+    pub async fn jamendo_genre(
+        &self,
+        tag: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let tag = jamendo::clean_tag(&tag)?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-genre", work, move |cancel| {
+                jamendo::tracks(http.as_ref(), &client_id, &jamendo::Ask::Genre(tag), cancel)
+            })
+            .await
+    }
+
+    /// More from Jamendo for the Jamendo track `track_id`
+    /// (`jamendo:<id>`): its artist's other tracks, or others in its
+    /// genre. On-screen work.
+    pub async fn more_from_jamendo(
+        &self,
+        track_id: String,
+        by: JamendoMore,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoMoreTracks, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-more", work, move |cancel| {
+                jamendo::more(http.as_ref(), &client_id, &track_id, by, cancel)
+            })
+            .await
+    }
+
+    /// Makes every Jamendo answer kept so far stale, for pull to refresh:
+    /// the next ask of each goes to Jamendo, and the kept answer is used
+    /// only if Jamendo can't answer (`jamendo_cache`).
+    pub fn refresh_jamendo(&self) {
+        self.answers.refresh();
+    }
+
+    /// Discover's Jamendo shelves, in the order shown.
+    pub fn jamendo_shelves(&self) -> Vec<JamendoShelf> {
+        jamendo::SHELVES.to_vec()
+    }
+
+    /// The tracks on one of Discover's Jamendo shelves. On-screen work.
+    pub async fn jamendo_shelf(
+        &self,
+        shelf: JamendoShelf,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-shelf", work, move |cancel| {
+                jamendo::tracks(
+                    http.as_ref(),
+                    &client_id,
+                    &jamendo::Ask::Shelf(shelf),
+                    cancel,
+                )
+            })
+            .await
+    }
+
+    /// Jamendo artists to discover: this week's most popular, or the
+    /// newest. On-screen work.
+    pub async fn jamendo_artists(
+        &self,
+        list: JamendoArtistList,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<JamendoArtist>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artists", work, move |cancel| {
+                jamendo_explore::artists(http.as_ref(), &client_id, list, cancel)
+            })
+            .await
+    }
+
+    /// A Jamendo artist's page (`artist_id` is Jamendo's): their albums,
+    /// EPs and singles, with singles that share a cover grouped into one
+    /// album ([`jamendo_explore::releases`]). On-screen work.
+    pub async fn jamendo_artist(
+        &self,
+        artist_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoArtistPage, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let covers = Arc::clone(&self.covers);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist", work, move |cancel| {
+                let page = jamendo_explore::artist_page(
+                    http.as_ref(),
+                    &client_id,
+                    &artist_id,
+                    &covers,
+                    cancel,
+                );
+                covers.save();
+                page
+            })
+            .await
+    }
+
+    /// The page of the artist of the Jamendo track `track_id`
+    /// (`jamendo:<id>`), for a song found in search or the library.
+    /// On-screen work.
+    pub async fn jamendo_artist_of_track(
+        &self,
+        track_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoArtistPage, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let covers = Arc::clone(&self.covers);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist", work, move |cancel| {
+                let artist =
+                    jamendo_explore::artist_of(http.as_ref(), &client_id, &track_id, cancel)?;
+                let page = jamendo_explore::artist_page(
+                    http.as_ref(),
+                    &client_id,
+                    &artist,
+                    &covers,
+                    cancel,
+                );
+                covers.save();
+                page
+            })
+            .await
+    }
+
+    /// Artists like the Jamendo artist `artist_id`: others popular this
+    /// week in the genre most of their songs carry
+    /// ([`jamendo_explore::similar_artists`]). On-screen work.
+    pub async fn jamendo_similar_artists(
+        &self,
+        artist_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoSimilarArtists, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-similar", work, move |cancel| {
+                jamendo_explore::similar_artists(http.as_ref(), &client_id, &artist_id, cancel)
+            })
+            .await
+    }
+
+    /// The Jamendo artist id of the Jamendo track `track_id`
+    /// (`jamendo:<id>`), so a page reached from a song opens as the same
+    /// artist page as one reached from the artist. On-screen work.
+    pub async fn jamendo_artist_id_of_track(
+        &self,
+        track_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<String, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist-of", work, move |cancel| {
+                jamendo_explore::artist_of(http.as_ref(), &client_id, &track_id, cancel)
+            })
+            .await
+    }
+
+    /// Songs like the Jamendo song you play most (favourites count as
+    /// plays too), in its genre, by artists not in your library. None when
+    /// no Jamendo song is in your library. On-screen work.
+    pub async fn jamendo_because(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Option<JamendoBecause>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let library = self.library();
+        let Some((track_id, artist)) = because_seed(&library, &self.collection.get()) else {
+            return Ok(None);
+        };
+        let known: std::collections::HashSet<String> = library
+            .tracks
+            .iter()
+            .map(|t| t.artist.to_lowercase())
+            .collect();
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        let from = track_id.clone();
+        let more = self
+            .rt
+            .run("jamendo-because", work, move |cancel| {
+                jamendo::more(http.as_ref(), &client_id, &from, JamendoMore::Genre, cancel)
+            })
+            .await?;
+        let tracks: Vec<CatalogueTrack> = more
+            .tracks
+            .into_iter()
+            .filter(|t| {
+                t.artist
+                    .as_deref()
+                    .is_none_or(|a| !known.contains(&a.to_lowercase()))
+            })
+            .collect();
+        Ok((!tracks.is_empty()).then(|| JamendoBecause {
+            title: format!("Because You Like {artist}"),
+            from_track_id: track_id,
+            tracks,
+        }))
     }
 
     /// Internet Archive items (albums, concerts, recordings) matching
@@ -812,6 +1329,211 @@ impl SoundscapeCore {
                 archive::item_tracks(http.as_ref(), &identifier, cancel)
             })
             .await
+    }
+
+    // MARK: Stations
+
+    /// How the person feels about a song for stations, if they said.
+    pub fn feeling(&self, track_id: String) -> Option<Feeling> {
+        self.collection.get().feelings.get(&track_id).copied()
+    }
+
+    /// Likes or dislikes a song (any track id, in the library or from a
+    /// catalogue), or forgets it with `None`. Disliked songs never play on
+    /// a station; liked ones come up more.
+    pub async fn set_feeling(
+        &self,
+        track_id: String,
+        feeling: Option<Feeling>,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-feeling", move |state| {
+                state.change_collection(|c| c.set_feeling(&track_id, feeling))
+            })
+            .await
+    }
+
+    /// Jamendo genres for Discover's shelves, yours first (see
+    /// [`station::discover_genres`]).
+    pub fn discover_genres(&self, limit: u32) -> Vec<JamendoGenre> {
+        station::discover_genres(&self.library(), &self.collection.get(), limit as usize)
+    }
+
+    /// Saves a station at the front of Hear Nonstop Music, or forgets it.
+    pub async fn set_station_saved(
+        &self,
+        seed: StationSeed,
+        title: String,
+        saved: bool,
+    ) -> Result<(), SoundscapeError> {
+        self.rt
+            .command("collection-station-saved", move |state| {
+                state.change_collection(|c| c.set_station_saved(seed, &title, saved, now_ms()))
+            })
+            .await
+    }
+
+    pub fn is_station_saved(&self, seed: StationSeed) -> bool {
+        self.collection.get().is_station_saved(&seed)
+    }
+
+    /// Remembers a search for Search's Recent list.
+    pub async fn note_search(&self, query: String) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-note-search", move |state| {
+                state.change_collection(|c| {
+                    c.note_search(&query);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    pub async fn clear_recent_searches(&self) -> Result<MusicCollection, SoundscapeError> {
+        self.rt
+            .command("collection-clear-searches", move |state| {
+                state.change_collection(|c| {
+                    c.recent_searches.clear();
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.collection())
+    }
+
+    /// Stations to offer on the Listen screen: the saved ones first, then
+    /// your top genres and most played artists, then Jamendo's genres when
+    /// there is a client ID.
+    pub fn suggested_stations(&self) -> Vec<Station> {
+        station::suggested(
+            &self.library(),
+            &self.collection.get(),
+            self.jamendo_client_id().is_some(),
+        )
+    }
+
+    /// The next `size` songs (at most 50) for a station: your music that
+    /// fits the seed, weighted by likes, favourites and plays, with about
+    /// two in five new to you (unplayed songs, and Jamendo's in the
+    /// station's genre when there is a client ID). `played` are the
+    /// station's songs so far, `recent_artists` the last artists played
+    /// (newest last), `seed_number` makes the mix repeatable. Jamendo
+    /// failing leaves its songs out; with nothing else to play its error
+    /// is the answer (worth retrying), and a station with nothing in it at
+    /// all is `NotInLibrary`.
+    /// On-screen work.
+    pub async fn station_batch(
+        &self,
+        seed: StationSeed,
+        played: Vec<String>,
+        recent_artists: Vec<String>,
+        size: u32,
+        seed_number: u64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<QueueTrack>, SoundscapeError> {
+        let library = self.library();
+        let collection = self.collection.get();
+        let mut candidates = station::library_candidates(&seed, &library, &collection);
+        let mut catalogue: Vec<CatalogueTrack> = Vec::new();
+        // Why Jamendo gave nothing, when it failed: the answer when nothing
+        // else can play either, so a dropped connection is told apart from
+        // a station with nothing in it.
+        let mut jamendo_failure: Option<SoundscapeError> = None;
+        if let Some(client_id) = self.jamendo_client_id() {
+            let genre = station::seed_genre(&seed, &library);
+            let http = Arc::clone(&self.http);
+            let work = self.rt.foreground(cancellation.as_deref());
+            let seed_for_work = seed.clone();
+            let found = self
+                .rt
+                .run("station-jamendo", work, move |cancel| {
+                    match (
+                        &seed_for_work,
+                        genre.as_deref().and_then(station::jamendo_tag),
+                    ) {
+                        (_, Some(tag)) => jamendo::tracks(
+                            http.as_ref(),
+                            &client_id,
+                            &jamendo::Ask::Genre(tag),
+                            cancel,
+                        ),
+                        // A Jamendo song not in the library: Jamendo knows its genre.
+                        (StationSeed::Track { id }, None) if id.starts_with("jamendo:") => {
+                            jamendo::more(http.as_ref(), &client_id, id, JamendoMore::Genre, cancel)
+                                .map(|more| more.tracks)
+                        }
+                        _ => Ok(Vec::new()),
+                    }
+                })
+                .await;
+            match found {
+                Ok(tracks) => catalogue = tracks,
+                Err(SoundscapeError::Stopped { kind }) => {
+                    return Err(SoundscapeError::Stopped { kind })
+                }
+                Err(error) => {
+                    forge_runtime::logging::warn!("station: Jamendo left out: {error}");
+                    jamendo_failure = Some(error);
+                }
+            }
+        }
+        let known: std::collections::HashSet<String> =
+            candidates.iter().map(|c| c.id.clone()).collect();
+        let plays = station::play_counts(&collection);
+        for t in &catalogue {
+            if known.contains(&t.id)
+                || !t.rights.may_stream
+                || collection.feelings.get(&t.id) == Some(&Feeling::Dislike)
+            {
+                continue;
+            }
+            let liked = collection.feelings.get(&t.id) == Some(&Feeling::Like);
+            candidates.push(station::Candidate {
+                id: t.id.clone(),
+                artist: t.artist.clone().unwrap_or_default(),
+                weight: if liked { 4.0 } else { 1.0 },
+                heard: plays.contains_key(t.id.as_str()),
+            });
+        }
+        let played = station::Played {
+            ids: played.into_iter().collect(),
+            artists: recent_artists,
+        };
+        let size = (size as usize).clamp(1, 50);
+        let mut ids = station::mix(&candidates, &played, size, seed_number);
+        // A song seed plays first when the station starts, when it can be
+        // played from here (Jamendo's related songs leave the seed out, so
+        // one only in the catalogue would take a place and then drop).
+        if let StationSeed::Track { id } = &seed {
+            let playable =
+                library.tracks.iter().any(|t| &t.id == id) || catalogue.iter().any(|t| &t.id == id);
+            if played.ids.is_empty() && playable {
+                ids.retain(|i| i != id);
+                ids.insert(0, id.clone());
+                ids.truncate(size);
+            }
+        }
+        let tracks: Vec<QueueTrack> = ids
+            .iter()
+            .filter_map(|id| {
+                if let Some(t) = library.tracks.iter().find(|t| &t.id == id) {
+                    library::queue_track(t)
+                } else {
+                    catalogue.iter().find(|t| &t.id == id).and_then(|t| {
+                        self.catalogue_queue_tracks(vec![t.clone()])
+                            .into_iter()
+                            .next()
+                    })
+                }
+            })
+            .collect();
+        if tracks.is_empty() {
+            return Err(jamendo_failure.unwrap_or(SoundscapeError::NotInLibrary {
+                id: "station".into(),
+            }));
+        }
+        Ok(tracks)
     }
 
     // MARK: MusicBrainz
@@ -922,6 +1644,98 @@ impl SoundscapeCore {
         self.library_track(track_id)
     }
 
+    // MARK: One song, several sources
+
+    /// Songs that look like one song from several sources, to offer
+    /// merging: linked to the same MusicBrainz recording, or the same
+    /// title, artist and length. Groups the person kept apart are left out.
+    pub fn duplicate_songs(&self) -> Vec<DuplicateSongs> {
+        merge::duplicates(&self.library.get(), &self.kept_library())
+    }
+
+    /// Merges the songs `ids` into the song `into`: one song whose
+    /// recordings come from every source. Favourites, playlists, history
+    /// and songs wanted offline move to `into`. Returns the merged song.
+    pub async fn merge_songs(
+        &self,
+        into: String,
+        ids: Vec<String>,
+    ) -> Result<TrackDetail, SoundscapeError> {
+        merge::check(&self.library.get(), &self.kept_library(), &into, &ids)?;
+        let target = into.clone();
+        self.rt
+            .command("songs-merge", move |state| {
+                // Checked again here: a removal queued before this command
+                // may have run since the check above.
+                let lib = state.library.value();
+                if !lib.has_track(&target) || lib.merged.contains_key(&target) {
+                    return Err(SoundscapeError::NotInLibrary { id: target.clone() });
+                }
+                let ids: Vec<String> = ids.into_iter().filter(|id| *id != target).collect();
+                for id in &ids {
+                    if !state.library.value().has_track(id) {
+                        return Err(SoundscapeError::NotInLibrary { id: id.clone() });
+                    }
+                }
+                // The library first: if a save after it fails, opening the
+                // app finishes the move (merge::repair_collection).
+                state.change_library(|lib| {
+                    merge::merge(lib, &target, &ids);
+                    Ok(())
+                })?;
+                state.change_collection(|c| {
+                    for id in &ids {
+                        merge::move_collection(c, id, &target);
+                    }
+                    Ok(())
+                })?;
+                state.change_offline(|o| {
+                    for id in &ids {
+                        merge::move_offline(o, id, &target);
+                    }
+                    Ok(())
+                })
+            })
+            .await?;
+        self.library_track(into)
+    }
+
+    /// Brings a merged song back as a song of its own, with its own
+    /// recordings. Favourites, playlist entries, history and offline
+    /// choices moved at the merge stay with the kept song. Returns
+    /// the library.
+    pub async fn separate_song(&self, id: String) -> Result<Library, SoundscapeError> {
+        self.rt
+            .command("song-separate", move |state| {
+                if !state.library.value().merged.contains_key(&id) {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    merge::separate(lib, &id);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(self.library())
+    }
+
+    /// Remembers that these songs aren't one song, so they aren't offered
+    /// for merging again.
+    pub async fn keep_songs_apart(&self, ids: Vec<String>) -> Result<(), SoundscapeError> {
+        if ids.len() < 2 || ids.len() > merge::MAX_MERGE {
+            return Err(SoundscapeError::range("songs"));
+        }
+        let key = merge::group_key(&ids);
+        self.rt
+            .command("songs-keep-apart", move |state| {
+                state.change_library(|lib| {
+                    lib.distinct.insert(key);
+                    Ok(())
+                })
+            })
+            .await
+    }
+
     /// Adds catalogue tracks to the library, keeping their rights as they
     /// are now. A track already there keeps what was saved. Returns the
     /// library.
@@ -965,14 +1779,17 @@ impl SoundscapeCore {
     /// in the library, else the catalogue's stream.
     pub fn catalogue_queue_tracks(&self, tracks: Vec<CatalogueTrack>) -> Vec<QueueTrack> {
         let library = self.library();
+        let file = self.library.get();
         tracks
             .iter()
             .filter(|t| t.rights.may_stream)
             .map(|t| {
-                library
-                    .tracks
-                    .iter()
-                    .find(|l| l.id == t.id)
+                // A track merged into another song plays as that song.
+                let root = library::merged_root(&file, &t.id);
+                let find = |id: &str| library.tracks.iter().find(|l| l.id == id);
+                root.as_deref()
+                    .and_then(find)
+                    .or_else(|| find(&t.id))
                     .and_then(library::queue_track)
                     .unwrap_or_else(|| QueueTrack {
                         track_id: t.id.clone(),
@@ -1016,19 +1833,40 @@ impl SoundscapeCore {
     pub fn saved_playback(&self) -> Option<SavedPlayback> {
         let saved = self.playback.get().saved.clone()?;
         let library = self.library();
+        let test_url = self.test_url();
+        let file = self.library.get();
         playback::refresh(saved, |queued| {
-            match library.tracks.iter().find(|t| t.id == queued.track_id) {
+            // A song merged into another since is found under that song.
+            // (Only when that song is still there: if it went, the
+            // merged song is back on its own under its own id.)
+            let id = library::merged_root(&file, &queued.track_id)
+                .filter(|root| library.tracks.iter().any(|t| &t.id == root))
+                .unwrap_or_else(|| queued.track_id.clone());
+            match library.tracks.iter().find(|t| t.id == id) {
                 Some(track)
                     if track.preferred.as_ref().map(|r| &r.id) == Some(&queued.recording.id) =>
                 {
                     library::queue_track(track)
                 }
                 Some(_) => self
-                    .queue_recording(queued.track_id.clone(), queued.recording.id.clone())
+                    .queue_recording(id.clone(), queued.recording.id.clone())
                     .ok(),
                 // Not in the library: a stream (catalogue, take server)
-                // still plays; a file on the phone that nothing names is gone.
-                None => (!queued.recording.audio_url.starts_with("file:")).then(|| queued.clone()),
+                // still plays, and so does a test catalogue file found in
+                // the data folder as it is now; any other file on the phone
+                // that nothing names is gone.
+                None if queued.recording.audio_url.starts_with("file:") => {
+                    test_catalogue::spec(&queued.track_id)?;
+                    let audio_url = test_url(&queued.recording.audio_url)?;
+                    let path = PathBuf::from(listen::decode(audio_url.strip_prefix("file://")?));
+                    path.exists().then(|| {
+                        let mut kept = queued.clone();
+                        kept.recording.audio_url = audio_url;
+                        kept.artwork_url = kept.artwork_url.as_deref().and_then(&test_url);
+                        kept
+                    })
+                }
+                None => Some(queued.clone()),
             }
         })
     }
@@ -1114,15 +1952,35 @@ impl SoundscapeCore {
             .collect()
     }
 
+    /// An artist's top songs for their page, at most `limit`: most played
+    /// first, then favourites and liked songs, then by title. With nothing
+    /// played yet, favourites and likes lead and the rest follow by title.
+    pub fn artist_top_tracks(&self, artist_id: String, limit: u32) -> Vec<LibraryTrack> {
+        let collection = self.collection.get();
+        let plays = station::play_counts(&collection);
+        let mut tracks = self.artist_tracks(artist_id);
+        let score = |t: &LibraryTrack| {
+            let kept = collection.is_favourite(&t.id)
+                || collection.feelings.get(&t.id) == Some(&Feeling::Like);
+            (plays.get(t.id.as_str()).copied().unwrap_or(0), kept)
+        };
+        tracks.retain(|t| collection.feelings.get(&t.id) != Some(&Feeling::Dislike));
+        tracks.sort_by(|a, b| score(b).cmp(&score(a)).then_with(|| a.title.cmp(&b.title)));
+        tracks.truncate(limit as usize);
+        tracks
+    }
+
     /// A track with every recording of it.
     pub fn library_track(&self, id: String) -> Result<TrackDetail, SoundscapeError> {
         let artwork = self.artwork_url();
         let music = self.imported_url();
+        let test = self.test_url();
         let mut detail = library::build_track(
             &self.library.get(),
             &library::Locate {
                 artwork: &artwork,
                 music: &music,
+                test: &test,
             },
             &id,
         )
@@ -1131,7 +1989,11 @@ impl SoundscapeCore {
         let url = self.download_url();
         offline::localize_track(&mut detail.track, &offline, &url);
         for recording in &mut detail.recordings {
-            offline::localize(&detail.track.id, recording, &offline, &url);
+            let owner = recording
+                .merged_from
+                .clone()
+                .unwrap_or_else(|| detail.track.id.clone());
+            offline::localize(&owner, recording, &offline, &url);
         }
         Ok(detail)
     }
@@ -1162,7 +2024,8 @@ impl SoundscapeCore {
         recording_id: String,
         mark: TakeMark,
     ) -> Result<TrackDetail, SoundscapeError> {
-        let slug = library::slug_of(&track_id)
+        let owner = self.recording_owner(&track_id, &recording_id);
+        let slug = library::slug_of(&owner)
             .ok_or_else(|| SoundscapeError::NotInLibrary {
                 id: track_id.clone(),
             })?
@@ -1268,7 +2131,8 @@ impl SoundscapeCore {
         track_id: String,
         recording_id: String,
     ) -> Result<TrackDetail, SoundscapeError> {
-        let slug = library::slug_of(&track_id)
+        let owner = self.recording_owner(&track_id, &recording_id);
+        let slug = library::slug_of(&owner)
             .ok_or_else(|| SoundscapeError::NotInLibrary {
                 id: track_id.clone(),
             })?
@@ -1283,6 +2147,35 @@ impl SoundscapeCore {
             },
         )
         .await?;
+        // On a merged song, the chosen recording's song is the one to play.
+        let kept = track_id.clone();
+        self.rt
+            .command("song-prefer", move |state| {
+                let lib = state.library.value();
+                let now = lib.prefer.get(&kept);
+                // Its own recording is remembered too, so your merged
+                // file doesn't take over again.
+                let has_merged = lib
+                    .merged
+                    .keys()
+                    .any(|from| library::merged_root(lib, from).as_ref() == Some(&kept));
+                let want = if owner == kept {
+                    has_merged.then_some(&owner)
+                } else {
+                    (library::merged_root(lib, &owner).as_ref() == Some(&kept)).then_some(&owner)
+                };
+                if now == want {
+                    return Ok(());
+                }
+                state.change_library(|lib| {
+                    match want {
+                        Some(owner) => lib.prefer.insert(kept.clone(), owner.clone()),
+                        None => lib.prefer.remove(&kept),
+                    };
+                    Ok(())
+                })
+            })
+            .await?;
         self.library_track(track_id)
     }
 
@@ -1313,6 +2206,7 @@ impl SoundscapeCore {
             }),
             lyrics: take.lyrics.clone(),
             rights: None,
+            merged_from: None,
         };
         offline::localize(
             &id,
@@ -1338,6 +2232,14 @@ impl SoundscapeCore {
 }
 
 impl SoundscapeCore {
+    /// The saved Jamendo client ID, or the error that asks for one.
+    fn needs_jamendo_client_id(&self) -> Result<String, SoundscapeError> {
+        self.jamendo_client_id()
+            .ok_or_else(|| SoundscapeError::BadAddress {
+                reason: "add your Jamendo client ID first".into(),
+            })
+    }
+
     /// A core whose Listen requests go through `http`, for tests.
     pub fn open_with_http(
         data_directory: &str,
@@ -1352,6 +2254,12 @@ impl SoundscapeCore {
         stored_url(self.artwork.clone())
     }
 
+    /// Follows a saved test catalogue URL to where its file is now.
+    fn test_url(&self) -> impl Fn(&str) -> Option<String> {
+        let dir = self.test_files.clone();
+        move |url: &str| test_catalogue::relocate(url, &dir)
+    }
+
     fn imported_url(&self) -> impl Fn(&str) -> Option<String> {
         stored_url(self.imported.clone())
     }
@@ -1362,14 +2270,30 @@ impl SoundscapeCore {
 
     /// The library as kept, before downloads are swapped in: what the
     /// offline rules compare against.
+    /// The song a recording of `track_id` belongs to: the song merged into
+    /// it that brought it, else `track_id` itself.
+    fn recording_owner(&self, track_id: &str, recording_id: &str) -> String {
+        self.library_track(track_id.to_string())
+            .ok()
+            .and_then(|d| {
+                d.recordings
+                    .into_iter()
+                    .find(|r| r.id == recording_id)
+                    .and_then(|r| r.merged_from)
+            })
+            .unwrap_or_else(|| track_id.to_string())
+    }
+
     fn kept_library(&self) -> Library {
         let artwork = self.artwork_url();
         let music = self.imported_url();
+        let test = self.test_url();
         library::build_library(
             &self.library.get(),
             &library::Locate {
                 artwork: &artwork,
                 music: &music,
+                test: &test,
             },
         )
     }
@@ -1413,7 +2337,19 @@ impl SoundscapeCore {
     ) -> Result<Arc<Self>, SoundscapeError> {
         // Studio (loop projects) was removed on 2026-11-18. Its files
         // (soundscape.json, recordings/) are left where they are.
-        let _ = (caches_directory, fresh);
+        let _ = fresh;
+        // Jamendo's answers and compared covers: files the app can lose.
+        let jamendo_caches =
+            (!caches_directory.is_empty()).then(|| Path::new(caches_directory).join("jamendo"));
+        let answers = Arc::new(jamendo_cache::JamendoAnswers::new(
+            http,
+            jamendo_caches.clone(),
+            Arc::new(|| u64::try_from(now_ms()).unwrap_or(0)),
+        ));
+        let covers = Arc::new(match &jamendo_caches {
+            Some(dir) => jamendo_explore::Covers::at(dir.join(COVERS_FILE)),
+            None => jamendo_explore::Covers::default(),
+        });
         let directory = DataDirectory::open(data_directory)?;
         // Only an address: an unreadable file is set aside rather than
         // keeping the projects from opening.
@@ -1459,6 +2395,16 @@ impl SoundscapeCore {
         if let Some(kept) = kept {
             forge_runtime::logging::warn!("unreadable collection set aside as {}", kept.display());
         }
+        let mut collection_doc = collection_doc;
+        let mut repaired = collection_doc.value().clone();
+        let moved = merge::repair_collection(library_doc.value(), &mut repaired);
+        // Counts plays from before counts were kept.
+        let counted = repaired.fill_tally();
+        if moved || counted {
+            if let Err(err) = collection_doc.replace(repaired) {
+                forge_runtime::logging::warn!("collection not repaired: {err}");
+            }
+        }
         let collection_published = Arc::new(Published::new(collection_doc.value().clone()));
         let imported =
             FileStore::new(directory.path().join("imported")).with_max_bytes(MAX_IMPORT_BYTES);
@@ -1484,6 +2430,13 @@ impl SoundscapeCore {
         let named = offline_doc.value().file_names();
         downloads.sweep(|name| named.contains(name));
         let downloads_root = downloads.root().to_path_buf();
+        let mut offline_doc = offline_doc;
+        let mut repaired = offline_doc.value().clone();
+        if merge::repair_offline(library_doc.value(), &mut repaired) {
+            if let Err(err) = offline_doc.replace(repaired) {
+                forge_runtime::logging::warn!("merged songs' downloads not moved: {err}");
+            }
+        }
         let offline_published = Arc::new(Published::new(offline_doc.value().clone()));
         // Losing what was playing is a small loss: an unreadable file is
         // set aside and playback starts empty.
@@ -1500,6 +2453,7 @@ impl SoundscapeCore {
             );
         }
         let playback_published = Arc::new(Published::new(playback_doc.value().clone()));
+        let test_files = directory.path().join(test_catalogue::FOLDER);
         let state = State {
             listen,
             listen_published: Arc::clone(&listen_published),
@@ -1523,10 +2477,13 @@ impl SoundscapeCore {
             imported: imported_root,
             offline: offline_published,
             downloads: downloads_root,
+            test_files,
             playback: playback_published,
             progress: Arc::default(),
             syncing: Arc::default(),
-            http,
+            http: Arc::clone(&answers) as Arc<dyn HttpClient>,
+            answers,
+            covers,
         }))
     }
 }
@@ -1575,9 +2532,57 @@ impl Drop for SyncGuard {
 /// the core is made); ureq before that and in Linux tests.
 fn default_http() -> Arc<dyn HttpClient> {
     Arc::new(native::http::HttpService::prefer_installed(
-        Arc::new(UreqClient::with_user_agent("Soundscape/0.1 (ixOS)")),
-        |client| client.max_body_bytes(MAX_ANSWER_BYTES),
+        Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+        |client| {
+            client
+                .max_body_bytes(MAX_ANSWER_BYTES)
+                .user_agent(USER_AGENT)
+        },
     ))
 }
 
 forge_app::export_runtime!(SoundscapeCore, rt);
+
+/// A queued catalogue song as the catalogue track it came from, to add it
+/// to the library; `None` for anything else.
+fn catalogue_track(track: QueueTrack) -> Option<CatalogueTrack> {
+    let library::AudioSource::Catalogue { provider } = track.recording.source else {
+        return None;
+    };
+    let rights = track.recording.rights?;
+    if catalogue::provider_of(&track.track_id).is_none() || !rights.may_stream {
+        return None;
+    }
+    Some(CatalogueTrack {
+        id: track.track_id,
+        provider,
+        title: track.title,
+        artist: (track.artist != library::UNKNOWN_ARTIST).then_some(track.artist),
+        album: track.album,
+        number: None,
+        genre: None,
+        duration_seconds: track.recording.duration_seconds,
+        artwork_url: track.artwork_url,
+        audio_url: track.recording.audio_url,
+        rights,
+        added_ms: 0,
+    })
+}
+
+/// The Jamendo song in the library played most (a favourite counts as
+/// three plays), with its artist: what "Because You Like" starts from.
+fn because_seed(library: &Library, collection: &CollectionFile) -> Option<(String, String)> {
+    let plays = station::play_counts(collection);
+    library
+        .tracks
+        .iter()
+        .filter(|t| t.id.starts_with(jamendo::PREFIX) && !t.artist.trim().is_empty())
+        .map(|t| {
+            let score = plays.get(t.id.as_str()).copied().unwrap_or(0)
+                + if collection.is_favourite(&t.id) { 3 } else { 0 };
+            (score, t.id.clone(), t.artist.clone())
+        })
+        .filter(|(score, _, _)| *score > 0)
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)))
+        .map(|(_, id, artist)| (id, artist))
+}

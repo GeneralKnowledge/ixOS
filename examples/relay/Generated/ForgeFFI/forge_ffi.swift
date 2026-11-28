@@ -2711,6 +2711,16 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func fetchAttachment(attachmentId: String) async throws  -> String
     
     /**
+     * Joins a room host's rooms with a word code from `chat-server
+     * invite` (N4). `host` is the host's address: its server URL
+     * (`http://…`, asked where its rooms are) or its key (64 hex
+     * characters); empty uses the current account's server. The account
+     * is this device's key there; a different account on this device is
+     * signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+     */
+    func joinRoom(host: String, code: String, displayName: String) async throws  -> ChatAccount
+    
+    /**
      * What the runtime found at open (unfinished background work).
      */
     func launchReport()  -> LaunchReport
@@ -3209,6 +3219,30 @@ open func fetchAttachment(attachmentId: String)async throws  -> String  {
             completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Joins a room host's rooms with a word code from `chat-server
+     * invite` (N4). `host` is the host's address: its server URL
+     * (`http://…`, asked where its rooms are) or its key (64 hex
+     * characters); empty uses the current account's server. The account
+     * is this device's key there; a different account on this device is
+     * signed out first. Needs Relay (`use_relay`). Emits `AccountChanged`.
+     */
+open func joinRoom(host: String, code: String, displayName: String)async throws  -> ChatAccount  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_chatcore_join_room(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(host),FfiConverterString.lower(code),FfiConverterString.lower(displayName)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatAccount_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
 }
@@ -5043,7 +5077,9 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
     func cancelTransfer(id: UInt64) 
     
@@ -5072,9 +5108,10 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func connectionMode()  -> ConnectionMode
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
     func deliverWaiting() 
     
@@ -5358,6 +5395,45 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      */
     func trustOffer()  -> TrustOffer?
     
+    /**
+     * Adds the trusted devices `members` (admin only).
+     */
+    func addGroupMembers(id: String, members: [String]) async throws  -> RelayGroup
+    
+    /**
+     * Makes a group named `name` with this device as admin and the
+     * trusted devices `members`, and tells each of them.
+     */
+    func createGroup(name: String, members: [String]) async throws  -> RelayGroup
+    
+    func group(id: String) async throws  -> RelayGroup
+    
+    /**
+     * How many members have our message `message_id`.
+     */
+    func groupDelivery(id: String, messageId: String) throws  -> GroupDelivery
+    
+    /**
+     * The groups this device is in or was in, in the order made.
+     */
+    func groups() async throws  -> [RelayGroup]
+    
+    /**
+     * Leaves the group: every other member is told, and this device
+     * sends and takes nothing more in it. Its conversation stays.
+     */
+    func leaveGroup(id: String) async throws 
+    
+    /**
+     * Removes `member` (admin only): it is told, and sent nothing after.
+     */
+    func removeGroupMember(id: String, member: String) async throws  -> RelayGroup
+    
+    /**
+     * Renames the group (admin only).
+     */
+    func renameGroup(id: String, name: String) async throws  -> RelayGroup
+    
 }
 /**
  * The app's core. The Swift app opens one per process and shares it.
@@ -5509,7 +5585,9 @@ open func cancelCodeSend()  {try! rustCall() {
     
     /**
      * Stops a send to a trusted device that is still going, or takes it
-     * off the outbox if it is waiting.
+     * off the outbox if it is waiting. Does nothing to one already in the
+     * recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+     * anyway, so it can't be cancelled.
      */
 open func cancelTransfer(id: UInt64)  {try! rustCall() {
         uniffiCallStatus in
@@ -5573,9 +5651,10 @@ open func connectionMode() -> ConnectionMode  {
 }
     
     /**
-     * Tries every trusted device something waits for, now: Relay came
-     * back to the foreground. (Seeing a device, or it connecting here,
-     * tries it too; so does a timer while Relay is open.)
+     * Tries every trusted device something waits for, now, and collects
+     * the mailbox: Relay came back to the foreground. (Seeing a device, or
+     * it connecting here, tries it too; so does each mailbox round, every
+     * 30 s while Relay is open, for items the mailbox has let expire.)
      */
 open func deliverWaiting()  {try! rustCall() {
         uniffiCallStatus in
@@ -6335,6 +6414,152 @@ open func trustOffer() -> TrustOffer?  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Adds the trusted devices `members` (admin only).
+     */
+open func addGroupMembers(id: String, members: [String])async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_add_group_members(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterSequenceString.lower(members)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Makes a group named `name` with this device as admin and the
+     * trusted devices `members`, and tells each of them.
+     */
+open func createGroup(name: String, members: [String])async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_create_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(name),FfiConverterSequenceString.lower(members)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+open func group(id: String)async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * How many members have our message `message_id`.
+     */
+open func groupDelivery(id: String, messageId: String)throws  -> GroupDelivery  {
+    return try  FfiConverterTypeGroupDelivery_lift(try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_group_delivery(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(messageId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The groups this device is in or was in, in the order made.
+     */
+open func groups()async throws  -> [RelayGroup]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_groups(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeRelayGroup.lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Leaves the group: every other member is told, and this device
+     * sends and takes nothing more in it. Its conversation stays.
+     */
+open func leaveGroup(id: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_leave_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Removes `member` (admin only): it is told, and sent nothing after.
+     */
+open func removeGroupMember(id: String, member: String)async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_remove_group_member(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterString.lower(member)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Renames the group (admin only).
+     */
+open func renameGroup(id: String, name: String)async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_rename_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterString.lower(name)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
 }
     
 
@@ -7678,16 +7903,26 @@ public struct ChatAccount: Equatable, Hashable {
      * The chat server this account lives on.
      */
     public var serverUrl: String
+    /**
+     * Its rooms come over Relay's encrypted connection, and the account
+     * is this device's key there (N4); false on the old HTTP API.
+     */
+    public var onRelay: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(userId: String, displayName: String, 
         /**
          * The chat server this account lives on.
-         */serverUrl: String) {
+         */serverUrl: String, 
+        /**
+         * Its rooms come over Relay's encrypted connection, and the account
+         * is this device's key there (N4); false on the old HTTP API.
+         */onRelay: Bool = false) {
         self.userId = userId
         self.displayName = displayName
         self.serverUrl = serverUrl
+        self.onRelay = onRelay
     }
 
     
@@ -7708,7 +7943,8 @@ public struct FfiConverterTypeChatAccount: FfiConverterRustBuffer {
             try ChatAccount(
                 userId: FfiConverterString.read(from: &buf), 
                 displayName: FfiConverterString.read(from: &buf), 
-                serverUrl: FfiConverterString.read(from: &buf)
+                serverUrl: FfiConverterString.read(from: &buf), 
+                onRelay: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -7716,6 +7952,7 @@ public struct FfiConverterTypeChatAccount: FfiConverterRustBuffer {
         FfiConverterString.write(value.userId, into: &buf)
         FfiConverterString.write(value.displayName, into: &buf)
         FfiConverterString.write(value.serverUrl, into: &buf)
+        FfiConverterBool.write(value.onRelay, into: &buf)
     }
 }
 
@@ -8007,6 +8244,11 @@ public struct ChatMessage: Equatable, Hashable {
      * `ChatCore::fetch_attachment`.
      */
     public var attachments: [ChatAttachment]
+    /**
+     * Relay only: still sending, and waiting in its device's mailbox for
+     * that device to collect it (it wasn't reachable).
+     */
+    public var inMailbox: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -8044,7 +8286,11 @@ public struct ChatMessage: Equatable, Hashable {
         /**
          * Photos and documents it carries, in order (M3). Fetch the bytes with
          * `ChatCore::fetch_attachment`.
-         */attachments: [ChatAttachment]) {
+         */attachments: [ChatAttachment], 
+        /**
+         * Relay only: still sending, and waiting in its device's mailbox for
+         * that device to collect it (it wasn't reachable).
+         */inMailbox: Bool) {
         self.id = id
         self.conversationId = conversationId
         self.author = author
@@ -8058,6 +8304,7 @@ public struct ChatMessage: Equatable, Hashable {
         self.deleted = deleted
         self.reactions = reactions
         self.attachments = attachments
+        self.inMailbox = inMailbox
     }
 
     
@@ -8088,7 +8335,8 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
                 edited: FfiConverterBool.read(from: &buf), 
                 deleted: FfiConverterBool.read(from: &buf), 
                 reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf), 
-                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf)
+                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf), 
+                inMailbox: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -8106,6 +8354,7 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
         FfiConverterBool.write(value.deleted, into: &buf)
         FfiConverterSequenceTypeChatReaction.write(value.reactions, into: &buf)
         FfiConverterSequenceTypeChatAttachment.write(value.attachments, into: &buf)
+        FfiConverterBool.write(value.inMailbox, into: &buf)
     }
 }
 
@@ -8939,6 +9188,75 @@ public func FfiConverterTypeDevicesSynced_lift(_ buf: RustBuffer) throws -> Devi
 #endif
 public func FfiConverterTypeDevicesSynced_lower(_ value: DevicesSynced) -> RustBuffer {
     return FfiConverterTypeDevicesSynced.lower(value)
+}
+
+
+/**
+ * How far one of our group messages has got.
+ */
+public struct GroupDelivery: Equatable, Hashable {
+    /**
+     * Members that have it.
+     */
+    public var delivered: UInt32
+    /**
+     * Members it was for (everyone but this device).
+     */
+    public var of: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Members that have it.
+         */delivered: UInt32, 
+        /**
+         * Members it was for (everyone but this device).
+         */of: UInt32) {
+        self.delivered = delivered
+        self.of = of
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GroupDelivery: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGroupDelivery: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GroupDelivery {
+        return
+            try GroupDelivery(
+                delivered: FfiConverterUInt32.read(from: &buf), 
+                of: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GroupDelivery, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.delivered, into: &buf)
+        FfiConverterUInt32.write(value.of, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGroupDelivery_lift(_ buf: RustBuffer) throws -> GroupDelivery {
+    return try FfiConverterTypeGroupDelivery.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGroupDelivery_lower(_ value: GroupDelivery) -> RustBuffer {
+    return FfiConverterTypeGroupDelivery.lower(value)
 }
 
 
@@ -9786,6 +10104,177 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 
 
 /**
+ * A group, for the app and the `relay` command.
+ */
+public struct RelayGroup: Equatable, Hashable {
+    public var id: String
+    /**
+     * Its conversation in Chats.
+     */
+    public var conversationId: String
+    public var name: String
+    public var admin: String
+    /**
+     * Whether this device is the admin: it may add, remove and rename.
+     */
+    public var isAdmin: Bool
+    public var members: [RelayGroupMember]
+    /**
+     * This device left or was removed: the conversation is read-only.
+     */
+    public var left: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * Its conversation in Chats.
+         */conversationId: String, name: String, admin: String, 
+        /**
+         * Whether this device is the admin: it may add, remove and rename.
+         */isAdmin: Bool, members: [RelayGroupMember], 
+        /**
+         * This device left or was removed: the conversation is read-only.
+         */left: Bool) {
+        self.id = id
+        self.conversationId = conversationId
+        self.name = name
+        self.admin = admin
+        self.isAdmin = isAdmin
+        self.members = members
+        self.left = left
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RelayGroup: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRelayGroup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayGroup {
+        return
+            try RelayGroup(
+                id: FfiConverterString.read(from: &buf), 
+                conversationId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                admin: FfiConverterString.read(from: &buf), 
+                isAdmin: FfiConverterBool.read(from: &buf), 
+                members: FfiConverterSequenceTypeRelayGroupMember.read(from: &buf), 
+                left: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RelayGroup, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.conversationId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.admin, into: &buf)
+        FfiConverterBool.write(value.isAdmin, into: &buf)
+        FfiConverterSequenceTypeRelayGroupMember.write(value.members, into: &buf)
+        FfiConverterBool.write(value.left, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroup_lift(_ buf: RustBuffer) throws -> RelayGroup {
+    return try FfiConverterTypeRelayGroup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroup_lower(_ value: RelayGroup) -> RustBuffer {
+    return FfiConverterTypeRelayGroup.lower(value)
+}
+
+
+public struct RelayGroupMember: Equatable, Hashable {
+    public var endpointId: String
+    public var name: String
+    /**
+     * This device.
+     */
+    public var isMe: Bool
+    /**
+     * A trusted device here: messages go to it. A member this device
+     * hasn't paired with is skipped for now.
+     */
+    public var trusted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpointId: String, name: String, 
+        /**
+         * This device.
+         */isMe: Bool, 
+        /**
+         * A trusted device here: messages go to it. A member this device
+         * hasn't paired with is skipped for now.
+         */trusted: Bool) {
+        self.endpointId = endpointId
+        self.name = name
+        self.isMe = isMe
+        self.trusted = trusted
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RelayGroupMember: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRelayGroupMember: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayGroupMember {
+        return
+            try RelayGroupMember(
+                endpointId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                isMe: FfiConverterBool.read(from: &buf), 
+                trusted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RelayGroupMember, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.isMe, into: &buf)
+        FfiConverterBool.write(value.trusted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroupMember_lift(_ buf: RustBuffer) throws -> RelayGroupMember {
+    return try FfiConverterTypeRelayGroupMember.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroupMember_lower(_ value: RelayGroupMember) -> RustBuffer {
+    return FfiConverterTypeRelayGroupMember.lower(value)
+}
+
+
+/**
  * Relay's own servers (brief M2 PR 7), both optional: Relay works with
  * neither, on the local and private routes.
  */
@@ -9800,6 +10289,12 @@ public struct RelayServers: Equatable, Hashable {
      * key alone.
      */
     public var lookupUrl: String?
+    /**
+     * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+     * leave items for this one while it can't be reached. Told to them
+     * in the Hello; Hybrid only, like the others.
+     */
+    public var mailbox: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -9811,9 +10306,15 @@ public struct RelayServers: Equatable, Hashable {
          * A pkarr lookup server: each device publishes a record of where it can
          * be reached there, signed by its key, so a trusted device finds it by
          * key alone.
-         */lookupUrl: String?) {
+         */lookupUrl: String?, 
+        /**
+         * A `relay-mailbox` server's endpoint id (N3): where trusted devices
+         * leave items for this one while it can't be reached. Told to them
+         * in the Hello; Hybrid only, like the others.
+         */mailbox: String? = nil) {
         self.relayUrl = relayUrl
         self.lookupUrl = lookupUrl
+        self.mailbox = mailbox
     }
 
     
@@ -9833,13 +10334,15 @@ public struct FfiConverterTypeRelayServers: FfiConverterRustBuffer {
         return
             try RelayServers(
                 relayUrl: FfiConverterOptionString.read(from: &buf), 
-                lookupUrl: FfiConverterOptionString.read(from: &buf)
+                lookupUrl: FfiConverterOptionString.read(from: &buf), 
+                mailbox: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: RelayServers, into buf: inout [UInt8]) {
         FfiConverterOptionString.write(value.relayUrl, into: &buf)
         FfiConverterOptionString.write(value.lookupUrl, into: &buf)
+        FfiConverterOptionString.write(value.mailbox, into: &buf)
     }
 }
 
@@ -9856,6 +10359,74 @@ public func FfiConverterTypeRelayServers_lift(_ buf: RustBuffer) throws -> Relay
 #endif
 public func FfiConverterTypeRelayServers_lower(_ value: RelayServers) -> RustBuffer {
     return FfiConverterTypeRelayServers.lower(value)
+}
+
+
+/**
+ * Where a room host is: its key, and how to reach it. With no relay
+ * named, this device's own relay is used (as for the mailbox).
+ */
+public struct RoomHost: Equatable, Hashable {
+    public var endpointId: String
+    public var relayUrl: String?
+    /**
+     * Direct addresses (`ip:port`) to try as well, e.g. on the same Wi-Fi.
+     */
+    public var addresses: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpointId: String, relayUrl: String?, 
+        /**
+         * Direct addresses (`ip:port`) to try as well, e.g. on the same Wi-Fi.
+         */addresses: [String]) {
+        self.endpointId = endpointId
+        self.relayUrl = relayUrl
+        self.addresses = addresses
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RoomHost: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRoomHost: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RoomHost {
+        return
+            try RoomHost(
+                endpointId: FfiConverterString.read(from: &buf), 
+                relayUrl: FfiConverterOptionString.read(from: &buf), 
+                addresses: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RoomHost, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterOptionString.write(value.relayUrl, into: &buf)
+        FfiConverterSequenceString.write(value.addresses, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoomHost_lift(_ buf: RustBuffer) throws -> RoomHost {
+    return try FfiConverterTypeRoomHost.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRoomHost_lower(_ value: RoomHost) -> RustBuffer {
+    return FfiConverterTypeRoomHost.lower(value)
 }
 
 
@@ -11217,6 +11788,11 @@ public func FfiConverterTypeCapability_lower(_ value: Capability) -> RustBuffer 
 public enum ChatDelivery: Equatable, Hashable {
     
     case sending
+    /**
+     * Relay only: left in its device's mailbox, which the device collects
+     * when it next opens Relay with a network.
+     */
+    case inMailbox
     case sent
     /**
      * Someone else in the room has read it (their read cursor passed it).
@@ -11246,11 +11822,13 @@ public struct FfiConverterTypeChatDelivery: FfiConverterRustBuffer {
         
         case 1: return .sending
         
-        case 2: return .sent
+        case 2: return .inMailbox
         
-        case 3: return .read
+        case 3: return .sent
         
-        case 4: return .failed
+        case 4: return .read
+        
+        case 5: return .failed
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -11264,16 +11842,20 @@ public struct FfiConverterTypeChatDelivery: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
         
         
-        case .sent:
+        case .inMailbox:
             writeInt(&buf, Int32(2))
         
         
-        case .read:
+        case .sent:
             writeInt(&buf, Int32(3))
         
         
-        case .failed:
+        case .read:
             writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
         
         }
     }
@@ -11319,7 +11901,16 @@ enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case UnsupportedOnHost(detail: String
     )
+    /**
+     * Refused before anything was kept: the composer gives the text back.
+     */
     case InvalidInput(reason: String
+    )
+    /**
+     * Kept on this device and shown as not sent, but it couldn't go for a
+     * reason a retry won't fix by itself (one of its files is gone).
+     */
+    case NotSent(reason: String
     )
     /**
      * No account yet: call `sign_up` first.
@@ -11395,18 +11986,21 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
         case 8: return .InvalidInput(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .NotSignedIn
-        case 10: return .Unauthorized(
+        case 9: return .NotSent(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 11: return .Storage(
+        case 10: return .NotSignedIn
+        case 11: return .Unauthorized(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .InUse(
+        case 12: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .ShutDown
-        case 14: return .Internal(
+        case 13: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 14: return .ShutDown
+        case 15: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -11461,31 +12055,36 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .NotSignedIn:
+        case let .NotSent(reason):
             writeInt(&buf, Int32(9))
-        
-        
-        case let .Unauthorized(reason):
-            writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Storage(reason):
+        case .NotSignedIn:
+            writeInt(&buf, Int32(10))
+        
+        
+        case let .Unauthorized(reason):
             writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .InUse(reason):
+        case let .Storage(reason):
             writeInt(&buf, Int32(12))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case let .InUse(reason):
             writeInt(&buf, Int32(13))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(14))
         
         
         case let .Internal(reason):
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(15))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -13718,6 +14317,12 @@ public enum TransferStatus: Equatable, Hashable {
      */
     case waiting
     /**
+     * Left sealed in the recipient's mailbox, collected the next time it
+     * opens Relay. It can no longer be cancelled: it is out of this
+     * device's hands.
+     */
+    case inMailbox
+    /**
      * Bytes so far, out of the item's size.
      */
     case inProgress(done: UInt64
@@ -13748,12 +14353,14 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
         
         case 1: return .waiting
         
-        case 2: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
+        case 2: return .inMailbox
+        
+        case 3: return .inProgress(done: try FfiConverterUInt64.read(from: &buf)
         )
         
-        case 3: return .done
+        case 4: return .done
         
-        case 4: return .failed(reason: try FfiConverterString.read(from: &buf)
+        case 5: return .failed(reason: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -13768,17 +14375,21 @@ public struct FfiConverterTypeTransferStatus: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
         
         
-        case let .inProgress(done):
+        case .inMailbox:
             writeInt(&buf, Int32(2))
+        
+        
+        case let .inProgress(done):
+            writeInt(&buf, Int32(3))
             FfiConverterUInt64.write(done, into: &buf)
             
         
         case .done:
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(4))
         
         
         case let .failed(reason):
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -14661,6 +15272,56 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeRelayGroup: FfiConverterRustBuffer {
+    typealias SwiftType = [RelayGroup]
+
+    public static func write(_ value: [RelayGroup], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRelayGroup.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RelayGroup] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RelayGroup]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRelayGroup.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeRelayGroupMember: FfiConverterRustBuffer {
+    typealias SwiftType = [RelayGroupMember]
+
+    public static func write(_ value: [RelayGroupMember], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRelayGroupMember.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RelayGroupMember] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RelayGroupMember]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRelayGroupMember.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSiteHeader: FfiConverterRustBuffer {
     typealias SwiftType = [SiteHeader]
 
@@ -14919,6 +15580,27 @@ public func appLockMethod() -> String?  {
 })
 }
 /**
+ * The most files one message may carry.
+ */
+public func chatMaxAttachmentsPerMessage() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_max_attachments_per_message(uniffiCallStatus
+    )
+})
+}
+/**
+ * The longest message text, in characters (Unicode scalars), so the
+ * composer can say so before Rust refuses it.
+ */
+public func chatMaxMessageChars() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_chat_max_message_chars(uniffiCallStatus
+    )
+})
+}
+/**
  * The deep link on a message's notification
  * (`forgechat://conversation/<room>?message=<id>`).
  */
@@ -14945,7 +15627,8 @@ public func deviceConversationId(endpointId: String) -> String  {
 }
 /**
  * The delivery state of `message` in `conversation`: `Read` once another
- * account's read cursor has passed one of our sent messages. Only
+ * account's read cursor has passed one of our sent messages, and
+ * `InMailbox` while one waits in a Relay device's mailbox. Only
  * meaningful for our own messages.
  */
 public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) -> ChatDelivery  {
@@ -14976,6 +15659,17 @@ public func storageEngine() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_relay_core_fn_func_storage_engine(uniffiCallStatus
+    )
+})
+}
+/**
+ * The conversation id of group `group_id`, for the app.
+ */
+public func groupConversationId(groupId: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_group_conversation_id(
+        FfiConverterString.lower(groupId),uniffiCallStatus
     )
 })
 }
@@ -15159,19 +15853,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_app_lock_method() != 35032) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_func_chat_max_attachments_per_message() != 15158) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_chat_max_message_chars() != 35942) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_func_chat_message_link() != 46272) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_device_conversation_id() != 5838) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_func_chat_delivery() != 64205) {
+    if (uniffi_relay_core_checksum_func_chat_delivery() != 7415) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_chat_error_kind() != 39415) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_storage_engine() != 50209) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_group_conversation_id() != 38956) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_relay_error_kind() != 51284) {
@@ -15231,7 +15934,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_cancel_code_send() != 14930) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 49543) {
+    if (uniffi_relay_core_checksum_method_relaycore_cancel_transfer() != 50284) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_code_receive_size() != 28847) {
@@ -15246,7 +15949,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_connection_mode() != 5394) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 17342) {
+    if (uniffi_relay_core_checksum_method_relaycore_deliver_waiting() != 53162) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_device_service() != 50466) {
@@ -15384,6 +16087,30 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_trust_offer() != 46070) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_add_group_members() != 41097) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_create_group() != 45680) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_group() != 62003) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_group_delivery() != 17973) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_groups() != 9431) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_leave_group() != 61655) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_remove_group_member() != 8900) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_rename_group() != 52887) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_chatcore_account() != 28427) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -15430,6 +16157,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_fetch_attachment() != 4397) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_chatcore_join_room() != 55862) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_launch_report() != 49427) {

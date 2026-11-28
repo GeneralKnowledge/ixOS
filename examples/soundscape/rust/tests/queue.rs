@@ -30,6 +30,7 @@ fn track(slug: &str) -> QueueTrack {
             generation: None,
             lyrics: None,
             rights: None,
+            merged_from: None,
         },
     }
 }

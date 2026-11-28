@@ -333,7 +333,7 @@ fn follow(
                 "Accept",
                 "text/html, application/xhtml+xml;q=0.9, */*;q=0.1",
             )
-            .header("User-Agent", "Commonplace/0.1 (ixOS)");
+            .header("User-Agent", crate::USER_AGENT);
         let response = http.open_stream_cancellable(&request, cancel)?;
         if !matches!(response.status, 301 | 302 | 303 | 307 | 308) {
             let page = read_body(response, policy.max_bytes)?;

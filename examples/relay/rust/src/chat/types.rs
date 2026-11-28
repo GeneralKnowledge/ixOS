@@ -11,6 +11,10 @@ pub struct ChatAccount {
     pub display_name: String,
     /// The chat server this account lives on.
     pub server_url: String,
+    /// Its rooms come over Relay's encrypted connection, and the account
+    /// is this device's key there (N4); false on the old HTTP API.
+    #[uniffi(default = false)]
+    pub on_relay: bool,
 }
 
 /// One conversation as the list shows it.
@@ -75,6 +79,9 @@ pub struct ChatMessage {
     /// Photos and documents it carries, in order (M3). Fetch the bytes with
     /// `ChatCore::fetch_attachment`.
     pub attachments: Vec<ChatAttachment>,
+    /// Relay only: still sending, and waiting in its device's mailbox for
+    /// that device to collect it (it wasn't reachable).
+    pub in_mailbox: bool,
 }
 
 /// A file a message carries.
@@ -138,6 +145,9 @@ pub struct ChatReaction {
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ChatDelivery {
     Sending,
+    /// Relay only: left in its device's mailbox, which the device collects
+    /// when it next opens Relay with a network.
+    InMailbox,
     Sent,
     /// Someone else in the room has read it (their read cursor passed it).
     Read,
@@ -152,11 +162,13 @@ pub fn storage_engine() -> String {
 }
 
 /// The delivery state of `message` in `conversation`: `Read` once another
-/// account's read cursor has passed one of our sent messages. Only
+/// account's read cursor has passed one of our sent messages, and
+/// `InMailbox` while one waits in a Relay device's mailbox. Only
 /// meaningful for our own messages.
 #[uniffi::export]
 pub fn chat_delivery(message: ChatMessage, conversation: Option<ChatConversation>) -> ChatDelivery {
     match message.status {
+        ChatMessageStatus::Sending if message.in_mailbox => ChatDelivery::InMailbox,
         ChatMessageStatus::Sending => ChatDelivery::Sending,
         ChatMessageStatus::Failed => ChatDelivery::Failed,
         ChatMessageStatus::Sent => {
@@ -256,8 +268,13 @@ pub enum ChatError {
     NotFound { conversation_id: String },
     #[error("not supported on this host: {detail}")]
     UnsupportedOnHost { detail: String },
+    /// Refused before anything was kept: the composer gives the text back.
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
+    /// Kept on this device and shown as not sent, but it couldn't go for a
+    /// reason a retry won't fix by itself (one of its files is gone).
+    #[error("not sent: {reason}")]
+    NotSent { reason: String },
     /// No account yet: call `sign_up` first.
     #[error("not signed in")]
     NotSignedIn,
@@ -288,6 +305,7 @@ impl ChatError {
             Self::Cancelled => K::Cancelled,
             Self::NotFound { .. } => K::NotFound,
             Self::InvalidInput { .. } => K::Invalid,
+            Self::NotSent { .. } => K::Refused,
             Self::NotSignedIn | Self::Unauthorized { .. } => K::NeedsUser,
             Self::Storage { .. } | Self::Internal { .. } => K::Internal,
             Self::ShutDown => K::ShutDown,
@@ -374,6 +392,7 @@ pub(crate) fn message(m: chat_core::Message, user_id: &str) -> ChatMessage {
         author_id: m.author_id,
         body: m.body,
         sent_at: m.sent_at,
+        in_mailbox: m.in_mailbox && m.status == chat_core::MessageStatus::Queued,
         status: m.status.into(),
     }
 }
@@ -434,6 +453,7 @@ impl From<chat_core::ChatError> for ChatError {
             Core::NotFound { conversation_id } => Self::NotFound { conversation_id },
             Core::UnsupportedOnHost { detail } => Self::UnsupportedOnHost { detail },
             Core::InvalidInput { reason } => Self::InvalidInput { reason },
+            Core::NotSent { reason } => Self::NotSent { reason },
             Core::ShutDown => Self::ShutDown,
             Core::Unauthorized { reason } => Self::Unauthorized { reason },
         }

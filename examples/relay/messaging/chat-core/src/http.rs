@@ -217,6 +217,7 @@ impl From<WireMessage> for Message {
             deleted: m.deleted,
             reactions: m.reactions,
             attachments: m.attachments,
+            in_mailbox: false,
         }
     }
 }

@@ -38,6 +38,12 @@ public final class NotesModel {
     /// Again when that might help). The list presents it with
     /// `.forgeAlert`, which clears it when dismissed.
     public var alert: ForgeAlert<Action>?
+    /// Text a note's screen tried to save and couldn't, by note id. The
+    /// screen that held it has usually closed by the time the failure shows,
+    /// so the model keeps it: opening the note again offers it back, and Try
+    /// Again in the alert re-sends it. Cleared once that note saves, or by
+    /// `discardUnsaved(_:)`.
+    public private(set) var unsavedText: [Int64: String] = [:]
     /// Increases after each successful save; views use it as a haptic trigger.
     public private(set) var saveCount = 0
 
@@ -93,9 +99,20 @@ public final class NotesModel {
 
     @discardableResult
     private func update(id: Int64, text: String) async -> Bool {
-        await perform(retry: .update(id, text)) { core in
+        let saved = await perform(retry: .update(id, text)) { core in
             _ = try await core.updateNote(id: id, text: text)
         }
+        if saved {
+            unsavedText[id] = nil
+        } else if note(id: id) != nil {
+            unsavedText[id] = text
+        }
+        return saved
+    }
+
+    /// Forgets text that failed to save (the person chose the saved version).
+    public func discardUnsaved(_ id: Int64) {
+        unsavedText[id] = nil
     }
 
     /// Asks before deleting (a swipe or a long press deletes at once
@@ -116,9 +133,10 @@ public final class NotesModel {
     }
 
     private func delete(id: Int64) async {
-        await perform(retry: .delete(id)) { core in
+        let deleted = await perform(retry: .delete(id)) { core in
             try await core.deleteNote(id: id)
         }
+        if deleted { unsavedText[id] = nil }
     }
 
     /// Runs what an alert button asked for.

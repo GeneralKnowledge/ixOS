@@ -2,29 +2,106 @@
 //!
 //! A2UI's Swift renderer validates messages against the catalog too (with
 //! `ValidationConfig.strict`). This gate is the app's own check, in Rust
-//! and tested on Linux, of the rules the catalog can't express:
+//! and tested on Linux, of the rules the catalog can't express. Since C1 of
+//! the app capability audit (docs/research/app-capability-audit.md, 4.3) it
+//! has two halves:
 //!
-//! - only the eight catalog components, on the lab's one surface and catalog;
+//! **General rules, for every surface** (this file):
+//!
+//! - only the eight catalog components, each with only the properties the
+//!   ForgeUI adapter draws (dates only, chips only);
 //! - no function calls of any kind (`@call`, `functionCall`,
-//!   `callRendererFunction`): the agent can draw, not act;
-//! - an action may only be the registered review event, with exactly its
-//!   registered context, and no `userMessage` (a summary the surface writes
-//!   is never shown as the change set);
+//!   `callRendererFunction`) and no `deleteSurface`: the agent can draw,
+//!   not act;
+//! - an action may only be one of the surface's registered events, from its
+//!   registered component, with exactly its registered context, and no
+//!   `userMessage` (a summary the surface writes is never shown as the
+//!   change set);
 //! - an update can't add, remove or change the action of a component that
 //!   already exists, so a later message can't change what a button does;
-//! - after the surface exists, an update may redraw only the components in
-//!   `UPDATABLE` (the intro text), so it can't relabel the review button;
-//! - data updates hold only known books, checked like a proposal, with each
-//!   book's own title and author.
+//! - after the surface exists, an update may redraw only the components the
+//!   surface lists as updatable;
+//! - all or nothing: a refused payload changes nothing.
+//!
+//! **A registration, per surface** ([`Registration`]): its surface id, its
+//! events, what may be redrawn, and the check of its data (known books,
+//! known feeds, the app's own titles).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
 
-use super::plan::{self, EditedBook};
-use super::surface::{
-    review_context, CATALOG_ID, COMPONENTS, REVIEW_COMPONENT, REVIEW_EVENT, SURFACE_ID, UPDATABLE,
-};
+/// The one ixOS catalog every lab surface uses (registered in Swift by
+/// `A2uiSurfaceHost`, `A2uiLabCatalog.make`).
+pub const CATALOG_ID: &str = "org.forgemobile.devicelab:a2ui-reading-plan:1";
+
+/// The catalog id every lab surface uses, for Swift's renderer.
+#[uniffi::export]
+pub fn a2ui_catalog_id() -> String {
+    CATALOG_ID.into()
+}
+
+/// The eight components of the ixOS catalog. Anything else is refused,
+/// including Image, Video and AudioPlayer (their URLs could carry data out)
+/// and Modal.
+pub const COMPONENTS: [&str; 8] = [
+    "Text",
+    "Column",
+    "Row",
+    "Card",
+    "Divider",
+    "Button",
+    "DateTimeInput",
+    "ChoicePicker",
+];
+
+/// The properties every component may carry.
+pub const COMMON_PROPERTIES: &[&str] = &["id", "component", "@accessibility"];
+
+/// The properties the ForgeUI adapter (`A2uiForgeCatalog.swift`) draws for
+/// each component. The gate refuses any other, so an agent can't ask for a
+/// look or behaviour the adapter doesn't have (a time picker, a filter
+/// field, A2UI's own styles).
+pub fn properties(component: &str) -> &'static [&'static str] {
+    match component {
+        "Text" => &["text", "variant"],
+        "Column" | "Row" => &["children"],
+        "Card" => &["child"],
+        "Button" => &["child", "variant", "action"],
+        "DateTimeInput" => &["label", "enableDate", "value"],
+        "ChoicePicker" => &["label", "variant", "displayStyle", "options", "value"],
+        _ => &[],
+    }
+}
+
+/// One event a surface registers: its name, the one component that may
+/// send it, and the exact context it carries.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventRule {
+    pub name: &'static str,
+    pub component: &'static str,
+    pub context: Value,
+}
+
+/// What a surface registers with the gate. The general rules above apply to
+/// every surface; these are the parts that differ.
+pub trait Registration {
+    /// What a checked data model gives back (the ids it holds, say).
+    type Data;
+    fn surface_id(&self) -> &'static str;
+    /// The events the surface may send; none for a read-only surface.
+    fn events(&self) -> Vec<EventRule>;
+    /// The components an update may redraw once the surface exists.
+    fn updatable(&self) -> &'static [&'static str];
+    /// Checks data for the surface: the whole model at creation
+    /// (`path` `None`), or an update at `path`.
+    fn check_data(&self, path: Option<&str>, value: &Value) -> Result<Self::Data, Refusal>;
+    /// Whether `updateDataModel` may change the data once the surface
+    /// exists; a read-only surface says no.
+    fn data_updatable(&self) -> bool {
+        true
+    }
+}
 
 /// The largest payload accepted, in bytes.
 pub const MAX_BYTES: usize = 64 * 1024;
@@ -39,7 +116,7 @@ pub struct Refusal {
     pub reason: String,
 }
 
-fn refuse(code: &'static str, reason: impl Into<String>) -> Refusal {
+pub fn refuse(code: &'static str, reason: impl Into<String>) -> Refusal {
     Refusal {
         code,
         reason: reason.into(),
@@ -56,17 +133,22 @@ pub struct GateState {
 }
 
 /// What an accepted payload changes.
-#[derive(Debug, Default)]
-pub struct Accepted {
+#[derive(Debug)]
+pub struct Accepted<D> {
     /// The messages, unchanged, for Swift.
     pub messages: Vec<Value>,
-    /// The books the surface now holds, if the payload set them.
-    pub books: Option<BTreeSet<&'static str>>,
+    /// What the surface's data now holds, if the payload set it.
+    pub data: Option<D>,
 }
 
-/// Checks `payload` (a message or an array of them) against `state`. On
-/// success `state` is updated; on refusal it is untouched.
-pub fn check(payload: &str, state: &mut GateState) -> Result<Accepted, Refusal> {
+/// Checks `payload` (a message or an array of them) for the surface `reg`
+/// registers, against `state`. On success `state` is updated; on refusal it
+/// is untouched.
+pub fn check<R: Registration>(
+    payload: &str,
+    reg: &R,
+    state: &mut GateState,
+) -> Result<Accepted<R::Data>, Refusal> {
     if payload.len() > MAX_BYTES {
         return Err(refuse("too_large", "The update is too large."));
     }
@@ -81,20 +163,21 @@ pub fn check(payload: &str, state: &mut GateState) -> Result<Accepted, Refusal> 
         return Err(refuse("malformed", "The update holds no messages."));
     }
     let mut next = state.clone();
-    let mut books = None;
+    let mut data = None;
     for message in &messages {
-        if let Some(ids) = check_message(message, &mut next)? {
-            books = Some(ids);
+        if let Some(checked) = check_message(message, reg, &mut next)? {
+            data = Some(checked);
         }
     }
     *state = next;
-    Ok(Accepted { messages, books })
+    Ok(Accepted { messages, data })
 }
 
-fn check_message(
+fn check_message<R: Registration>(
     message: &Value,
+    reg: &R,
     state: &mut GateState,
-) -> Result<Option<BTreeSet<&'static str>>, Refusal> {
+) -> Result<Option<R::Data>, Refusal> {
     let object = message
         .as_object()
         .ok_or_else(|| refuse("malformed", "A message isn't an object."))?;
@@ -117,46 +200,52 @@ fn check_message(
             if state.created {
                 return Err(refuse("lifecycle", "The surface already exists."));
             }
-            surface_id(body)?;
+            surface_id(body, reg)?;
             only_keys(body, &["surfaceId", "catalogId", "components", "dataModel"])?;
             if body.get("catalogId").and_then(Value::as_str) != Some(CATALOG_ID) {
                 return Err(refuse("catalog", "The surface must use the lab's catalog."));
             }
             state.created = true;
             if let Some(components) = body.get("components") {
-                check_components(components, state)?;
+                check_components(components, reg, state)?;
             }
             match body.get("dataModel") {
-                Some(model) => data_model(None, model).map(Some),
+                Some(model) => reg.check_data(None, model).map(Some),
                 None => Ok(None),
             }
         }
         "updateComponents" => {
             created(state)?;
-            surface_id(body)?;
+            surface_id(body, reg)?;
             only_keys(body, &["surfaceId", "components"])?;
             let components = body
                 .get("components")
                 .ok_or_else(|| refuse("malformed", "updateComponents has no components."))?;
-            check_components(components, state)?;
+            check_components(components, reg, state)?;
             let locked = components.as_array().is_some_and(|list| {
                 list.iter().any(|c| {
                     !c.get("id")
                         .and_then(Value::as_str)
-                        .is_some_and(|id| UPDATABLE.contains(&id))
+                        .is_some_and(|id| reg.updatable().contains(&id))
                 })
             });
             if locked {
                 return Err(refuse(
                     "component_locked",
-                    "An update may only change the introduction, not the plan's controls.",
+                    "An update may only change the introduction, not the surface's controls.",
                 ));
             }
             Ok(None)
         }
         "updateDataModel" => {
             created(state)?;
-            surface_id(body)?;
+            surface_id(body, reg)?;
+            if !reg.data_updatable() {
+                return Err(refuse(
+                    "data",
+                    "This surface's data can't be changed once shown.",
+                ));
+            }
             only_keys(body, &["surfaceId", "path", "value"])?;
             let path = body.get("path").map(|p| {
                 p.as_str()
@@ -166,7 +255,7 @@ fn check_message(
             let value = body
                 .get("value")
                 .ok_or_else(|| refuse("malformed", "updateDataModel has no value."))?;
-            data_model(path, value).map(Some)
+            reg.check_data(path, value).map(Some)
         }
         "callRendererFunction" => Err(refuse(
             "function_call",
@@ -185,8 +274,8 @@ fn created(state: &GateState) -> Result<(), Refusal> {
     }
 }
 
-fn surface_id(body: &Map<String, Value>) -> Result<(), Refusal> {
-    if body.get("surfaceId").and_then(Value::as_str) == Some(SURFACE_ID) {
+fn surface_id<R: Registration>(body: &Map<String, Value>, reg: &R) -> Result<(), Refusal> {
+    if body.get("surfaceId").and_then(Value::as_str) == Some(reg.surface_id()) {
         Ok(())
     } else {
         Err(refuse(
@@ -236,7 +325,11 @@ fn valid_id(id: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn check_components(components: &Value, state: &mut GateState) -> Result<(), Refusal> {
+fn check_components<R: Registration>(
+    components: &Value,
+    reg: &R,
+    state: &mut GateState,
+) -> Result<(), Refusal> {
     let list = components
         .as_array()
         .ok_or_else(|| refuse("malformed", "components isn't a list."))?;
@@ -266,8 +359,9 @@ fn check_components(components: &Value, state: &mut GateState) -> Result<(), Ref
                 format!("\"{kind}\" isn't in this lab's catalog."),
             ));
         }
+        check_properties(kind, object)?;
         let action = match object.get("action") {
-            Some(action) => Some(check_action(id, action)?),
+            Some(action) => Some(check_action(id, action, reg)?),
             None => None,
         };
         if let Some(existing) = state.actions.get(id) {
@@ -283,81 +377,80 @@ fn check_components(components: &Value, state: &mut GateState) -> Result<(), Ref
     Ok(())
 }
 
-/// The registry: one event, from one component, with one context.
-fn check_action(id: &str, action: &Value) -> Result<String, Refusal> {
+/// Only the properties the ForgeUI adapter draws, and only the forms it
+/// draws: a date picker without a time, a choice picker as chips, a
+/// primary or default button.
+fn check_properties(kind: &str, object: &Map<String, Value>) -> Result<(), Refusal> {
+    let allowed = properties(kind);
+    let unsupported = || {
+        refuse(
+            "unsupported_property",
+            format!("A {kind} asks for something this lab's catalog doesn't draw."),
+        )
+    };
+    if object
+        .keys()
+        .any(|key| !COMMON_PROPERTIES.contains(&key.as_str()) && !allowed.contains(&key.as_str()))
+    {
+        return Err(unsupported());
+    }
+    let is = |key: &str, want: &Value| object.get(key).is_none_or(|v| v == want);
+    let ok = match kind {
+        "DateTimeInput" => object.get("enableDate") == Some(&Value::Bool(true)),
+        "ChoicePicker" => is("displayStyle", &Value::from("chips")),
+        // The adapter draws primary and default buttons; a borderless one
+        // would come out tinted, which isn't what was asked for.
+        "Button" => object
+            .get("variant")
+            .is_none_or(|v| v == "primary" || v == "default"),
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(unsupported())
+    }
+}
+
+/// The registry: an action must be one of the surface's events, sent by
+/// its one component, with exactly its context.
+fn check_action<R: Registration>(id: &str, action: &Value, reg: &R) -> Result<String, Refusal> {
     let event = action
         .as_object()
         .filter(|a| a.len() == 1)
         .and_then(|a| a.get("event"))
         .and_then(Value::as_object)
-        .ok_or_else(|| refuse("unregistered_event", "Only the review event is registered."))?;
-    if event.get("name").and_then(Value::as_str) != Some(REVIEW_EVENT) {
+        .ok_or_else(|| {
+            refuse(
+                "unregistered_event",
+                "Only the surface's registered events are allowed.",
+            )
+        })?;
+    let name = event.get("name").and_then(Value::as_str);
+    let rules = reg.events();
+    let Some(rule) = rules.iter().find(|r| Some(r.name) == name) else {
         return Err(refuse(
             "unregistered_event",
             "The surface asked for an event the app hasn't registered.",
         ));
-    }
+    };
     if event.contains_key("userMessage") || event.len() != 2 {
         return Err(refuse(
             "unregistered_event",
-            "The review event carries only its registered context.",
+            "An event carries only its registered context.",
         ));
     }
-    if event.get("context") != Some(&review_context()) {
+    if event.get("context") != Some(&rule.context) {
         return Err(refuse(
             "action_changed",
-            "The review event's context isn't the registered one.",
+            "The event's context isn't the registered one.",
         ));
     }
-    if id != REVIEW_COMPONENT {
+    if id != rule.component {
         return Err(refuse(
             "unregistered_event",
-            "Only the review button may send the review event.",
+            "Only the registered control may send this event.",
         ));
     }
     Ok(action.to_string())
-}
-
-/// Checks data for the surface: `{"books": [...]}` at the root, or the
-/// list at `/books`. Returns the book ids it holds.
-fn data_model(path: Option<&str>, value: &Value) -> Result<BTreeSet<&'static str>, Refusal> {
-    let books = match path {
-        None | Some("/") => {
-            let object = value
-                .as_object()
-                .filter(|o| o.len() == 1)
-                .ok_or_else(|| refuse("data", "The data model holds only the books."))?;
-            object
-                .get("books")
-                .ok_or_else(|| refuse("data", "The data model holds only the books."))?
-        }
-        Some("/books") => value,
-        Some(_) => return Err(refuse("data", "Updates may only replace the books.")),
-    };
-    let edited: Vec<EditedBook> = serde_json::from_value(books.clone())
-        .map_err(|_| refuse("data", "The books aren't in the expected form."))?;
-    let entries = edited
-        .iter()
-        .map(|b| match b.priority.as_slice() {
-            [priority] => plan::entry(&b.id, priority, &b.start, &b.finish),
-            _ => Err(plan::PlanError("Each book needs one priority.".into())),
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| refuse("data", e.0))?;
-    // The surface shows these, so they must be the book's own.
-    for (b, e) in edited.iter().zip(&entries) {
-        let title = b.title.as_ref().and_then(Value::as_str);
-        let author = b.author.as_ref().and_then(Value::as_str);
-        if title != Some(e.book.title) || author != Some(e.book.author) {
-            return Err(refuse("data", "A book's title or author isn't the app's."));
-        }
-    }
-    let ids: BTreeSet<&'static str> = entries.iter().map(|e| e.book.id).collect();
-    if ids.len() != entries.len() || ids.is_empty() || ids.len() > plan::MAX_BOOKS {
-        return Err(refuse(
-            "data",
-            "The books must be distinct, one to twelve of them.",
-        ));
-    }
-    Ok(ids)
 }

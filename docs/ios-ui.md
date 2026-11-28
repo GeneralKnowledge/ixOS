@@ -156,12 +156,38 @@ Start that work from `.task` or `.task(id:)`. SwiftUI then cancels it when the v
 
 ## Navigation
 
-- **One `NavigationStack` per navigation hierarchy.** Push detail screens with value-based links: `NavigationLink(value: note.id)` together with `.navigationDestination(for: UInt64.self)`. Pass identifiers rather than copies of records, so the detail screen always shows the latest state from the model and can handle a record deleted while it was open.
+- **One `NavigationStack` per navigation hierarchy.** Push detail screens with value-based links: `NavigationLink(value: Route.note(note.id))` on a path of routes, with Layered Navigation (below). Pass identifiers rather than copies of records, so the detail screen always shows the latest state from the model and can handle a record deleted while it was open.
 - **Tabs for separate top-level areas.** Once an app has two or more areas of equal weight (for example Library, Activity and Settings in Pocket Library), use a `TabView` with a `NavigationStack` inside each tab, never one stack around the whole `TabView`. Give each tab a `Label` with an SF Symbol. A single-purpose app such as the starter doesn't need tabs.
 - **Sheets for self-contained tasks.** Use a sheet for creating something, for settings, or for picking something. Give every sheet its own `NavigationStack`, so it has a title bar and toolbar. Use Cancel in `.cancellationAction` and Add, Save or Done in `.confirmationAction`. Apply `.interactiveDismissDisabled(hasUnsavedChanges)` so a swipe down can't discard typing.
 - **Titles.** Use the large title (the default) on root screens and `.navigationBarTitleDisplayMode(.inline)` on pushed screens and sheets. Use title case for navigation titles, buttons and alerts ("New Note", "Delete Note").
 - **Where the person was.** To come back to the same tab, selection or scroll position after iOS ends the app, use SwiftUI's own state restoration (`@SceneStorage`, a `NavigationPath` saved as `Codable`). Forge adds nothing here; keep restored values small and tolerate an id that no longer exists.
+- **Nothing under the tab bar.** On iOS 26 the tab bar floats over the content, and a `.bottomBar` toolbar inside a `TabView` sits behind it. In an app with tabs, float bottom actions with ForgeUI's `forgeBar`; a full-screen app with no tabs can keep a bottom toolbar. The parity rule `tab-bar-clear` checks it.
 - **Toolbars.** Put the primary action in `.primaryAction` (top trailing). Collect secondary actions in a `Menu("More", systemImage: "ellipsis.circle")`. Create icon buttons with `Button("Title", systemImage:)` so VoiceOver and long-press have a name.
+
+### Layered Navigation: the contract
+
+Every app with pushed pages follows these rules, so a deeper app never turns into a maze of copies of the same screen. ForgeAppKit implements the behaviour (docs/forgeappkit.md, Pushed pages) and the parity rule `layered-navigation` checks every app uses it. Soundscape set the rules first (2026-11-22, `examples/soundscape/docs/design.md`).
+
+**Behaviour**
+
+1. **A surface is an entity, not the route that reached it.** An artist page is that artist whether it was opened from a tile, a song's Go to Artist, Now Playing or a release page; a Good Dog term is that term whether it came from the glossary, an exercise or a related term.
+2. **Every reusable entity has one canonical identity** (`ForgeSurfaceRoute.surfaceID`, such as `artist:<id>`). An entry point that only knows something else (a track) resolves the entity's id first; what it knew never names the surface.
+3. **Navigating to an entity that is already open reveals the open surface.** What was stacked above it closes; no second copy is made.
+4. **Returning to a surface keeps its scroll position and state** (Show All, an expanded section), because it was never closed.
+5. **Presentation is not identity.** The same page can arrive stacked (zooming out of a tile) or as an ordinary push and is still one surface.
+6. **Overlays belong to the surface that presents them** and dismiss back to it; they are not stack entries.
+7. **Each tab keeps its own history.** A push from a shared place (Now Playing, a notification) goes onto the tab being looked at; another tab's stack is untouched.
+8. **A new destination declares its identity and treatment** (`surfaceID`, `surfaceStyle`) in the PR that adds it. A screen that should be new every time (a search, a practice set) declares no identity.
+9. **One tap opens one page.** A `List` row pushes every `NavigationLink` inside it on a single tap, so links side by side (a grid of tiles, a shelf, "Artist · Album" under a title) are `ForgeSurfaceLink`s, plain buttons that open their route. A row that is one link as a whole keeps `NavigationLink(value:)`. The parity rule `one-tap-one-page` checks grids and stacks of links (Soundscape's genre grid in Search opened all twenty genres, 2026-11-24).
+
+**Visual rules**
+
+- The surface underneath stays perceptible behind a stacked destination while it is pulled back; it never moves or reloads.
+- Overlays use standard material, not Liquid Glass (glass is for controls only, docs/forgeui.md); content stays solid and readable.
+- Depth is shown with scale, offset, corner radius, dimming and the transition, not with translucent content.
+- Reduce Transparency makes overlays solid; Reduce Motion turns stacked transitions into the ordinary push. Back, Done and Close stay for every gesture, so no gesture is the only way to navigate.
+
+**Checks on the phone** (for a PR that adds destinations): open a thing, go somewhere from it, then open the first thing again from there (the first page comes back as left); open the same thing from two entry points (one page, never one on top of another); go back (scroll position kept); with Reduce Motion on (ordinary pushes).
 
 ## Lists, forms and actions
 
@@ -209,7 +235,7 @@ Don't show errors as red text inside a list. An alert names what failed and has 
 - Every control, row and text field has an `.accessibilityIdentifier("screen.element")`, such as `library.add` or `bookForm.title`, so UI tests can find it ([forge-ui-testing.md](forge-ui-testing.md#accessibility-conventions)). Identifiers are never shown or spoken; they don't replace labels.
 - Every control has a text name. Icon-only buttons use `Button("Title", systemImage:)` or a `Label`. Images that carry information have an `accessibilityLabel`; decorative ones are hidden with `.accessibilityHidden(true)`.
 - Give every text field an `.accessibilityLabel`. A `TextField`'s title is only its placeholder, and a `Text` beside it in an `HStack` doesn't name it either, so without one VoiceOver and UI tests see a field called nothing, or called whatever it holds. The exception is a field inside `LabeledContent`, which already takes that label: adding another makes VoiceOver read it twice.
-- An unlabelled SF Symbol image gets its symbol name as its identifier, so five `star` images are five elements called `star`. Hide decorative symbols, and give repeated controls their own identifiers (`bookForm.star.3`).
+- An unlabelled SF Symbol image gets its symbol name as its identifier, so five `star` images are five elements called `star`. Hide decorative symbols, and give repeated controls their own identifiers, or make them one adjustable element with one identifier (`ForgeRating` does this for its stars).
 - Combine a row's pieces into one VoiceOver element with `.accessibilityElement(children: .combine)`.
 - Check every screen at the largest accessibility text size. Rows should wrap rather than truncate their primary text. Swap a horizontal layout for a vertical one under `@Environment(\.dynamicTypeSize)` when `isAccessibilitySize` is true.
 - Touch targets are at least 44×44 points. System controls already are; custom tappable views need `.contentShape` and a large enough frame.
@@ -237,6 +263,13 @@ The rule: if Rust needs the result in order to apply a rule or store it, pass th
 - The UI compiles with xtool's Swift toolchain against the iOS SDK from Xcode 26. SwiftUI APIs up to iOS 17 work, matching the template's deployment target. Wrap anything newer in `if #available`.
 - Don't use `#Preview`. Its macro plugin ships only with Xcode, not with the Swift toolchain on Linux. `@Observable` is fine, because the Observation macros ship with every Swift toolchain.
 - Keep iOS-only modifiers (`navigationBarTitleDisplayMode`, `keyboardType`, `textInputAutocapitalization`) inside `#if os(iOS)`, because the same sources also build for macOS for `swift test` and `swift run`.
+- Swift 6.2 refuses some code that looks fine, and in a view file only the iOS build shows it (the Linux checks compile models and tests, not views). Three that have cost a build ([friction log A43](research/app-friction-log.md#a43-swift-62-errors-only-the-ios-build-shows)):
+  - **A big view body stops type-checking** ("ambiguous use of init" on a `ScrollView` or `VStack`). Move parts into their own views and give numbers explicit types; don't keep growing one closure.
+  - **`await` inside an XCTest assertion** (`XCTUnwrap(await …)`): its autoclosure can't suspend. Await into a local first.
+  - **An environment key whose default is a closure** needs `nonisolated(unsafe) static let defaultValue` (or a `@Sendable` closure type), or Swift 6 can't prove it is safe to share.
+
+  The parity rule `swift6-traps` catches the last two on Linux.
+- A limit Rust enforces (a name's length, how many files a message carries) is exported from Rust as a function and read in Swift, never copied as a number; the parity rule `limits-from-rust` fails on a plain number literal (with no type, or an integer or floating-point type) assigned to a Swift constant whose name says `max` or `limit`. It is a name-and-shape check, not a proof: a copy under another name (`nameCap`) or built from an expression gets past it, so name limits as limits. A limit only Swift has (how far a photo is scaled down) says so with `// swift-only:`.
 
 ## Checking the result
 

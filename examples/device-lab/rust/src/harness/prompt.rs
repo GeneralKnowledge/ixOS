@@ -29,7 +29,10 @@ pub fn instructions(tools: &[ToolSpec]) -> String {
              - Tests use unittest, in files named test_*.py. run_tests runs them all.\n\
              - Read every result. When something fails, fix the cause, then run it again.\n\
              - Call finish only when a result shows the task is done. The harness checks the \
-             evidence and tells you if anything is missing.";
+             evidence and tells you if anything is missing.\n\
+             - If the task can't be done as written (a file it needs is missing, or it needs \
+             something not allowed here, like the network), call give_up with the reason instead \
+             of trying again and again.";
     text
 }
 
@@ -56,6 +59,7 @@ pub fn cut(text: &str, limit: usize) -> String {
     }
     let head = limit / 3;
     let tail = limit - head;
+    // cut: the model's own text, shortened for its prompt with "…" in the middle
     let start: String = text.chars().take(head).collect();
     let end: String = text.chars().skip(count - tail).collect();
     format!(
@@ -98,6 +102,7 @@ fn turns(history: &[Entry]) -> Vec<Turn> {
                 });
             }
             Entry::Invalid { text, error, .. } => {
+                // cut: the model's invalid answer, quoted back to it
                 let shown: String = text.chars().take(300).collect();
                 let result = format!(
                     "That answer was not a valid call: {error} Answer with one JSON object, exactly like the examples."
@@ -135,6 +140,7 @@ pub fn messages(
     request: &str,
     criteria: &[Criterion],
     overview: &str,
+    earlier: &str,
     history: &[Entry],
     budget: usize,
 ) -> Vec<ChatMessage> {
@@ -146,21 +152,27 @@ pub fn messages(
     let task =
         format!("Task: {request}\nDone when: {done_when}.\n\nProject files now:\n{overview}");
     let turns = turns(history);
-    let fixed = tokens(system) + tokens(&task);
     let keep_full = 2;
-    // Level 0: everything in full; 1: old results shortened; 2: old calls
-    // shortened too; then drop the oldest steps.
-    for level in 0..3 {
-        let built = build(system, &task, &turns, level, keep_full, 0);
-        if fixed + cost(&built) <= budget {
+    let fits = |task: &str, level: u8, dropped: usize| {
+        let built = build(system, task, &turns, level, keep_full, dropped);
+        let fixed = tokens(system) + tokens(task);
+        (fixed + cost(&built) <= budget).then_some(built)
+    };
+    // Earlier work is optional: it stays while this task's own steps fit
+    // in full or shortened, and goes before any of them is dropped.
+    if !earlier.is_empty() {
+        let with = format!("{task}\n\nEarlier work in this project:\n{earlier}");
+        if let Some(built) = (0..3).find_map(|level| fits(&with, level, 0)) {
             return built;
         }
     }
-    for dropped in 1..turns.len() {
-        let built = build(system, &task, &turns, 2, keep_full, dropped);
-        if fixed + cost(&built) <= budget {
-            return built;
-        }
+    // Level 0: everything in full; 1: old results shortened; 2: old calls
+    // shortened too; then drop the oldest steps.
+    if let Some(built) = (0..3).find_map(|level| fits(&task, level, 0)) {
+        return built;
+    }
+    if let Some(built) = (1..turns.len()).find_map(|dropped| fits(&task, 2, dropped)) {
+        return built;
     }
     build(
         system,
@@ -276,6 +288,7 @@ pub fn steps(task: &[Entry]) -> Vec<HarnessStep> {
                 index: *step,
                 thought: String::new(),
                 tool: "invalid".into(),
+                // cut: the model's invalid answer, shown as a step
                 call: text.chars().take(300).collect(),
                 ok: Some(false),
                 result: error.clone(),
@@ -356,4 +369,189 @@ pub fn transcript(project: &str, task: &[Entry]) -> String {
         }
     }
     text
+}
+
+/// A plan and each of its tasks as Markdown, to copy as evidence.
+pub fn plan_transcript(project: &str, entries: &[Entry]) -> String {
+    let Some(view) = super::plan::PlanView::read(entries) else {
+        return "No plan yet.".into();
+    };
+    let mut text = format!(
+        "# Bonsai Harness plan: {}\n\nProject: {project}\nModel: {}\nRequest: {}\nStatus: {:?}{}\n",
+        view.id,
+        view.model,
+        view.request,
+        view.state,
+        view.reason
+            .as_ref()
+            .map(|r| format!(" ({r})"))
+            .unwrap_or_default(),
+    );
+    if !view.criteria.is_empty() {
+        text += &format!(
+            "Done when: {}\n",
+            view.criteria
+                .iter()
+                .map(Criterion::describe)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+    for entry in entries {
+        if let Entry::PlanInvalid {
+            text: answer,
+            error,
+            ..
+        } = entry
+        {
+            text += &format!("\nRefused plan ({error}):\n\n```\n{answer}\n```\n");
+        }
+    }
+    if !view.thought.is_empty() {
+        text += &format!("\nThought: {}\n", view.thought);
+    }
+    text += "\n## Plan\n\n";
+    for task in &view.tasks {
+        let after = if task.after.is_empty() {
+            String::new()
+        } else {
+            format!(" (after {})", task.after.join(", "))
+        };
+        text += &format!(
+            "- {}{after}: {} [{:?}] Done when: {}.\n",
+            task.id,
+            task.description,
+            view.status_of(&task.id),
+            task.criteria
+                .iter()
+                .map(Criterion::describe)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+    // Recovery decisions and the person's answers, in the order they came.
+    let mut decided = String::new();
+    for entry in entries {
+        match entry {
+            Entry::Recovery {
+                plan_task,
+                decision,
+                ..
+            } => {
+                use super::plan::Decision;
+                decided += &match decision {
+                    Decision::Retry { diagnosis } => {
+                        format!("- {plan_task} failed: retry. {diagnosis}\n")
+                    }
+                    Decision::Revise { description, .. } => {
+                        format!("- {plan_task} failed: revised to: {description}\n")
+                    }
+                    Decision::Replan { diagnosis } => {
+                        format!("- {plan_task} failed: replan. {diagnosis}\n")
+                    }
+                    Decision::Blocked { question } => {
+                        format!("- {plan_task} blocked. Question: {question}\n")
+                    }
+                };
+            }
+            Entry::PersonAnswer {
+                plan_task, text, ..
+            } => decided += &format!("- The person answered for {plan_task}: {text}\n"),
+            _ => {}
+        }
+    }
+    if !decided.is_empty() {
+        text += &format!("\n## Recovery\n\n{decided}");
+    }
+    // Every executor task of the plan, in the order they ran.
+    let ids: Vec<&str> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Task { task, .. } => Some(task.as_str()),
+            _ => None,
+        })
+        .collect();
+    for id in ids {
+        let task: Vec<Entry> = entries.iter().filter(|e| e.task() == id).cloned().collect();
+        text += "\n";
+        text += &transcript(project, &task).replacen("# Bonsai Harness:", "## Task", 1);
+    }
+    text
+}
+
+/// The most earlier tasks and plans the model is told about.
+pub const EARLIER_MAX: usize = 6;
+
+/// The project's earlier work, from its journal (H6): one line per task or
+/// plan that ended before the one running now (`current`, a task or plan
+/// id, and the plan it belongs to), newest last. Tasks of a plan are
+/// covered by the plan's line. Empty when there is none.
+pub fn earlier_work(entries: &[Entry], current: &[&str]) -> String {
+    use super::plan::PlanState;
+    let mut described: std::collections::HashMap<&str, &str> = Default::default();
+    let mut lines: Vec<(String, String)> = Vec::new();
+    for entry in entries {
+        let ended = match entry {
+            Entry::Task {
+                task,
+                description,
+                plan: None,
+                ..
+            } => {
+                described.insert(task, description);
+                None
+            }
+            Entry::PlanRequest { plan, request, .. } => {
+                described.insert(plan, request);
+                None
+            }
+            Entry::Status {
+                task,
+                status,
+                reason,
+                ..
+            } if status.is_final() => Some((task, format!("{status:?}"), reason)),
+            Entry::PlanStatus {
+                plan,
+                status,
+                reason,
+                ..
+            } if status.is_final() && *status != PlanState::Discarded => {
+                Some((plan, format!("{status:?}"), reason))
+            }
+            _ => None,
+        };
+        let Some((id, status, reason)) = ended else {
+            continue;
+        };
+        if current.contains(&id.as_str()) {
+            continue;
+        }
+        let Some(description) = described.get(id.as_str()) else {
+            continue;
+        };
+        // cut: earlier work, one short line each in the model's prompt
+        let description: String = description.chars().take(160).collect();
+        // cut: the evidence or reason, shortened the same way
+        let reason: String = reason.as_deref().unwrap_or("").chars().take(120).collect();
+        lines.retain(|(seen, _)| seen != id);
+        lines.push((
+            id.clone(),
+            format!(
+                "- {description} ({}{})",
+                status.to_lowercase(),
+                if reason.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {reason}")
+                }
+            ),
+        ));
+    }
+    let start = lines.len().saturating_sub(EARLIER_MAX);
+    lines[start..]
+        .iter()
+        .map(|(_, line)| line.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }

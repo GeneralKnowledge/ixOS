@@ -54,6 +54,9 @@ pub struct Record {
     /// person dismisses it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub away_notice: bool,
+    /// Group chats this device is in or was in (`group`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<crate::group::SavedGroup>,
 }
 
 /// What couldn't be read, in words, and where it is kept on this device.
@@ -177,10 +180,13 @@ impl Record {
 
     /// The history, newest first. `inbox` turns a received file's name into
     /// a path (or `None` if it is gone); `progress` gives bytes so far.
+    /// A waiting send left in the recipient's mailbox at `now_ms` is
+    /// [`TransferStatus::InMailbox`].
     pub fn transfers(
         &self,
         inbox: impl Fn(&str) -> Option<String>,
         progress: impl Fn(u64) -> u64,
+        now_ms: i64,
     ) -> Vec<Transfer> {
         self.transfers
             .iter()
@@ -209,6 +215,9 @@ impl Record {
                     },
                 },
                 status: match &t.status {
+                    SavedStatus::Waiting if t.sent && self.sent_to_mailbox(t.id, now_ms) => {
+                        TransferStatus::InMailbox
+                    }
                     SavedStatus::Waiting => TransferStatus::Waiting,
                     SavedStatus::InProgress => TransferStatus::InProgress {
                         done: progress(t.id),

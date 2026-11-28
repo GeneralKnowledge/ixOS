@@ -61,6 +61,8 @@ final class RelayModelTests: XCTestCase {
         let waiting = transfer(4, .sent, .waiting)
         XCTAssertEqual(RelayFormat.status(waiting), "Waiting for Phone")
         XCTAssertNil(RelayModel.arrival(from: [waiting], to: [transfer(4, .sent, .done)]))
+        // One left in the recipient's mailbox says so.
+        XCTAssertEqual(RelayFormat.status(transfer(5, .sent, .inMailbox)), "In the Mailbox")
     }
 
     /// A code transfer, "Trust this device?" on both sides, then a note to
@@ -88,6 +90,7 @@ final class RelayModelTests: XCTestCase {
         let offerOnA = try await eventually { a.refreshCodeSend(); return a.trustOffer }
         await b.trust(offerOnB)
         await a.trust(offerOnA)
+        XCTAssertTrue(a.trusting.isEmpty, "the pending row goes once Rust answers")
         XCTAssertNil(b.trustOffer)
         XCTAssertEqual(b.trustedDevices.map(\.endpointId), [advert.endpointID])
 

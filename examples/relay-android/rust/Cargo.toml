@@ -1,0 +1,33 @@
+# Relay's Android library. The app's logic is Relay's own crate
+# (../../relay/rust), unchanged: this crate links it into the shared library
+# Android loads (libforge_ffi.so), because that crate has no cdylib of its own
+# (Cargo would then try to link it for iOS too).
+[package]
+name = "relay-android-app"
+version = "0.1.0"
+edition = "2021"
+# relay-core's iroh needs 1.91.
+rust-version = "1.91"
+publish = false
+
+[lib]
+# Forge's fixed library name: the build scripts stage libforge_ffi.so.
+name = "forge_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+relay-core = { path = "../../relay/rust" }
+# The Android JNI init (ForgeAndroid.nativeInit) that HTTPS needs, shipped with
+# the generated bindings.
+forge-runtime = { path = "../../../crates/forge-runtime" }
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+# App code has no unsafe Rust; UniFFI's generated scaffolding passes this too.
+[lints.rust]
+unsafe_code = "forbid"

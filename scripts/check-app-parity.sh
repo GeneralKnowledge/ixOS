@@ -145,6 +145,23 @@ def rule_urlsession(app):
     return False, "iOS requests go through ureq, not the `http` service"
 
 
+# The app names itself to the services it asks through the `http` service
+# too, not only through its ureq fallback: `UreqClient::with_user_agent`
+# never reaches URLSession, so without `.user_agent(..)` on the host client
+# iPhone requests went out with iOS's default (shared API layer audit,
+# 2026-11-28).
+def rule_user_agent(app):
+    if app.name in NO_RUST:
+        return None
+    files = [p for p in rust_sources(app) if "prefer_installed(" in read(p)]
+    if not files:
+        return None
+    bare = [p.name for p in files if ".user_agent(" not in read(p)]
+    if bare:
+        return False, "the `http` service sends no app User-Agent (add `.user_agent(..)` in `prefer_installed`): " + ", ".join(bare)
+    return True, ""
+
+
 def rule_location(app):
     own = [p for p in swift_sources(app) if "CLLocationManager" in read(p)]
     if not own:
@@ -163,6 +180,29 @@ def rule_connectivity(app):
     if not own:
         return None
     return False, f"own network monitor ({own[0].name}), not the `connectivity` service"
+
+
+# An app's own state saved as JSON goes through forge-app's Document (change
+# a copy, save, then keep it; never replace an unreadable file; set it aside
+# only when the person asks), not a JsonFile the app holds with its own save
+# logic (half-baked work audit H10). Reading an old JsonFile once to migrate
+# it is fine; holding one as the app's store is not. Any JsonFile<..> in a
+# type (a field, a wrapper such as Option<JsonFile<..>>, a type alias) counts
+# as held; a one-time read spells it JsonFile::<..>::new(..).load(). A held
+# JsonFile fails even when the app also uses Document. Apps saving no JSON
+# state (SQLite only, or nothing) are n/a.
+def rule_document(app):
+    held, uses_document = [], False
+    for path in rust_sources(app):
+        # Joined so a type split across lines (JsonFile\n<State>) still matches.
+        code = "\n".join(line.split("//", 1)[0] for line in read(path).splitlines())
+        for m in re.finditer(r"\bJsonFile\s*<", code):
+            held.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+        if re.search(r"\bDocument\s*(<|::)", code):
+            uses_document = True
+    if held:
+        return False, "keeps its state in its own JsonFile; use forge_app::Document: " + ", ".join(held)
+    return (True, "") if uses_document else None
 
 
 # Rust work cancelled from Swift goes through ForgeKit's withRustCancellation,
@@ -245,6 +285,65 @@ def rule_device_lab(app):
         return None
     ok = app.name in hosted
     return ok, "" if ok else "not on Device Lab's Apps screen"
+
+
+# The phone has Device Lab, not each app (it hosts them all; a free team
+# allows only 3 installed apps), so a hosted app's phone scenarios drive
+# Device Lab and open the app with -launchApp. Fifteen scenarios still
+# launched the old agentlab or gooddog installs, which aren't on the phone
+# (found 2026-11-22).
+DEVICE_LAB_ID = "org.forgemobile.devicelab"
+# Each hosted app's key on Device Lab's Apps screen (`EmbeddedApp` in
+# examples/device-lab/Sources/AppHost/AppsView.swift), which -launchApp takes.
+LAB_KEYS = {
+    "weather": "weather", "checklist": "checklist", "pocket-library": "library",
+    "good-dog": "goodDog", "commonplace": "commonplace", "fieldkit": "fieldKit",
+    "sketchbook": "sketchbook", "soundscape": "soundscape", "relay": "relay",
+    "sums": "sums", "urdu-naturally": "urdu", "forgeui-showcase": "forgeUI",
+}
+
+
+def lab_cases():
+    text = read(examples / HOST / "Sources" / "AppHost" / "AppsView.swift")
+    m = re.search(r"enum EmbeddedApp\b[^{]*\{\s*case ([^\n]+)", text)
+    return {c.strip() for c in m.group(1).split(",")} if m else set()
+
+
+LAB_CASES = lab_cases()
+
+
+def launched_app(args):
+    """The key after -launchApp, or None if there is none, a -launchApp has
+    no key, or two -launchApp arguments name different keys."""
+    args = list(args or [])
+    keys = {args[i + 1] if i + 1 < len(args) else None for i, a in enumerate(args) if a == "-launchApp"}
+    return keys.pop() if len(keys) == 1 else None
+
+
+def rule_lab_scenarios(app):
+    if app.name == HOST or app.name not in hosted:
+        return None
+    paths = sorted((app / "uitests").glob("*.toml"))
+    if not paths:
+        return None
+    bad = []
+    for path in paths:
+        try:
+            data = tomllib.loads(read(path))
+        except tomllib.TOMLDecodeError:
+            bad.append(f"{path.name} (not TOML)")
+            continue
+        key = LAB_KEYS.get(app.name)
+        if key is None or key not in LAB_CASES:
+            bad.append(f"{path.name} (no Device Lab key for {app.name}; add it to LAB_KEYS)")
+            continue
+        launches = [s["launch"] for s in data.get("step", []) if "launch" in s]
+        opens = all(launched_app(l.get("args")) == key for l in launches)
+        if data.get("app") != DEVICE_LAB_ID or not launches or not opens:
+            bad.append(path.name)
+    if bad:
+        return False, "scenarios that don't open this app in Device Lab (-launchApp <key>): " + ", ".join(bad)
+    return True, ""
 
 
 def rule_device_family(app):
@@ -659,6 +758,26 @@ def rule_floating_bars(app):
     return True, ""
 
 
+# Liquid Glass comes from ForgeUI (`forgeGlass`, `forgeGlassProminentButton`)
+# and passive notices from `forgeMaterial`: one copy of the iOS 26 and
+# Xcode 16 checks, and the material table decides which surface is glass
+# (docs/forgeui.md, materials; design programme V2.1, November 2026).
+GLASS_BY_HAND = re.compile(r"\.glassEffect\s*\(|\.buttonStyle\s*\(\s*\.glass(Prominent)?\b|\bGlassEffectContainer\b")
+
+
+def rule_glass(app):
+    # On the whole file with comments and strings masked, so a call split
+    # across lines is caught and a comment that mentions one is not.
+    bad = []
+    for path in swift_sources(app):
+        code = swift_code_mask(read(path))
+        for m in GLASS_BY_HAND.finditer(code):
+            bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws Liquid Glass by hand; use ForgeUI's forgeGlass: " + ", ".join(bad)
+    return True, ""
+
+
 # A notice in a screen that still works ("offline", "the map can't update")
 # is ForgeUI's ForgeNotice. Built by hand, it is a Label with a problem
 # symbol, made small and grey or toned: each app picked its own size,
@@ -842,6 +961,230 @@ def rule_rename(app):
     return True, ""
 
 
+# A form sheet's Cancel and confirm buttons are ForgeUI's forgeFormToolbar:
+# the confirm button turns into a labelled spinner while it saves, Cancel
+# waits, and the sheet can't be swiped away while it saves or holds changes.
+# Seven sheets in five apps built the same toolbar by hand, each with its own
+# identifiers and its own swipe guard (ForgeUI 0.2, item 1). A hand-built one
+# shows as a `.confirmationAction` toolbar item that holds a ProgressView.
+CONFIRM_ITEM = re.compile(r"\bToolbarItem\(\s*placement:\s*\.confirmationAction\s*\)")
+
+
+def rule_form_toolbar(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in CONFIRM_ITEM.finditer(code):
+            if "ProgressView" in brace_block(code, m.end()):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "builds a form toolbar by hand; use ForgeUI's forgeFormToolbar: " + ", ".join(bad)
+    return True, ""
+
+
+# A coloured tile behind a row's symbol is ForgeRow's icon tile, coloured by
+# a tone or one of ForgeUI's checked accents (decision D1, ForgeUI coverage
+# audit). Built by hand it was a symbol on a RoundedRectangle in a raw
+# colour (`.pink`, `tint.gradient`), with its own size and corner, unchecked
+# for contrast in dark mode (ForgeUI 0.2, item 2). Materials and the theme's
+# own colours are surfaces, not tiles, and are left alone. Only a background
+# whose modifier chain starts at `Image(systemName:)` counts, so a stack that
+# merely holds a symbol is not flagged.
+TILE_BACKGROUND = re.compile(r"\.background\(\s*([^,()]+(?:\([^()]*\))?[^,()]*),\s*in:\s*RoundedRectangle\b")
+SURFACE = re.compile(r"Material|theme\.|\.quaternary|\.tertiary|\.secondary|\.fill\b")
+
+
+def chain_root(code, dot):
+    """The expression a modifier chain starts from: walks back from the `.`
+    of a modifier over `.name(...)`, `.name { ... }` and `.name` links,
+    skipping balanced brackets, and returns the text from the root onwards."""
+    pairs = {")": "(", "]": "[", "}": "{"}
+    pos = dot
+    while True:
+        while pos > 0 and code[pos - 1].isspace():
+            pos -= 1
+        while pos > 0 and code[pos - 1] in pairs:
+            depth, close, open_ = 0, code[pos - 1], pairs[code[pos - 1]]
+            while pos > 0:
+                pos -= 1
+                if code[pos] == close:
+                    depth += 1
+                elif code[pos] == open_:
+                    depth -= 1
+                    if depth == 0:
+                        break
+            while pos > 0 and code[pos - 1].isspace():
+                pos -= 1
+        while pos > 0 and (code[pos - 1].isalnum() or code[pos - 1] == "_"):
+            pos -= 1
+        back = pos
+        while back > 0 and code[back - 1].isspace():
+            back -= 1
+        if back > 0 and code[back - 1] == ".":
+            pos = back - 1
+            continue
+        return code[pos:dot].lstrip()
+
+
+def rule_icon_tile(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in TILE_BACKGROUND.finditer(code):
+            if SURFACE.search(m.group(1)):
+                continue
+            if re.match(r"Image\(\s*systemName:", chain_root(code, m.start())):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws an icon tile by hand; use ForgeRow's systemImage with a tone or an accent: " + ", ".join(bad)
+    return True, ""
+
+
+# Pictures (covers, photos, artwork) sit in ForgeUI's ForgeThumbnail, which
+# sizes, shapes and outlines them the same everywhere and draws one
+# placeholder for empty, loading and failed. Five apps clipped their own,
+# with five corner radii and three placeholders (ForgeUI 0.2, item 5). This
+# finds an image clipped to a fixed-radius rectangle or a circle by hand.
+HAND_THUMBNAIL = re.compile(r"\.clipShape\(\s*(?:RoundedRectangle\(\s*cornerRadius:\s*[\d.]+|Circle\(\))")
+
+
+def rule_thumbnail(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in HAND_THUMBNAIL.finditer(code):
+            if re.match(r"(?:Image|ForgeRemoteImage|AsyncImage)\(", chain_root(code, m.start())):
+                bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "clips a picture by hand; put it in ForgeUI's ForgeThumbnail: " + ", ".join(bad)
+    return True, ""
+
+
+# A choice among several (chips, tiles, A/B) wears ForgeUI's choice style
+# (`.buttonStyle(.forgeChoice(isSelected:))`, `.toggleStyle(.forgeChoice)`),
+# which adds the `.isSelected` trait, a 44-point tap and a chosen look that
+# isn't colour alone. Three apps built their own, each with its own colours
+# and sizes (ForgeUI 0.2, item 6). An app adding the trait itself has built
+# one by hand.
+HAND_SELECTED = re.compile(r"\.accessibilityAddTraits\([^)\n]*\.isSelected")
+
+
+def rule_choice(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in HAND_SELECTED.finditer(code):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "marks a choice selected by hand; use ForgeUI's forgeChoice style: " + ", ".join(bad)
+    return True, ""
+
+
+# A figure with its name (a total, a measurement) is ForgeUI's ForgeStat:
+# the figure and figureCaption text roles, equal-width digits and one
+# VoiceOver element ("Distance, 4.2 kilometres"). FieldKit and Weather drew
+# their own (ForgeUI 0.2, item 7). This finds the hand-built shape: a VStack
+# whose first Text has monospaced digits and whose next is a grey caption.
+HAND_STAT = re.compile(
+    r"VStack[^{\n]*\{\s*\n\s*Text\([^\n]*\)\s*\n\s*\.font\([^\n]*monospacedDigit[^\n]*\)\s*\n"
+    r"(?:\s*\.[^\n]*\n){0,3}\s*Text\([^\n]*\)\s*\n\s*\.font\(\.caption[^\n]*\n\s*\.foregroundStyle\(\.secondary\)"
+)
+
+
+def rule_stat(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        for m in HAND_STAT.finditer(text):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws a figure over a caption by hand; use ForgeUI's ForgeStat: " + ", ".join(bad)
+    return True, ""
+
+
+# A button that waits must show it (ForgeUI 0.2 item 9, "silent waits"):
+# a slow load that shows nothing looks broken. A `Button` or `onSubmit`
+# whose action starts a `Task` that awaits passes only if the same closure
+# sets a working flag the view shows (`flag ?`, `if flag` or `if !flag` elsewhere in the
+# file; a flag that only blocks a second tap doesn't count). Otherwise use
+# an async `ForgeButton` (disabled at once, a spinner after 0.4 s), put it
+# in `forgeFormToolbar`, or, for alerts, dialogs, swipes and menus that
+# close at once, give the model a command that marks the row pending
+# ("Trusting…") and runs the work itself. The rule can't time anything, so
+# fast local writes count too: the pattern makes showing work free.
+SILENT_START = re.compile(r"(?:\bButton\b[^{\n]*\{|\.onSubmit\s*(?:\([^)]*\))?\s*\{)")
+STARTS_TASK = re.compile(r"\bTask\s*(?:\([^)]*\))?\s*\{")
+SETS_FLAG = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*true\b")
+
+
+def closing_brace(code, i):
+    depth = 0
+    for j in range(i, len(code)):
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j
+    return len(code)
+
+
+def rule_silent_wait(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        code = swift_code_mask(text)
+        for m in SILENT_START.finditer(code):
+            brace = m.end() - 1
+            end = closing_brace(code, brace)
+            body = code[brace:end]
+            awaiting = re.search(r"\bawait\b", body)
+            if not STARTS_TASK.search(body) or not awaiting:
+                continue
+            first_await = awaiting.start()
+            rest = code[:brace] + code[end:]
+            shown = any(
+                re.search(rf"\b{re.escape(flag)}\s*\?|\bif\s+(?:!\s*)?{re.escape(flag)}\b", rest)
+                # Only a flag set before the wait shows it; one set after
+                # (`saved = true`) is a result, not a pending state.
+                for flag in (f.group(1) for f in SETS_FLAG.finditer(body) if f.start() < first_await)
+            )
+            # A running-work banner set before the task shows it too.
+            if shown or re.search(r"=\s*\.working\(", body):
+                continue
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, (
+            "a button waits without showing it; use an async ForgeButton, forgeFormToolbar, "
+            "or a model command with a pending row: " + ", ".join(bad)
+        )
+    return True, ""
+
+
+# Stars for a rating come from ForgeUI's ForgeRating: one adjustable
+# VoiceOver element ("3 of 5 stars"), 44 pt stars, the same colour in every
+# app, and one `<id>` identifier. Soundscape and Pocket Library each
+# drew their own, with different colours, sizes and VoiceOver (ForgeUI 0.2,
+# item 4). This finds a `star` symbol that switches with `star.fill`, the
+# shape of a hand-drawn rating.
+HAND_STARS = re.compile(r'"star\.fill"\s*:\s*"star"|"star"\s*:\s*"star\.fill"')
+
+
+def rule_rating(app):
+    bad = []
+    for path in swift_sources(app):
+        text = read(path)
+        for m in HAND_STARS.finditer(text):
+            bad.append(f"{path.name}:{text.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws rating stars by hand; use ForgeUI's ForgeRating: " + ", ".join(bad)
+    return True, ""
+
+
 # A file the app has just written (an export, a backup) goes to the system
 # share sheet with ForgeUI's forgeShareFile as soon as it is ready. Four
 # apps had their own "your file is ready" sheet or row with a ShareLink on
@@ -889,6 +1232,318 @@ def rule_row_actions(app):
     return True, ""
 
 
+# Text is never cut short without a word: Urdu, Naturally's chat kept the
+# first 300 characters of a longer line and answered that, with nothing on
+# screen to say so (Reuben, 2026-11-22). Typed text over a limit is refused
+# with the limit (as Checklist, FieldKit, Good Dog and Pocket Library do), and
+# the field shows it. A cut of text nobody typed (an imported name, a summary
+# of an article, a model's answer in a prompt) says why on the line or just
+# above it with a `// cut:` comment.
+RUST_CUT = re.compile(r"\.chars\(\)\s*\.take\(")
+
+
+def rust_code_mask(text):
+    """The Rust code with the insides of comments, strings, raw strings and
+    char literals blanked (newlines kept), so `//` in a URL or a call written
+    inside a string is not taken for code."""
+    out = list(text)
+    i, n = 0, len(text)
+
+    def blank(start, end):
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < n:
+        c = text[i]
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            end = n if end == -1 else end
+            blank(i, end)
+            i = end
+        elif text.startswith("/*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            blank(i, j)
+            i = j
+        elif (m := re.match(r'b?r(#*)"', text[i:])) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + m.group(1)
+            end = text.find(close, i + m.end())
+            end = n if end == -1 else end + len(close)
+            blank(i, end)
+            i = end
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            blank(i, j + 1)
+            i = j + 1
+        elif c == "'" and (m := re.match(r"'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'", text[i:])):
+            blank(i, i + m.end())
+            i += m.end()
+        else:
+            i += 1
+    return "".join(out)
+
+
+def without_test_items(code):
+    """Blanks each `#[cfg(test)]` item (a module, a function, a `use`) and
+    keeps scanning after it."""
+    out = list(code)
+    for m in re.finditer(r"#\[cfg\(test\)\]", code):
+        j = m.end()
+        while j < len(code) and code[j] not in "{;":
+            j += 1
+        if j < len(code) and code[j] == "{":
+            depth = 0
+            while j < len(code):
+                if code[j] == "{":
+                    depth += 1
+                elif code[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+        for k in range(m.start(), min(j + 1, len(code))):
+            if out[k] != "\n":
+                out[k] = " "
+    return "".join(out)
+
+
+def silent_cut_problems(text):
+    lines = text.splitlines()
+    code = without_test_items(rust_code_mask(text))
+    found = []
+    for m in RUST_CUT.finditer(code):
+        first = code.count("\n", 0, m.start())
+        last = code.count("\n", 0, m.end())
+        if any("// cut:" in l for l in lines[max(0, first - 3) : last + 1]):
+            continue
+        found.append(last + 1)
+    return found
+
+
+def rule_no_silent_cut(app):
+    if app.name in NO_RUST:
+        return None
+    bad = []
+    for path in rust_sources(app):
+        if path.name == "tests.rs" or "bin" in path.parts:
+            continue
+        for line in silent_cut_problems(read(path)):
+            bad.append(f"{path.name}:{line}")
+    if bad:
+        return False, "cuts text short without saying why; refuse typed text over a limit, or add a `// cut:` reason: " + ", ".join(bad)
+    return True, ""
+
+
+
+SWIFT_LIMIT = re.compile(
+    r"\b(?:let|var)\s+\w*(?:max|Max|MAX|limit|Limit|LIMIT)\w*\s*(?::\s*(?:U?Int\d*|Double|Float|CGFloat)\s*)?=\s*[\d_]+(?:\.[\d_]+)?\s*$"
+)
+
+
+def rule_limits_from_rust(app):
+    """A limit Rust enforces is read from Rust, never copied into Swift as a
+    number (the copies drift). A limit only Swift has says so with
+    `// swift-only:` on the line or just above it."""
+    if app.name in NO_RUST:
+        return None
+    bad = []
+    for path in swift_sources(app):
+        lines = read(path).splitlines()
+        for i, line in enumerate(lines):
+            if not SWIFT_LIMIT.search(line.split("//", 1)[0]):
+                continue
+            if any("// swift-only:" in l for l in lines[max(0, i - 3) : i + 1]):
+                continue
+            bad.append(f"{path.name}:{i + 1}")
+    if bad:
+        return False, "copies a limit into Swift as a number; export it from Rust, or mark a Swift-only one `// swift-only:`: " + ", ".join(bad)
+    return True, ""
+
+
+XCT_CALL = re.compile(r"\bXCT\w+\(")
+CLOSURE_DEFAULT = re.compile(r"\bstatic\s+(?:let|var)\s+defaultValue\s*:\s*\(.*->")
+
+
+def xct_await_lines(text):
+    """Lines where an XCTest assertion's arguments, however many lines they
+    span, contain `await`. Comments and string text are left out;
+    code inside a string interpolation still counts."""
+    code = swift_code_mask(text)
+    found = []
+    for m in XCT_CALL.finditer(code):
+        depth, j = 1, m.end()
+        while j < len(code) and depth:
+            if code[j] == "(":
+                depth += 1
+            elif code[j] == ")":
+                depth -= 1
+            j += 1
+        # The mask turns `\(` into `xx`, so `\(await f())` reads `xxawait`.
+        if re.search(r"(?:\b|(?<=xx))await\b", code[m.end() : j]):
+            found.append(code.count("\n", 0, m.start()) + 1)
+    return found
+
+
+def rule_swift6_traps(app):
+    """Two Swift 6.2 errors that only the iOS build showed (friction log
+    A43), caught here on Linux: `await` inside an XCTest assertion (its
+    autoclosure can't suspend), and an environment key whose default is a
+    closure, which Swift 6 can't prove is safe to share unless it is
+    `nonisolated(unsafe)` or `@Sendable`."""
+    bad = []
+    files = swift_sources(app) + sorted((app / "Tests").rglob("*.swift"))
+    for path in files:
+        text = read(path)
+        for line in xct_await_lines(text):
+            bad.append(f"{path.name}:{line} (await inside an XCTest assertion; await into a local first)")
+        for i, line in enumerate(text.splitlines()):
+            code = line.split("//", 1)[0]
+            if CLOSURE_DEFAULT.search(code) and "nonisolated(unsafe)" not in code and "@Sendable" not in code:
+                bad.append(f"{path.name}:{i + 1} (closure default value; mark it nonisolated(unsafe) or @Sendable)")
+    if bad:
+        return False, "Swift 6.2 refuses this in the iOS build: " + ", ".join(bad)
+    return True, ""
+
+# Layered Navigation (ForgeAppKit, docs/forgeappkit.md): a pushed page is a
+# surface for one thing, and opening a thing already open goes back to it.
+# Every stack that pushes by value applies the rule to its path
+# (`NavigationStack(path: $path.forgeLayered())`), its destinations come in
+# through `forgeLayeredDestination(for:)`, and a page opens a route on its
+# stack (`forgeOpenSurface`) rather than pushing beside the path with
+# `navigationDestination(item:)`. The routes' identities themselves are the
+# type checker's job: `forgeLayered()` only takes a `ForgeSurfaceRoute`.
+LAYERED_PUSH = re.compile(r"NavigationLink\s*\(\s*value:|\.navigationDestination\s*\(\s*(for|item):|\bforgeLayered(Destination)?\b")
+LAYERED_PROBLEMS = [
+    (re.compile(r"\.navigationDestination\s*\(\s*for:"), "navigationDestination(for:); use forgeLayeredDestination(for:)"),
+    (re.compile(r"NavigationStack\s*\(\s*path:(?![^)\n]*forgeLayered)"), "a stack path without forgeLayered()"),
+    (re.compile(r"\.navigationDestination\s*\(\s*item:"), "navigationDestination(item:) pushes beside the path; open the route with forgeOpenSurface"),
+]
+BARE_STACK = re.compile(r"\bNavigationStack\s*\{")
+
+
+def braced(code, start):
+    """The text from the `{` at `start` to its matching `}`."""
+    depth = 0
+    for i in range(start, len(code)):
+        if code[i] == "{":
+            depth += 1
+        elif code[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return code[start:i + 1]
+    return code[start:]
+
+
+def owned(block):
+    """`block` (a stack's braces) without the stacks nested in it, such as
+    a sheet's own stack: what is left belongs to this stack."""
+    for m in reversed(list(re.finditer(r"\bNavigationStack\b", block[1:]))):
+        i = m.end() + 1
+        while i < len(block) and block[i] in " \t\n":
+            i += 1
+        if i < len(block) and block[i] == "(":  # NavigationStack(path: ...)
+            depth = 0
+            while i < len(block):
+                depth += {"(": 1, ")": -1}.get(block[i], 0)
+                i += 1
+                if depth == 0:
+                    break
+            while i < len(block) and block[i] in " \t\n":
+                i += 1
+        if i < len(block) and block[i] == "{":
+            block = block[:i] + block[i + len(braced(block, i)):]
+    return block
+
+
+def rule_layered_navigation(app):
+    codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
+    if not any(LAYERED_PUSH.search(code) for _, code in codes):
+        return None  # pushes nothing by value
+    bad = []
+    for path, code in codes:
+        for pattern, why in LAYERED_PROBLEMS:
+            for m in pattern.finditer(code):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} ({why})")
+        # Layered destinations under a stack with no path never settle.
+        for m in BARE_STACK.finditer(code):
+            if re.search(r"\bforgeLayeredDestination\s*\(", owned(braced(code, m.end() - 1))):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} (a stack with layered destinations and no forgeLayered() path)")
+    if bad:
+        return False, "pushes pages outside Layered Navigation: " + ", ".join(bad)
+    return True, ""
+
+
+# Nothing at the bottom of a screen hides behind the tab bar. On iOS 26 the
+# tab bar floats over the content, and a `.bottomBar` toolbar inside a
+# TabView sits behind it (Relay's Send and Receive, #443, 2026-11-24). An app
+# with tabs floats its bottom actions with ForgeUI's `forgeBar` (or a
+# `.safeAreaInset`) instead; a full-screen app with no tabs keeps the toolbar.
+BOTTOM_BAR = re.compile(r"placement\s*:\s*(?:ToolbarItemPlacement\s*)?\.bottomBar\b")
+
+
+def without_previews(code):
+    """`code` without `#Preview { ... }` blocks and `PreviewProvider`
+    structs: a preview's TabView is no app tab bar."""
+    preview = re.compile(r"#Preview\b[^{]*\{|\bstruct\s+\w+\s*:[^{]*\bPreviewProvider\b[^{]*\{")
+    for m in reversed(list(preview.finditer(code))):
+        code = code[: m.start()] + code[m.end() - 1 + len(braced(code, m.end() - 1)):]
+    return code
+
+
+def rule_tab_bar_clear(app):
+    codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
+    if not any(re.search(r"\bTabView\b", without_previews(code)) for _, code in codes):
+        return None  # no tab bar to hide behind
+    bad = []
+    for path, code in codes:
+        for m in BOTTOM_BAR.finditer(code):
+            bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "a bottom toolbar in an app with tabs sits behind the iOS 26 tab bar; float it with forgeBar: " + ", ".join(bad)
+    return True, ""
+
+
+TILE_CONTAINER = re.compile(r"\b(?:LazyVGrid|LazyHGrid|LazyHStack|Grid|HStack)\s*[({]")
+
+
+def rule_one_tap_one_page(app):
+    """Links side by side (a grid, a shelf, "Artist · Album" in an HStack)
+    use ForgeSurfaceLink: in a List row, every NavigationLink in the row
+    opens on one tap (Soundscape's genre grid opened all twenty genres,
+    2026-11-24). Outside a List it makes no difference, so the rule
+    doesn't try to tell."""
+    sources = swift_sources(app)
+    if not sources:
+        return None
+    bad = []
+    for path in sources:
+        code = without_previews(swift_code_mask(read(path)))
+        for m in TILE_CONTAINER.finditer(code):
+            i = m.end() - 1
+            if code[i] == "(":  # LazyVGrid(columns: ...) {
+                depth = 0
+                while i < len(code):
+                    depth += {"(": 1, ")": -1}.get(code[i], 0)
+                    i += 1
+                    if depth == 0:
+                        break
+                while i < len(code) and code[i] in " \t\n":
+                    i += 1
+            if i < len(code) and code[i] == "{" and re.search(r"\bNavigationLink\s*[({]", braced(code, i)):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "links side by side (grid, shelf, HStack) use ForgeSurfaceLink, not NavigationLink (a List row opens every link in it on one tap): " + ", ".join(bad)
+    return True, ""
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -906,21 +1561,38 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
+    ("layered-navigation", "Pushed pages through ForgeAppKit's Layered Navigation: a thing already open is gone back to, never stacked twice", rule_layered_navigation),
+    ("one-tap-one-page", "Links side by side (a grid, a shelf, an HStack) use ForgeAppKit's `ForgeSurfaceLink`: a List row opens every `NavigationLink` in it on one tap", rule_one_tap_one_page),
+    ("tab-bar-clear", "No bottom toolbar in an app with tabs: on iOS 26 it sits behind the floating tab bar; bottom actions float with `forgeBar`", rule_tab_bar_clear),
+    ("glass", "Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
+    ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
+    ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
+    ("choice", "Chips and one-of-several tiles through ForgeUI's `forgeChoice` style, never a hand-added `.isSelected`", rule_choice),
+    ("stat", "Figures with their name (totals, measurements) through ForgeUI's `ForgeStat`", rule_stat),
+    ("silent-wait", "A button that waits shows it: an async `ForgeButton`, `forgeFormToolbar`, a shown working flag, or a pending row", rule_silent_wait),
+    ("rating", "Ratings through ForgeUI's `ForgeRating`, never stars drawn by hand", rule_rating),
+    ("thumbnail", "Pictures in ForgeUI's `ForgeThumbnail`, never an image clipped to a shape by hand", rule_thumbnail),
     ("rename", "Renaming and naming new things through ForgeUI's `forgeRename`, which shows why a name was refused", rule_rename),
     ("share-file", "A file the app wrote (an export, a backup) goes straight to the share sheet with ForgeUI's `forgeShareFile`", rule_share_file),
+    ("no-silent-cut", "Typed text over a limit is refused with the limit, never cut short; other cuts say why (`// cut:`)", rule_no_silent_cut),
+    ("limits-from-rust", "Limits Rust enforces are read from Rust, never copied into Swift as numbers (`// swift-only:` for Swift's own)", rule_limits_from_rust),
     ("row-actions", "Row actions through ForgeUI's `forgeRowActions`: a swipe and a long-press menu, never swipe-only", rule_row_actions),
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
+    ("user-agent", "The app's User-Agent on `http` service requests too", rule_user_agent),
     ("location", "Location through the `location` service", rule_location),
     ("rust-cancellation", "Rust work cancelled from Swift through ForgeKit's `withRustCancellation`", rule_rust_cancellation),
+    ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),
     ("swift-logging", "Swift logs through `ForgeLog`, never `print` or `NSLog`", rule_swift_logging),
     ("connectivity", "Network changes through the `connectivity` service, no own `NWPathMonitor`", rule_connectivity),
+    ("document", "App state saved as JSON through forge-app's `Document`, never a `JsonFile` the app holds itself", rule_document),
     ("requirements", "requirements.toml, every requirement with a test", rule_requirements),
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),
     ("device-lab", "Reachable from Device Lab's Apps screen", rule_device_lab),
+    ("lab-scenarios", "Phone scenarios drive Device Lab and open the app with `-launchApp`, never a separate install", rule_lab_scenarios),
     ("device-family", "Says which devices it runs on (`[ios] devices`)", rule_device_family),
 ]
 RULE_IDS = {r[0] for r in RULES}
@@ -988,6 +1660,14 @@ for name in apps:
             )
         if ok and listed:
             problems.append(f"{name}: {rule_id} passes now; remove it from docs/app-parity.toml")
+
+# The Rust starter is where every app core begins: no silent cuts there either.
+for path in sorted((root / "templates" / "app-rust").rglob("*.rs")):
+    for line in silent_cut_problems(read(path)):
+        problems.append(
+            f"{path.relative_to(root)}:{line}: no-silent-cut: text cut short without "
+            "a `// cut:` reason"
+        )
 
 # The starters are where every app's screens begin, so they meet the screen
 # rules too (no lag list for them).

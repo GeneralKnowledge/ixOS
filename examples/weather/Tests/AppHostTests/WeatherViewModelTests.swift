@@ -49,11 +49,22 @@ final class WeatherViewModelTests: XCTestCase {
             client: try offlineClient(), location: FakeLocation(result: .failure(.denied)))
         await model.start()
         XCTAssertEqual(model.locationMessage, LocationError.denied.userMessage)
+        XCTAssertTrue(model.locationDenied)
         XCTAssertFalse(model.isRefreshing)
         XCTAssertNil(model.place)
         XCTAssertNil(model.report)
         XCTAssertEqual(model.pages.map(\.id), [WeatherPage.myLocationID])
         XCTAssertEqual(model.selection, WeatherPage.myLocationID)
+    }
+
+    @MainActor
+    func testNoFixIsNotADenial() async throws {
+        let model = WeatherViewModel(
+            client: try offlineClient(),
+            location: FakeLocation(result: .failure(.unavailable(detail: "indoors"))))
+        await model.start()
+        XCTAssertNotNil(model.locationMessage)
+        XCTAssertFalse(model.locationDenied)
     }
 
     @MainActor

@@ -29,6 +29,7 @@ mod code_send;
 mod code_session;
 mod device;
 pub mod device_chat;
+pub mod group;
 mod migrate;
 mod model;
 mod node;
@@ -36,10 +37,12 @@ mod outbox;
 mod presence;
 mod record;
 mod resolver;
+pub mod rooms;
 mod store;
 pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, ServerHealth};
 mod hex;
 mod mailbox;
+mod mailbox_client;
 pub mod mailbox_server;
 mod trust;
 mod web;
@@ -173,8 +176,8 @@ pub struct RelayCore {
     /// Trusted devices the app sees nearby, with their addresses.
     nearby: Mutex<HashMap<String, Vec<String>>>,
     /// When each trusted device last got past Hello on a connection it
-    /// made here (in memory; deliveries and status answers are saved in
-    /// the record as `last_seen_ms`). For presence (`presence`).
+    /// made here (in memory; Hellos, deliveries and status answers are
+    /// saved in the record as `last_seen_ms`). For presence (`presence`).
     reached: Mutex<HashMap<String, i64>>,
     /// Whether the node's addresses are watched for network changes.
     watching_network: AtomicBool,
@@ -414,7 +417,12 @@ impl RelayCore {
             device_chat::PeerLogs::new(directory.path().join("devices"), Arc::clone(&store));
         let store_dir = code_dir.join("store");
         // Outside Hybrid the endpoint has no relay and no lookup server.
-        let servers = record.devices.servers.in_mode(record.devices.mode);
+        let servers = record
+            .devices
+            .servers
+            .clone()
+            .upgraded()
+            .in_mode(record.devices.mode);
         let state = State {
             record,
             store,
@@ -738,12 +746,15 @@ impl RelayCore {
                 None => inbox.get(name).map(|p| p.to_string_lossy().into_owned()),
             },
             |id| progress.get(&id).copied().unwrap_or(0),
+            now_ms(),
         )
     }
 
     /// Removes a history entry and, for a received file, the file.
     pub async fn remove_transfer(&self, id: u64) -> Result<(), RelayError> {
         // Taken off the outbox first, if it is waiting: it is never sent.
+        // One already in the recipient's mailbox still arrives; only its
+        // row goes.
         self.cancel_delivery(id).await;
         let received = self.received();
         self.rt
@@ -938,13 +949,15 @@ impl RelayCore {
         })
     }
 
-    /// Tries every trusted device something waits for, now: Relay came
-    /// back to the foreground. (Seeing a device, or it connecting here,
-    /// tries it too; so does a timer while Relay is open.)
+    /// Tries every trusted device something waits for, now, and collects
+    /// the mailbox: Relay came back to the foreground. (Seeing a device, or
+    /// it connecting here, tries it too; so does each mailbox round, every
+    /// 30 s while Relay is open, for items the mailbox has let expire.)
     pub fn deliver_waiting(&self) {
         for to in self.record.get().waiting_for() {
             self.try_now(&to);
         }
+        self.collect_mailbox();
     }
 
     /// Trusted and revoked devices, by name. Forgotten ones aren't listed.
@@ -1097,7 +1110,7 @@ impl RelayCore {
 
     /// Relay's own servers: a relay and a lookup server (M2 PR 7).
     pub fn servers(&self) -> RelayServers {
-        self.record.get().devices.servers.clone()
+        self.record.get().devices.servers.clone().upgraded()
     }
 
     /// Whether Relay's relay answers now: `Off` when none is in use (none
@@ -1123,6 +1136,10 @@ impl RelayCore {
         let clean = RelayServers {
             relay_url: servers.relay_url.filter(|u| !u.trim().is_empty()),
             lookup_url: servers.lookup_url.filter(|u| !u.trim().is_empty()),
+            mailbox: servers
+                .mailbox
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty()),
         };
         clean
             .check()
@@ -1181,11 +1198,12 @@ impl RelayCore {
     /// device trusted again from the list. The only way a revoked device
     /// becomes trusted again.
     pub async fn trust_device(&self, endpoint_id: String) -> Result<(), RelayError> {
-        let offered = {
-            let mut offers = lock(&self.trust_offers);
-            let at = offers.iter().position(|o| o.endpoint_id == endpoint_id);
-            at.and_then(|at| offers.remove(at))
-        };
+        // The offer stays until trust is saved (the command below removes
+        // it), so a failed save can be tried again.
+        let offered = lock(&self.trust_offers)
+            .iter()
+            .find(|o| o.endpoint_id == endpoint_id)
+            .cloned();
         let introducer = offered.as_ref().and_then(|o| o.introducer_id.clone());
         let name = match offered {
             Some(o) => o.name,
@@ -1213,8 +1231,8 @@ impl RelayCore {
                     }
                     Ok(())
                 })?;
-                // A sync that ran after the offer was taken above, but
-                // before this command, may have offered the device again.
+                // Trust is saved: drop the offer (and any repeat a sync
+                // added meanwhile).
                 lock(&offers).retain(|o| o.endpoint_id != endpoint_id);
                 Ok(())
             })
@@ -1243,6 +1261,8 @@ impl RelayCore {
         self.close_site_connections(Some(&endpoint_id));
         // What waited for it ends: No longer trusted.
         self.wake(&endpoint_id);
+        // Its pass is taken back from the mailbox now.
+        self.collect_mailbox();
         Ok(())
     }
 
@@ -1263,6 +1283,7 @@ impl RelayCore {
             .await?;
         self.close_site_connections(Some(&endpoint_id));
         self.wake(&endpoint_id);
+        self.collect_mailbox();
         Ok(())
     }
 
@@ -1505,86 +1526,18 @@ impl RelayCore {
         endpoint_id: String,
         paths: Vec<String>,
     ) -> Result<Transfer, RelayError> {
-        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-        if paths.is_empty() {
-            return Err(RelayError::File {
-                reason: "nothing to send".into(),
-            });
-        }
-        if let Some(missing) = paths.iter().find(|p| !p.is_file() && !p.is_dir()) {
-            return Err(RelayError::File {
-                reason: format!("there is no file or folder at {}", missing.display()),
-            });
-        }
-        let name = code_send::send_name(&paths);
-        let size = code_send::items_in(&paths)
-            .map(|f| f.iter().map(|(_, _, n)| n).sum())
-            .unwrap_or(0);
-        let file = match paths.as_slice() {
-            [one] => Some(one.to_string_lossy().into_owned()),
-            _ => None,
-        };
-        let item = SavedItem::File {
-            name: name.clone(),
-            size,
-            file: file.clone(),
-        };
-        self.trusted(&endpoint_id)?;
-        let id = outbox::new_id();
-        let node = self.node().await?;
-        let offer = code::TOKIO
-            .spawn(async move {
-                let (offer, _tags) = code_send::prepare(&paths, name, &node, true).await?;
-                let content = if offer.collection {
-                    iroh_blobs::HashAndFormat::hash_seq(offer.hash)
-                } else {
-                    iroh_blobs::HashAndFormat::raw(offer.hash)
-                };
-                node.store
-                    .tags()
-                    .set(outbox::tag_name(&hex::hex(&id)), content)
-                    .await
-                    .map_err(node::file_error)?;
-                Ok::<_, RelayError>(offer)
-            })
+        self.send_to_device_kept(endpoint_id, paths, &AtomicBool::new(false))
             .await
-            .unwrap_or_else(|e| Err(code::connection(e)))?;
-        // The conversation shows it as a message with one attachment,
-        // Queued until the delivery ends.
-        let delivery = hex::hex(&id);
-        let local = file.as_deref().map(Path::new);
-        let attachment = device_chat::files_attachment(
-            &hex::hex(offer.hash.as_bytes()),
-            offer.collection,
-            &offer.name,
-            size,
-        );
-        let me = self.identity();
-        let log = self.peer_logs.get(&endpoint_id)?;
-        let kept = local.and_then(|file| log.keep(file, &attachment.id));
-        let message = chat_core::Message {
-            id: device_chat::files_message_id(&delivery),
-            author: me.name,
-            author_id: device_chat::ME.into(),
-            attachments: vec![attachment],
-            status: chat_core::MessageStatus::Queued,
-            ..chat_core::Message::default()
-        };
-        // The message and its delivery are saved together (P3).
-        let path = kept.or_else(|| local.map(Path::to_path_buf));
-        self.queue_with(
-            id,
-            endpoint_id,
-            item,
-            outbox::Payload::files(&offer),
-            Some((message, path)),
-        )
-        .await
     }
 
     /// Stops a send to a trusted device that is still going, or takes it
-    /// off the outbox if it is waiting.
+    /// off the outbox if it is waiting. Does nothing to one already in the
+    /// recipient's mailbox ([`TransferStatus::InMailbox`]): it arrives
+    /// anyway, so it can't be cancelled.
     pub fn cancel_transfer(&self, id: u64) {
+        if self.out_of_hands(id) {
+            return;
+        }
         if let Some(stop) = lock(&self.device_stops).get(&id) {
             stop.store(true, Ordering::SeqCst);
             return;
@@ -1773,6 +1726,8 @@ impl RelayCore {
                 .await
             })
             .await;
+        // A new mailbox gets this device's passes registered now.
+        self.collect_mailbox();
     }
 
     /// Asks the introducer `endpoint_id` for its list in the background;
@@ -1919,7 +1874,63 @@ impl CoreDevices {
     }
 }
 
+impl CoreDevices {
+    /// `DeviceInbound::finish_file`, saying whether it was saved: the
+    /// mailbox acknowledges an item only once it is.
+    pub(crate) fn file_done(
+        &self,
+        id: u64,
+        from: &str,
+        delivery: [u8; 16],
+        content: [u8; 32],
+        result: Result<String, String>,
+    ) -> Result<(), RelayError> {
+        if let Some(core) = self.core.upgrade() {
+            lock(&core.progress).remove(&id);
+        }
+        // The conversation shows it as a message with the saved file.
+        let message = match &result {
+            Ok(path) => match self.files_arrived(from, delivery, content, Path::new(path)) {
+                Ok(message) => Some((message, PathBuf::from(path))),
+                Err(err) => {
+                    forge_runtime::logging::warn!("relay couldn't make a files message: {err}");
+                    None
+                }
+            },
+            Err(_) => None,
+        };
+        let (status, file) = match result {
+            Ok(path) => (SavedStatus::Done, Some(path)),
+            Err(reason) => (SavedStatus::Failed { reason }, None),
+        };
+        let from = from.to_string();
+        // Its message, its id and its history entry: one transaction (P3).
+        self.command_with("device-file-done", move |r, c| {
+            if let Some((message, path)) = message {
+                c.add_files(&from, message, Some(&path))?;
+            }
+            if status == SavedStatus::Done {
+                r.remember_received(&from, &delivery, now_ms());
+            }
+            r.finish(id, status, file);
+            Ok(())
+        })
+    }
+}
+
 impl device::DeviceInbound for CoreDevices {
+    fn group(&self, from: &str, item: group::GroupItem) -> Result<(), RelayError> {
+        let core = self.core.upgrade().ok_or(RelayError::Stopped {
+            kind: forge_app::ErrorKind::ShutDown,
+        })?;
+        let me = forge_runtime::block_on(core.node())?.id().to_string();
+        let from = from.to_string();
+        // The group and its conversation: one transaction.
+        self.command_with("group-item", move |r, c| {
+            r.take_group_item(c, &me, &from, item)
+        })
+    }
+
     fn message(&self, from: &str, message: device_chat::PeerMessage) -> Result<(), RelayError> {
         let core = self.core.upgrade().ok_or(RelayError::Stopped {
             kind: forge_app::ErrorKind::ShutDown,
@@ -1988,6 +1999,7 @@ impl device::DeviceInbound for CoreDevices {
 
     fn answered(&self, from: &str, report: &AskReport) {
         // Timings only, never the text.
+        // cut: the start of a device id, for the log
         let short: String = from.chars().take(8).collect();
         forge_runtime::logging::info!(
             "relay answered an ask from {short}: model={} pieces={} ms={} error={:?}",
@@ -2009,7 +2021,7 @@ impl device::DeviceInbound for CoreDevices {
         let Some(core) = self.core.upgrade() else {
             return device::StatusReport::default();
         };
-        let mut offers: Vec<String> = ["notes", "files", "messages"]
+        let mut offers: Vec<String> = ["notes", "files", "messages", "groups"]
             .into_iter()
             .map(String::from)
             .collect();
@@ -2034,18 +2046,28 @@ impl device::DeviceInbound for CoreDevices {
         }
     }
 
-    fn met(&self, from: &str, addresses: Vec<String>, route: Option<RouteKind>) {
+    fn met(
+        &self,
+        from: &str,
+        addresses: Vec<String>,
+        route: Option<RouteKind>,
+        mailbox: Option<mailbox::PeerMailbox>,
+    ) {
         let Some(core) = self.core.upgrade() else {
             return;
         };
         lock(&core.problems).remove(from);
+        // It has just been told this device's pass: registered now, so
+        // whatever it leaves while this device is closed is taken.
+        core.collect_mailbox();
         let from = from.to_string();
+        let now = now_ms();
         code::TOKIO.spawn(async move {
             let _ = core
                 .rt
                 .command("device-met", move |state| {
                     state.change(|r| {
-                        r.devices.met(&from, &addresses, route);
+                        r.devices.met(&from, &addresses, route, mailbox, now);
                         Ok(())
                     })
                 })
@@ -2110,36 +2132,7 @@ impl device::DeviceInbound for CoreDevices {
         content: [u8; 32],
         result: Result<String, String>,
     ) {
-        if let Some(core) = self.core.upgrade() {
-            lock(&core.progress).remove(&id);
-        }
-        // The conversation shows it as a message with the saved file.
-        let message = match &result {
-            Ok(path) => match self.files_arrived(from, delivery, content, Path::new(path)) {
-                Ok(message) => Some((message, PathBuf::from(path))),
-                Err(err) => {
-                    forge_runtime::logging::warn!("relay couldn't make a files message: {err}");
-                    None
-                }
-            },
-            Err(_) => None,
-        };
-        let (status, file) = match result {
-            Ok(path) => (SavedStatus::Done, Some(path)),
-            Err(reason) => (SavedStatus::Failed { reason }, None),
-        };
-        let from = from.to_string();
-        // Its message, its id and its history entry: one transaction (P3).
-        if let Err(err) = self.command_with("device-file-done", move |r, c| {
-            if let Some((message, path)) = message {
-                c.add_files(&from, message, Some(&path))?;
-            }
-            if status == SavedStatus::Done {
-                r.remember_received(&from, &delivery, now_ms());
-            }
-            r.finish(id, status, file);
-            Ok(())
-        }) {
+        if let Err(err) = self.file_done(id, from, delivery, content, result) {
             forge_runtime::logging::warn!("relay couldn't save a transfer: {err}");
         }
     }
@@ -2190,3 +2183,93 @@ impl LanguageModel for OneAtATime {
 }
 
 forge_app::export_runtime!(RelayCore, rt);
+
+impl RelayCore {
+    /// [`send_to_device`](RelayCore::send_to_device), setting `queued` once
+    /// its message is in the conversation: a failure after that (the other
+    /// device refused it) leaves a "Not Sent" message, one before it
+    /// leaves nothing.
+    pub(crate) async fn send_to_device_kept(
+        &self,
+        endpoint_id: String,
+        paths: Vec<String>,
+        queued: &AtomicBool,
+    ) -> Result<Transfer, RelayError> {
+        let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        if paths.is_empty() {
+            return Err(RelayError::File {
+                reason: "nothing to send".into(),
+            });
+        }
+        if let Some(missing) = paths.iter().find(|p| !p.is_file() && !p.is_dir()) {
+            return Err(RelayError::File {
+                reason: format!("there is no file or folder at {}", missing.display()),
+            });
+        }
+        let name = code_send::send_name(&paths);
+        let size = code_send::items_in(&paths)
+            .map(|f| f.iter().map(|(_, _, n)| n).sum())
+            .unwrap_or(0);
+        let file = match paths.as_slice() {
+            [one] => Some(one.to_string_lossy().into_owned()),
+            _ => None,
+        };
+        let item = SavedItem::File {
+            name: name.clone(),
+            size,
+            file: file.clone(),
+        };
+        self.trusted(&endpoint_id)?;
+        let id = outbox::new_id();
+        let node = self.node().await?;
+        let offer = code::TOKIO
+            .spawn(async move {
+                let (offer, _tags) = code_send::prepare(&paths, name, &node, true).await?;
+                let content = if offer.collection {
+                    iroh_blobs::HashAndFormat::hash_seq(offer.hash)
+                } else {
+                    iroh_blobs::HashAndFormat::raw(offer.hash)
+                };
+                node.store
+                    .tags()
+                    .set(outbox::tag_name(&hex::hex(&id)), content)
+                    .await
+                    .map_err(node::file_error)?;
+                Ok::<_, RelayError>(offer)
+            })
+            .await
+            .unwrap_or_else(|e| Err(code::connection(e)))?;
+        // The conversation shows it as a message with one attachment,
+        // Queued until the delivery ends.
+        let delivery = hex::hex(&id);
+        let local = file.as_deref().map(Path::new);
+        let attachment = device_chat::files_attachment(
+            &hex::hex(offer.hash.as_bytes()),
+            offer.collection,
+            &offer.name,
+            size,
+        );
+        let me = self.identity();
+        let log = self.peer_logs.get(&endpoint_id)?;
+        let kept = local.and_then(|file| log.keep(file, &attachment.id));
+        let message = chat_core::Message {
+            id: device_chat::files_message_id(&delivery),
+            author: me.name,
+            author_id: device_chat::ME.into(),
+            attachments: vec![attachment],
+            status: chat_core::MessageStatus::Queued,
+            ..chat_core::Message::default()
+        };
+        // The message and its delivery are saved together (P3).
+        let path = kept.or_else(|| local.map(Path::to_path_buf));
+        self.queue_with(
+            id,
+            endpoint_id,
+            item,
+            outbox::Payload::files(&offer),
+            Some((message, path)),
+            Some(queued),
+        )
+        .await
+    }
+}
