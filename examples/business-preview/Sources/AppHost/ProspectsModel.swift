@@ -93,6 +93,11 @@ public final class ProspectsModel {
     /// pack Rust takes, and it follows a redirect only to another https
     /// address.
     private static func fetch(_ url: URL) async throws -> URL {
+        // Off the main actor: a large pack is many buffer appends and writes.
+        try await Task.detached(priority: .userInitiated) { try await download(url) }.value
+    }
+
+    private nonisolated static func download(_ url: URL) async throws -> URL {
         #if canImport(Darwin)
             let limit = businessPreviewMaxPackBytes()
             let (bytes, response) = try await URLSession.shared.bytes(from: url, delegate: HTTPSOnlyRedirects())
