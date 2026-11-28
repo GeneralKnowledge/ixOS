@@ -89,13 +89,18 @@ public final class ProspectsModel {
     }
 
     /// Saves the download to a folder of its own, so the pack keeps a name
-    /// Rust can read.
+    /// Rust can read. It stops as soon as the download outgrows the largest
+    /// pack Rust takes, and it follows a redirect only to another https
+    /// address.
     private static func fetch(_ url: URL) async throws -> URL {
         #if canImport(Darwin)
-            let (downloaded, response) = try await URLSession.shared.download(from: url)
+            let limit = businessPreviewMaxPackBytes()
+            let (bytes, response) = try await URLSession.shared.bytes(from: url, delegate: HTTPSOnlyRedirects())
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                try? FileManager.default.removeItem(at: downloaded)
                 throw DownloadError.status(http.statusCode)
+            }
+            if response.expectedContentLength > 0, UInt64(response.expectedContentLength) > limit {
+                throw DownloadError.tooLarge
             }
             let folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("BusinessPreviewDownloads", isDirectory: true)
@@ -103,7 +108,29 @@ public final class ProspectsModel {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let name = url.lastPathComponent.isEmpty ? "pack.zip" : url.lastPathComponent
             let file = folder.appendingPathComponent(name)
-            try FileManager.default.moveItem(at: downloaded, to: file)
+            do {
+                FileManager.default.createFile(atPath: file.path, contents: nil)
+                let handle = try FileHandle(forWritingTo: file)
+                defer { try? handle.close() }
+                var buffer = Data()
+                buffer.reserveCapacity(64 * 1024)
+                var received: UInt64 = 0
+                for try await byte in bytes {
+                    buffer.append(byte)
+                    if buffer.count == 64 * 1024 {
+                        received += UInt64(buffer.count)
+                        if received > limit { throw DownloadError.tooLarge }
+                        try handle.write(contentsOf: buffer)
+                        buffer.removeAll(keepingCapacity: true)
+                    }
+                }
+                received += UInt64(buffer.count)
+                if received > limit { throw DownloadError.tooLarge }
+                try handle.write(contentsOf: buffer)
+            } catch {
+                try? FileManager.default.removeItem(at: folder)
+                throw error
+            }
             return file
         #else
             throw DownloadError.unsupported
@@ -141,6 +168,7 @@ public final class ProspectsModel {
 
 enum DownloadError: ForgeDescribedError {
     case status(Int)
+    case tooLarge
     case unsupported
 
     var failure: ForgeFailure {
@@ -149,11 +177,28 @@ enum DownloadError: ForgeDescribedError {
             ForgeFailure(title: "Pack Not Found", message: "Nothing is at that address. Check it and try again.")
         case .status(let code):
             ForgeFailure(title: "Download Failed", message: "The server answered \(code). Try again in a moment.", isRetryable: true)
+        case .tooLarge:
+            ForgeFailure(title: "Pack Too Large", message: "The file at that address is larger than the preview takes.")
         case .unsupported:
             ForgeFailure(title: "Can't Download Here", message: "Downloading packs needs an iPhone.")
         }
     }
 }
+
+#if canImport(Darwin)
+    /// Lets a pack download follow a redirect only to another https address:
+    /// the address the person typed was checked, so every hop must be too.
+    private final class HTTPSOnlyRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest
+        ) async -> URLRequest? {
+            request.url?.scheme?.lowercased() == "https" ? request : nil
+        }
+    }
+#endif
 
 /// What the preview screens show for a business, loaded from Rust.
 @Observable

@@ -328,3 +328,23 @@ fn packs_are_downloaded_over_https_only() {
         );
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_linked_folder_inside_a_pack_is_never_followed() {
+    let data = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let core = open(data.path());
+    let dir = folder(work.path(), &profile_text());
+    // `images` becomes a link to a folder outside the pack that holds a real logo.
+    let outside = work.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("logo.png"), logo()).unwrap();
+    std::fs::remove_dir_all(dir.join("images")).unwrap();
+    std::os::unix::fs::symlink(&outside, dir.join("images")).unwrap();
+    assert!(matches!(
+        import(&core, &dir).unwrap_err(),
+        BusinessPreviewError::NotAPack { .. }
+    ));
+    assert!(core.prospects().is_empty());
+}

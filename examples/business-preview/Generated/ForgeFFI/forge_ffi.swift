@@ -2325,6 +2325,17 @@ public func businessPreviewErrorKind(error: BusinessPreviewError) -> ErrorKind  
 })
 }
 /**
+ * The largest pack the preview takes, so a download can stop before it
+ * grows past it.
+ */
+public func businessPreviewMaxPackBytes() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_business_preview_core_fn_func_business_preview_max_pack_bytes(uniffiCallStatus
+    )
+})
+}
+/**
  * Checks an address typed to download a pack from, and returns it as the
  * download should use it. Packs come over https only.
  */
@@ -2356,6 +2367,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_business_preview_core_checksum_func_business_preview_error_kind() != 45471) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_business_preview_core_checksum_func_business_preview_max_pack_bytes() != 33478) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_business_preview_core_checksum_func_business_preview_pack_address() != 43583) {

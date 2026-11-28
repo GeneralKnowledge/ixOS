@@ -139,6 +139,13 @@ pub fn business_preview_concept_label() -> String {
     CONCEPT_LABEL.to_string()
 }
 
+/// The largest pack the preview takes, so a download can stop before it
+/// grows past it.
+#[uniffi::export]
+pub fn business_preview_max_pack_bytes() -> u64 {
+    pack::MAX_PACK_BYTES
+}
+
 /// One business on the prospects list.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct Prospect {

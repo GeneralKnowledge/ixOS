@@ -136,13 +136,20 @@ struct Folder(PathBuf);
 
 impl Files for Folder {
     fn get(&mut self, path: &str, max: u64, what: &str) -> Result<Option<Vec<u8>>, PackError> {
-        let full = self.0.join(path);
-        // Only plain files inside the folder: never a link out of it.
-        match std::fs::symlink_metadata(&full) {
-            Ok(meta) if meta.is_file() => {}
-            Ok(_) => return Err(PackError::NotAPack(format!("{path} isn't a plain file"))),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(PackError::Io(e.to_string())),
+        // Only plain files in plain folders inside the pack: a link in any
+        // part of the path could lead out of it.
+        let mut full = self.0.clone();
+        let parts: Vec<&str> = path.split('/').collect();
+        for (i, part) in parts.iter().enumerate() {
+            full.push(part);
+            let last = i + 1 == parts.len();
+            match std::fs::symlink_metadata(&full) {
+                Ok(meta) if last && meta.is_file() => {}
+                Ok(meta) if !last && meta.is_dir() => {}
+                Ok(_) => return Err(PackError::NotAPack(format!("{path} isn't a plain file"))),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(PackError::Io(e.to_string())),
+            }
         }
         let file = File::open(&full).map_err(|e| PackError::Io(e.to_string()))?;
         read_capped(file, max, what).map(Some)

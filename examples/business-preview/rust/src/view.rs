@@ -298,8 +298,16 @@ pub fn hours(periods: &[Field<business_profile::OpeningPeriod>]) -> Vec<DayHours
 
 /// A `tel:` URL from a number as the site writes it, or None if it has no digits.
 pub fn tel_url(number: &str) -> Option<String> {
+    let number = number.trim();
+    // "+44 (0)1506 ..." shows the trunk 0 for local callers; dialled after
+    // the country code it reaches the wrong number.
+    let number = if number.starts_with('+') {
+        number.replace("(0)", "")
+    } else {
+        number.to_string()
+    };
     let mut out = String::new();
-    for c in number.trim().chars() {
+    for c in number.chars() {
         if c.is_ascii_digit() || (c == '+' && out.is_empty()) {
             out.push(c);
         }
@@ -471,8 +479,9 @@ mod tests {
         assert_eq!(format_duration(60), "1 hr");
         assert_eq!(
             tel_url("+44 (0)1506 000 000").as_deref(),
-            Some("tel:+4401506000000")
+            Some("tel:+441506000000")
         );
+        assert_eq!(tel_url("01506 000000").as_deref(), Some("tel:01506000000"));
         assert_eq!(tel_url("call us"), None);
         assert_eq!(parse_hex("#C5A66A"), Some(0xC5A66A));
         assert_eq!(parse_hex("C5A66A"), None);
