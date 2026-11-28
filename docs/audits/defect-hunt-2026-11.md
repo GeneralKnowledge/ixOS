@@ -127,9 +127,9 @@ So the next pass doesn't repeat them:
 
 **Pocket Library Read Aloud across a chapter change with the screen locked.** When reading aloud moves to the next chapter, `show(chapter:)` sets `pendingScroll`, and `savePosition` saves nothing while `pendingScroll` is set (`ReaderView.swift:355`). It is cleared by the reader view's `.task` after it scrolls (`crates/forge-reader/swift/ForgeReader.swift:131-142`). If SwiftUI doesn't run that task while the phone is locked, no position is saved for the rest of the listening session, and a closed app reopens at the earlier chapter. Check: lock the phone during Read Aloud, let it cross into a new chapter and a few paragraphs, force-quit, reopen. If it opens in the new chapter, drop this.
 
-## Suggested fix PRs
+## Fix PRs as proposed (all merged)
 
-Each is small and separate; Reuben picks which go ahead.
+Proposed on 22 Nov as small, separate PRs for Reuben to choose from. He approved all seven and each has merged; the PR for each finding is in the table at the top. The Read Aloud check above passed on the phone the same day.
 1. Relay composer keeps refused text and shows the limit (finding 1). Swift only; needs a compile check on the laptop.
 2. Good Dog records sessions across midnight (finding 2). Rust only, with a test.
 3. Pocket Library clips imported metadata (finding 3). Rust only, with a test.
