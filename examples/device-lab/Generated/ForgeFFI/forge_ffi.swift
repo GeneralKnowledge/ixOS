@@ -2448,6 +2448,14 @@ public protocol BonsaiHarnessProtocol: AnyObject, Sendable {
     func startCustomPlan(model: HarnessModel, request: String, project: String) throws 
     
     /**
+     * A request in the person's own words, tests first: Bonsai writes the
+     * tests, the plan waits while the person checks (and may edit) them,
+     * and approving it has Bonsai write the code that passes them
+     * unchanged. In the person's Python Lab project `project`.
+     */
+    func startCustomTestsFirst(model: HarnessModel, request: String, project: String) throws 
+    
+    /**
      * Starts a ladder task in a fresh project of its own (the last run's
      * journal is kept in the projects folder's `.runs`).
      */
@@ -2739,6 +2747,23 @@ open func startCustom(model: HarnessModel, request: String, project: String)thro
 open func startCustomPlan(model: HarnessModel, request: String, project: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_bonsaiharness_start_custom_plan(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHarnessModel_lower(model),
+        FfiConverterString.lower(request),
+        FfiConverterString.lower(project),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * A request in the person's own words, tests first: Bonsai writes the
+     * tests, the plan waits while the person checks (and may edit) them,
+     * and approving it has Bonsai write the code that passes them
+     * unchanged. In the person's Python Lab project `project`.
+     */
+open func startCustomTestsFirst(model: HarnessModel, request: String, project: String)throws   {try rustCallWithError(FfiConverterTypeHarnessError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_bonsaiharness_start_custom_tests_first(
             self.uniffiCloneHandle(),
         FfiConverterTypeHarnessModel_lower(model),
         FfiConverterString.lower(request),
@@ -10672,6 +10697,14 @@ public struct HarnessPlan: Equatable, Hashable {
      * Blocked: the question to answer before it can go on.
      */
     public var question: String?
+    /**
+     * A tests-first request's test file.
+     */
+    public var testsFile: String?
+    /**
+     * The tests waiting for the person to check them, as they are now.
+     */
+    public var testsToCheck: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -10693,7 +10726,13 @@ public struct HarnessPlan: Equatable, Hashable {
          */canContinue: Bool, 
         /**
          * Blocked: the question to answer before it can go on.
-         */question: String?) {
+         */question: String?, 
+        /**
+         * A tests-first request's test file.
+         */testsFile: String?, 
+        /**
+         * The tests waiting for the person to check them, as they are now.
+         */testsToCheck: String?) {
         self.id = id
         self.request = request
         self.status = status
@@ -10704,6 +10743,8 @@ public struct HarnessPlan: Equatable, Hashable {
         self.acceptance = acceptance
         self.canContinue = canContinue
         self.question = question
+        self.testsFile = testsFile
+        self.testsToCheck = testsToCheck
     }
 
     
@@ -10731,7 +10772,9 @@ public struct FfiConverterTypeHarnessPlan: FfiConverterRustBuffer {
                 passed: FfiConverterUInt32.read(from: &buf), 
                 acceptance: FfiConverterSequenceString.read(from: &buf), 
                 canContinue: FfiConverterBool.read(from: &buf), 
-                question: FfiConverterOptionString.read(from: &buf)
+                question: FfiConverterOptionString.read(from: &buf), 
+                testsFile: FfiConverterOptionString.read(from: &buf), 
+                testsToCheck: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -10746,6 +10789,8 @@ public struct FfiConverterTypeHarnessPlan: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.acceptance, into: &buf)
         FfiConverterBool.write(value.canContinue, into: &buf)
         FfiConverterOptionString.write(value.question, into: &buf)
+        FfiConverterOptionString.write(value.testsFile, into: &buf)
+        FfiConverterOptionString.write(value.testsToCheck, into: &buf)
     }
 }
 
@@ -19743,6 +19788,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom_plan() != 61133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom_tests_first() != 58177) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_bonsaiharness_start_ladder() != 34402) {

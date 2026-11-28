@@ -67,6 +67,9 @@ pub enum Criterion {
     /// each value as the text of a label. A chart whose bars ignore the
     /// numbers fails.
     SvgBars { path: String, values: Vec<String> },
+    /// `path` is a unittest test file with at least one test: what the
+    /// first task of a tests-first request makes, before any code.
+    TestsWritten { path: String },
 }
 
 impl Criterion {
@@ -96,6 +99,7 @@ impl Criterion {
                 "{path} has a bar for each of {}, sized by its value and labelled with it",
                 values.join(", ")
             ),
+            Criterion::TestsWritten { path } => format!("{path} has unittest tests"),
         }
     }
 
@@ -221,6 +225,27 @@ impl Criterion {
                         values.join(", ")
                     )
                 })
+            }
+            Criterion::TestsWritten { path } => {
+                let Some(text) = read(path) else {
+                    return Err(format!("{path} is missing: write the tests there"));
+                };
+                // A cheap check, not a parse: the person reads the tests
+                // before any code is written. Test methods are indented
+                // inside a class, and the file needs a TestCase.
+                let tests = text
+                    .lines()
+                    .filter(|line| {
+                        line.starts_with(char::is_whitespace)
+                            && line.trim_start().starts_with("def test")
+                    })
+                    .count();
+                if tests == 0 || !text.contains("unittest") || !text.contains("TestCase") {
+                    return Err(format!(
+                        "{path} has no unittest tests yet (a unittest.TestCase with methods named test_...)"
+                    ));
+                }
+                Ok(format!("{path} has {tests} tests"))
             }
         }
     }

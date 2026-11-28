@@ -977,6 +977,11 @@ void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom(uint64_t ptr, uint64_
 void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom_plan(uint64_t ptr, uint64_t model, RustBuffer request, RustBuffer project, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM_TESTS_FIRST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_CUSTOM_TESTS_FIRST
+void uniffi_forge_ffi_fn_method_bonsaiharness_start_custom_tests_first(uint64_t ptr, uint64_t model, RustBuffer request, RustBuffer project, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_BONSAIHARNESS_START_LADDER
 void uniffi_forge_ffi_fn_method_bonsaiharness_start_ladder(uint64_t ptr, uint64_t model, RustBuffer task_id, RustCallStatus *_Nonnull out_status
@@ -2658,6 +2663,12 @@ uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM_PLAN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM_PLAN
 uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom_plan(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM_TESTS_FIRST
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_BONSAIHARNESS_START_CUSTOM_TESTS_FIRST
+uint16_t uniffi_forge_ffi_checksum_method_bonsaiharness_start_custom_tests_first(void
     
 );
 #endif
