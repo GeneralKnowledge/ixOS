@@ -1141,6 +1141,18 @@ impl SoundscapeCore {
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Option<LiveStation>, SoundscapeError> {
         let uuid = live_radio::clean_uuid(&uuid)?;
+        // The kept address failed: whatever the lookup brings, it isn't
+        // trusted as fresh again (an unreachable lookup is retried next
+        // time the station is tuned).
+        let stale = uuid.clone();
+        self.rt
+            .command("live-failed", move |state| {
+                state.change_live_radio(|file| {
+                    file.mark_stale(&stale);
+                    Ok(())
+                })
+            })
+            .await?;
         let found = self.look_up(&uuid, cancellation).await?;
         if let Some(fresh) = found.clone() {
             self.rt
@@ -1160,7 +1172,8 @@ impl SoundscapeCore {
         &self,
         station: LiveStation,
     ) -> Result<LiveRadio, SoundscapeError> {
-        live_radio::clean_uuid(&station.uuid)?;
+        let mut station = station;
+        station.uuid = live_radio::clean_uuid(&station.uuid)?;
         self.rt
             .command("live-save", move |state| {
                 state.change_live_radio(|file| file.save(station, now_ms()))?;

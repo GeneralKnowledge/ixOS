@@ -169,8 +169,9 @@ impl LiveRadioFile {
             .iter_mut()
             .find(|k| k.station.uuid == station.uuid)
         {
+            // Details from a list or Now Playing, not a lookup: the check
+            // time stays that of the last lookup.
             kept.station = station;
-            kept.checked_ms = now;
             return Ok(());
         }
         if self.saved.len() >= MAX_SAVED {
@@ -178,9 +179,11 @@ impl LiveRadioFile {
                 setting: format!("saved stations (at most {MAX_SAVED})"),
             });
         }
+        // Checked when another copy (Recent) was looked up; else never.
+        let checked_ms = self.checked_ms(&station.uuid).unwrap_or(0);
         self.saved.push(KeptStation {
             station,
-            checked_ms: now,
+            checked_ms,
             at_ms: now,
         });
         Ok(())
@@ -217,6 +220,16 @@ impl LiveRadioFile {
             if kept.station.uuid == station.uuid {
                 kept.station = station.clone();
                 kept.checked_ms = now;
+            }
+        }
+    }
+
+    /// The stream of `uuid` failed: its kept details are looked up again
+    /// next time, even if that lookup can't happen now.
+    pub fn mark_stale(&mut self, uuid: &str) {
+        for kept in self.saved.iter_mut().chain(self.recent.iter_mut()) {
+            if kept.station.uuid == uuid {
+                kept.checked_ms = 0;
             }
         }
     }
@@ -587,6 +600,9 @@ impl Directory {
             return known;
         }
         for seed in SEED_SERVERS {
+            if self.is_resting(seed) {
+                continue;
+            }
             let request = Request::get(format!("https://{seed}/json/servers")).timeout(TIMEOUT);
             let Ok(response) = http.send_cancellable(&request, cancel) else {
                 if cancel.is_cancelled() {
@@ -594,6 +610,12 @@ impl Directory {
                 }
                 continue;
             };
+            if response.status == 429
+                || (response.status == 503 && response.header("Retry-After").is_some())
+            {
+                self.rest(seed, rest_for(response.header("Retry-After")));
+                continue;
+            }
             if !(200..300).contains(&response.status) {
                 continue;
             }
