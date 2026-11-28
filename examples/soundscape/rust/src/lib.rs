@@ -20,6 +20,7 @@ pub mod jamendo_cache;
 pub mod jamendo_explore;
 pub mod library;
 pub mod listen;
+pub mod live_radio;
 pub mod lyrics;
 pub mod merge;
 mod model;
@@ -64,6 +65,8 @@ pub use listen::{
     group_songs, loudness_match, ListenSettings, LoudnessMatch, SongDetail, SongGroup, SongSummary,
     Take, TakeMark,
 };
+use live_radio::LiveRadioFile;
+pub use live_radio::{LiveAsk, LiveCategory, LiveCategoryKind, LiveRadio, LiveStation};
 pub use lyrics::{lyric_line_at, lyric_lines, lyric_word_at, LyricKind, LyricLine, LyricWord};
 pub use model::{soundscape_error_kind, SoundscapeError, MAX_NAME_CHARS};
 pub use musicbrainz::MusicBrainzMatch;
@@ -101,6 +104,8 @@ const COLLECTION_FILE: &str = "collection.json";
 const OFFLINE_FILE: &str = "offline.json";
 /// What was playing, to carry on after the app closes.
 const PLAYBACK_FILE: &str = "playback.json";
+/// Saved and recently played live stations.
+const LIVE_RADIO_FILE: &str = "live_radio.json";
 /// Jamendo covers already compared, in the caches folder's `jamendo/`.
 const COVERS_FILE: &str = "covers.json";
 /// The largest music file imported.
@@ -126,9 +131,22 @@ struct State {
     offline_published: Arc<Published<OfflineFile>>,
     downloads: FileStore,
     playback: Document<PlaybackFile>,
+    live_radio: Document<LiveRadioFile>,
+    live_radio_published: Arc<Published<LiveRadioFile>>,
 }
 
 impl State {
+    /// Changes saved or recent live stations, saves and publishes.
+    fn change_live_radio<T>(
+        &mut self,
+        edit: impl FnOnce(&mut LiveRadioFile) -> Result<T, SoundscapeError>,
+    ) -> Result<T, SoundscapeError> {
+        let value = self.live_radio.change(edit)?;
+        self.live_radio_published
+            .set(self.live_radio.value().clone());
+        Ok(value)
+    }
+
     /// Changes the library, saves it, publishes, and removes artwork files
     /// nothing names any more.
     fn change_library<T>(
@@ -199,6 +217,10 @@ pub struct SoundscapeCore {
     /// Jamendo covers already compared (`jamendo_explore`), kept in the
     /// caches folder across launches.
     covers: Arc<jamendo_explore::Covers>,
+    /// Saved and recent live stations.
+    live_radio: Arc<Published<LiveRadioFile>>,
+    /// Radio Browser's servers, learnt once per launch.
+    directory: Arc<live_radio::Directory>,
 }
 
 /// A shelf's title in Discover.
@@ -1020,6 +1042,152 @@ impl SoundscapeCore {
         self.rt
             .run("jamendo-search", work, move |cancel| {
                 jamendo::search(http.as_ref(), &client_id, &query, cancel)
+            })
+            .await
+    }
+
+    // MARK: Live radio
+
+    /// Saved and recently played live stations.
+    pub fn live_radio(&self) -> LiveRadio {
+        self.live_radio.get().view()
+    }
+
+    /// Whether the station `uuid` is saved.
+    pub fn is_live_station_saved(&self, uuid: String) -> bool {
+        self.live_radio.get().is_saved(&uuid)
+    }
+
+    /// Live stations from Radio Browser for `ask`, most played first.
+    /// On-screen work.
+    pub async fn live_stations(
+        &self,
+        ask: LiveAsk,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<LiveStation>, SoundscapeError> {
+        let http = Arc::clone(&self.http);
+        let directory = Arc::clone(&self.directory);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("live-stations", work, move |cancel| {
+                directory.stations(http.as_ref(), &ask, cancel)
+            })
+            .await
+    }
+
+    /// Countries, languages or genres to browse, those with most stations
+    /// first. On-screen work.
+    pub async fn live_categories(
+        &self,
+        kind: LiveCategoryKind,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<LiveCategory>, SoundscapeError> {
+        let http = Arc::clone(&self.http);
+        let directory = Arc::clone(&self.directory);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("live-categories", work, move |cancel| {
+                directory.categories(http.as_ref(), kind, cancel)
+            })
+            .await
+    }
+
+    /// The station to play for `station`: its kept details when they are
+    /// fresh, else looked up again by UUID (when Radio Browser can't be
+    /// reached, the details given are used). Puts it first in Recent.
+    /// `NotInLibrary` when Radio Browser no longer lists it.
+    pub async fn tune_live_station(
+        &self,
+        station: LiveStation,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<LiveStation, SoundscapeError> {
+        let uuid = live_radio::clean_uuid(&station.uuid)?;
+        let kept = self.live_radio.get();
+        let (station, checked) = if kept.is_stale(&uuid, now_ms()) {
+            match self.look_up(&uuid, cancellation).await {
+                Ok(Some(fresh)) => (fresh, Some(now_ms())),
+                Ok(None) => return Err(SoundscapeError::NotInLibrary { id: uuid }),
+                Err(err @ SoundscapeError::Stopped { .. }) => return Err(err),
+                // Radio Browser can't be reached: try what is known.
+                Err(_) => (kept.kept(&uuid).unwrap_or(station), None),
+            }
+        } else {
+            (kept.kept(&uuid).unwrap_or(station), None)
+        };
+        let played = station.clone();
+        self.rt
+            .command("live-played", move |state| {
+                state.change_live_radio(|file| {
+                    if checked.is_some() {
+                        file.refreshed(&played, now_ms());
+                    }
+                    file.played(played, now_ms(), checked);
+                    Ok(())
+                })
+            })
+            .await?;
+        Ok(station)
+    }
+
+    /// After the stream of `uuid` failed to play: its details looked up
+    /// again, for a stream address that may have changed. `None` when
+    /// Radio Browser no longer lists it.
+    pub async fn live_station_failed(
+        &self,
+        uuid: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Option<LiveStation>, SoundscapeError> {
+        let uuid = live_radio::clean_uuid(&uuid)?;
+        let found = self.look_up(&uuid, cancellation).await?;
+        if let Some(fresh) = found.clone() {
+            self.rt
+                .command("live-refresh", move |state| {
+                    state.change_live_radio(|file| {
+                        file.refreshed(&fresh, now_ms());
+                        Ok(())
+                    })
+                })
+                .await?;
+        }
+        Ok(found)
+    }
+
+    /// Saves a live station to Library > Stations.
+    pub async fn save_live_station(
+        &self,
+        station: LiveStation,
+    ) -> Result<LiveRadio, SoundscapeError> {
+        live_radio::clean_uuid(&station.uuid)?;
+        self.rt
+            .command("live-save", move |state| {
+                state.change_live_radio(|file| file.save(station, now_ms()))?;
+                Ok(state.live_radio.value().view())
+            })
+            .await
+    }
+
+    /// Removes a saved live station.
+    pub async fn unsave_live_station(&self, uuid: String) -> Result<LiveRadio, SoundscapeError> {
+        self.rt
+            .command("live-unsave", move |state| {
+                state.change_live_radio(|file| {
+                    file.unsave(&uuid);
+                    Ok(())
+                })?;
+                Ok(state.live_radio.value().view())
+            })
+            .await
+    }
+
+    /// Clears the recently played stations.
+    pub async fn clear_recent_live_stations(&self) -> Result<LiveRadio, SoundscapeError> {
+        self.rt
+            .command("live-clear-recent", |state| {
+                state.change_live_radio(|file| {
+                    file.clear_recent();
+                    Ok(())
+                })?;
+                Ok(state.live_radio.value().view())
             })
             .await
     }
@@ -2237,6 +2405,24 @@ impl SoundscapeCore {
             })
     }
 
+    /// `uuid`'s current details from Radio Browser; `None` when it no
+    /// longer lists the station.
+    async fn look_up(
+        &self,
+        uuid: &str,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Option<LiveStation>, SoundscapeError> {
+        let http = Arc::clone(&self.http);
+        let directory = Arc::clone(&self.directory);
+        let work = self.rt.foreground(cancellation.as_deref());
+        let uuid = uuid.to_string();
+        self.rt
+            .run("live-lookup", work, move |cancel| {
+                directory.station(http.as_ref(), &uuid, cancel)
+            })
+            .await
+    }
+
     /// A core whose Listen requests go through `http`, for tests.
     pub fn open_with_http(
         data_directory: &str,
@@ -2450,6 +2636,22 @@ impl SoundscapeCore {
             );
         }
         let playback_published = Arc::new(Published::new(playback_doc.value().clone()));
+        // Saved stations are the person's own choices, but each can be found
+        // again in the directory: an unreadable file is set aside and the
+        // list starts again.
+        let (live_radio_doc, kept) = Document::<LiveRadioFile>::start_fresh(
+            directory.path().join(LIVE_RADIO_FILE),
+            live_radio::LIVE_RADIO_VERSION,
+            None,
+            now_ms(),
+        )?;
+        if let Some(kept) = kept {
+            forge_runtime::logging::warn!(
+                "unreadable live stations set aside as {}",
+                kept.display()
+            );
+        }
+        let live_radio_published = Arc::new(Published::new(live_radio_doc.value().clone()));
         let test_files = directory.path().join(test_catalogue::FOLDER);
         let state = State {
             listen,
@@ -2464,6 +2666,8 @@ impl SoundscapeCore {
             offline_published: Arc::clone(&offline_published),
             downloads,
             playback: playback_doc,
+            live_radio: live_radio_doc,
+            live_radio_published: Arc::clone(&live_radio_published),
         };
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("soundscape", directory, state),
@@ -2481,6 +2685,8 @@ impl SoundscapeCore {
             http: Arc::clone(&answers) as Arc<dyn HttpClient>,
             answers,
             covers,
+            live_radio: live_radio_published,
+            directory: Arc::default(),
         }))
     }
 }

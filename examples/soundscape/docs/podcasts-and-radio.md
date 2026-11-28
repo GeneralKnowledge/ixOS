@@ -178,9 +178,11 @@ Things that decide whether this feels solid or flaky:
 - **Downloads.** Streaming and keeping offline are separate states, shown separately on every episode.
   - In P1 every download is one the person starts (an episode, or "Download" on a show). Automatic downloads
     are P2 and per show, off by default.
-  - Not every enclosure is a plain public file. A feed can be private or paid (a token in its address), an
-    episode can be marked blocked or locked (`itunes:block`, `podcast:locked`), and a server can refuse or
-    expire a download. Soundscape keeps a feed's address private (never logged, and exported only in an OPML
+  - Not every enclosure is a plain public file. A feed can be private or paid (a token in its address, or a
+    sign-in), and a server can refuse or expire a download. Access is decided by what the feed and server
+    actually require and how the download answers, not by metadata tags (`podcast:locked` is about moving a
+    feed to another host, and `itunes:block` about visibility in Apple Podcasts; neither is a download
+    permission). Soundscape keeps a feed's address private (never logged, and exported only in an OPML
     file the person asks for), respects a refused download with a clear message, and keeps the reason with
     the episode.
   - Episode downloads have their own logic (per-show storage, delete after playing in P2), sharing only the
