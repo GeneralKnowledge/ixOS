@@ -295,3 +295,71 @@ fn a_group_is_a_conversation_in_chats() {
             .any(|m| m.body == "on my way" && m.author == "phone" && !m.is_mine)
     });
 }
+
+/// A chat server on its own runtime; dropping it stops it.
+struct Server {
+    runtime: Option<tokio::runtime::Runtime>,
+    url: String,
+}
+
+impl Server {
+    fn start() -> Self {
+        std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+        std::env::set_var("no_proxy", "127.0.0.1,localhost");
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let listener = runtime
+            .block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))
+            .unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let state = chat_server::AppState::new(Duration::from_millis(100));
+        runtime.spawn(async move { axum::serve(listener, chat_server::router(state)).await });
+        Self {
+            runtime: Some(runtime),
+            url,
+        }
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_timeout(Duration::from_secs(1));
+        }
+    }
+}
+
+#[test]
+fn a_group_made_while_chats_is_open_is_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (phone, laptop, tablet) = three(dir.path());
+    let folder = dir.path().join("phone-chat").to_string_lossy().into_owned();
+    let chat = ChatCore::with_memory_credentials(folder).unwrap();
+    // Signed in to a chat server, as on the phone.
+    let server = Server::start();
+    block_on(chat.sign_up(server.url.clone(), "Phone".into())).unwrap();
+    Arc::clone(&chat).use_relay(Arc::clone(&phone));
+    // Chats lists before any group exists, as the app does on launch.
+    let before = block_on(chat.list_conversations()).unwrap();
+    assert!(before.iter().all(|c| c.title != "Family"));
+
+    let group = block_on(phone.create_group("Family".into(), vec![id_of(&laptop), id_of(&tablet)]))
+        .unwrap();
+    let listed = |list: &[relay_core::chat::ChatConversation]| {
+        list.iter()
+            .any(|c| c.id == group.conversation_id && c.title == "Family")
+    };
+    assert!(listed(&block_on(chat.list_conversations()).unwrap()));
+
+    // The server goes away: the list fails, but the group is still there
+    // to show from what was kept.
+    drop(server);
+    let second = block_on(phone.create_group("Walk".into(), vec![id_of(&laptop)])).unwrap();
+    assert!(block_on(chat.list_conversations()).is_err());
+    let cached = chat.cached_conversations();
+    assert!(listed(&cached));
+    assert!(cached.iter().any(|c| c.id == second.conversation_id));
+}
