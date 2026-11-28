@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 36bcab5c8b10ed87d3cf3090f75a503a79e99d14695c9cf693c2bd2463ca4c6e # shrinks to ops = [Trust(2), Forget(2), TrustIntroduced(3, 0), Introduces(3, true), Introduced { introducer: 3, trusted: [], revoked: [2] }]
+cc f562770258e45b3c06e3874b6ce06db5f97dae0a2158af34f1463670dde277ba # shrinks to ops = [Trust(3), Grant(3, true), Revoke(3)]

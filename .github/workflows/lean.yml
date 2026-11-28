@@ -1,0 +1,47 @@
+name: Lean proofs
+
+# Checks the Lean models in verification/ (docs/research/unsafe-and-verification.md,
+# V1): every theorem still holds, with no `sorry`. Only runs when a model, its
+# toolchain pin or this workflow changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "verification/**"
+      - ".github/workflows/lean.yml"
+  pull_request:
+    paths:
+      - "verification/**"
+      - ".github/workflows/lean.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  relay:
+    name: Relay models
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install elan (the toolchain comes from verification/relay/lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Check every model
+        working-directory: verification/relay
+        run: |
+          find . -name '*.lean' -print0 | sort -z | while IFS= read -r -d '' f; do
+            echo "lean $f"
+            out="$(lean "$f" 2>&1)" || { echo "$out"; exit 1; }
+            echo "$out"
+            if echo "$out" | grep -q "declaration uses 'sorry'"; then
+              echo "error: $f still has a sorry" >&2
+              exit 1
+            fi
+          done

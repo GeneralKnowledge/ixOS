@@ -43,8 +43,14 @@ pub use resolver::{own_relay_servers, ConnectionMode, RelayServers, RouteKind, S
 mod hex;
 mod mailbox;
 mod mailbox_client;
+#[cfg(test)]
+mod mailbox_props;
 pub mod mailbox_server;
+#[cfg(test)]
+mod parser_props;
 mod trust;
+#[cfg(test)]
+mod trust_props;
 mod web;
 
 use std::collections::{HashMap, VecDeque};
