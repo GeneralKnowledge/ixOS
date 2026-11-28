@@ -177,7 +177,7 @@ Episode feeds are RSS with enclosures, and Commonplace already parses RSS. Apps 
 ### Phases
 
 1. **P0: player features music needs too**: playback speed, configurable skip amounts, a saved position per item. Soundscape benefits even if podcasts never land.
-2. **P1: podcasts**: subscribe by address or search, the episode list, played state, streaming and downloading an episode, OPML import and export. The feed parser extraction above.
+2. **P1: podcasts**: subscribe by address or search, the episode list, played state, streaming and downloading an episode, OPML import and export.
 3. **P2: download rules**: new episodes downloaded in the background (the background transfers work from the roadmap), deleted after playing, limits per podcast.
 4. **P3: gPodder sync** with a Nextcloud server, tested against AntennaPod on the emulator using the same server.
 5. **P4: chapters and transcripts**, then skip silence and statistics.

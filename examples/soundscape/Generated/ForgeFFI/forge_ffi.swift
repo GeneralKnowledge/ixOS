@@ -2232,6 +2232,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      */
     func clearHistory() async throws  -> MusicCollection
     
+    /**
+     * Clears the recently played stations.
+     */
+    func clearRecentLiveStations() async throws  -> LiveRadio
+    
     func clearRecentSearches() async throws  -> MusicCollection
     
     /**
@@ -2318,6 +2323,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func inLibrary(trackId: String)  -> Bool
     
     func isFavourite(id: String)  -> Bool
+    
+    /**
+     * Whether the station `uuid` is saved.
+     */
+    func isLiveStationSaved(uuid: String)  -> Bool
     
     func isStationSaved(seed: StationSeed)  -> Bool
     
@@ -2443,6 +2453,30 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func listenSongs(fresh: Bool, cancellation: Cancellation?) async throws  -> [SongSummary]
     
     /**
+     * Countries, languages or genres to browse, those with most stations
+     * first. On-screen work.
+     */
+    func liveCategories(kind: LiveCategoryKind, cancellation: Cancellation?) async throws  -> [LiveCategory]
+    
+    /**
+     * Saved and recently played live stations.
+     */
+    func liveRadio()  -> LiveRadio
+    
+    /**
+     * After the stream of `uuid` failed to play: its details looked up
+     * again, for a stream address that may have changed. `None` when
+     * Radio Browser no longer lists it.
+     */
+    func liveStationFailed(uuid: String, cancellation: Cancellation?) async throws  -> LiveStation?
+    
+    /**
+     * Live stations from Radio Browser for `ask`, most played first.
+     * On-screen work.
+     */
+    func liveStations(ask: LiveAsk, cancellation: Cancellation?) async throws  -> [LiveStation]
+    
+    /**
      * Rates, notes or picks one of a track's take-server recordings, on the
      * server (JewGrass's picks file stays the record), and returns the
      * track as it now is. Finishing work.
@@ -2564,6 +2598,11 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * The last committed revision.
      */
     func revision()  -> UInt64
+    
+    /**
+     * Saves a live station to Library > Stations.
+     */
+    func saveLiveStation(station: LiveStation) async throws  -> LiveRadio
     
     /**
      * Keeps what is playing (the queue and how far into the song), or
@@ -2752,10 +2791,23 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func tracksToPick()  -> [LibraryTrack]
     
     /**
+     * The station to play for `station`: its kept details when they are
+     * fresh, else looked up again by UUID (when Radio Browser can't be
+     * reached, the details given are used). Puts it first in Recent.
+     * `NotInLibrary` when Radio Browser no longer lists it.
+     */
+    func tuneLiveStation(station: LiveStation, cancellation: Cancellation?) async throws  -> LiveStation
+    
+    /**
      * Forgets a song's MusicBrainz link. Details it took stay, as the
      * person's changes, until they reset them.
      */
     func unlinkMusicbrainz(trackId: String) async throws  -> TrackDetail
+    
+    /**
+     * Removes a saved live station.
+     */
+    func unsaveLiveStation(uuid: String) async throws  -> LiveRadio
     
 }
 /**
@@ -3119,6 +3171,25 @@ open func clearHistory()async throws  -> MusicCollection  {
         )
 }
     
+    /**
+     * Clears the recently played stations.
+     */
+open func clearRecentLiveStations()async throws  -> LiveRadio  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_clear_recent_live_stations(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLiveRadio_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
 open func clearRecentSearches()async throws  -> MusicCollection  {
     return
         try  await uniffiRustCallAsync(
@@ -3396,6 +3467,19 @@ open func isFavourite(id: String) -> Bool  {
     uniffi_soundscape_core_fn_method_soundscapecore_is_favourite(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether the station `uuid` is saved.
+     */
+open func isLiveStationSaved(uuid: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_is_live_station_saved(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(uuid),uniffiCallStatus
     )
 })
 }
@@ -3759,6 +3843,79 @@ open func listenSongs(fresh: Bool, cancellation: Cancellation?)async throws  -> 
 }
     
     /**
+     * Countries, languages or genres to browse, those with most stations
+     * first. On-screen work.
+     */
+open func liveCategories(kind: LiveCategoryKind, cancellation: Cancellation?)async throws  -> [LiveCategory]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_live_categories(
+                        self.uniffiCloneHandle(),FfiConverterTypeLiveCategoryKind_lower(kind),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeLiveCategory.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Saved and recently played live stations.
+     */
+open func liveRadio() -> LiveRadio  {
+    return try!  FfiConverterTypeLiveRadio_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_soundscape_core_fn_method_soundscapecore_live_radio(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * After the stream of `uuid` failed to play: its details looked up
+     * again, for a stream address that may have changed. `None` when
+     * Radio Browser no longer lists it.
+     */
+open func liveStationFailed(uuid: String, cancellation: Cancellation?)async throws  -> LiveStation?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_live_station_failed(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(uuid),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeLiveStation.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Live stations from Radio Browser for `ask`, most played first.
+     * On-screen work.
+     */
+open func liveStations(ask: LiveAsk, cancellation: Cancellation?)async throws  -> [LiveStation]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_live_stations(
+                        self.uniffiCloneHandle(),FfiConverterTypeLiveAsk_lower(ask),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeLiveStation.lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Rates, notes or picks one of a track's take-server recordings, on the
      * server (JewGrass's picks file stays the record), and returns the
      * track as it now is. Finishing work.
@@ -4114,6 +4271,25 @@ open func revision() -> UInt64  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Saves a live station to Library > Stations.
+     */
+open func saveLiveStation(station: LiveStation)async throws  -> LiveRadio  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_save_live_station(
+                        self.uniffiCloneHandle(),FfiConverterTypeLiveStation_lower(station)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLiveRadio_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
 }
     
     /**
@@ -4622,6 +4798,28 @@ open func tracksToPick() -> [LibraryTrack]  {
 }
     
     /**
+     * The station to play for `station`: its kept details when they are
+     * fresh, else looked up again by UUID (when Radio Browser can't be
+     * reached, the details given are used). Puts it first in Recent.
+     * `NotInLibrary` when Radio Browser no longer lists it.
+     */
+open func tuneLiveStation(station: LiveStation, cancellation: Cancellation?)async throws  -> LiveStation  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_tune_live_station(
+                        self.uniffiCloneHandle(),FfiConverterTypeLiveStation_lower(station),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLiveStation_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
      * Forgets a song's MusicBrainz link. Details it took stay, as the
      * person's changes, until they reset them.
      */
@@ -4637,6 +4835,25 @@ open func unlinkMusicbrainz(trackId: String)async throws  -> TrackDetail  {
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeTrackDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Removes a saved live station.
+     */
+open func unsaveLiveStation(uuid: String)async throws  -> LiveRadio  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_unsave_live_station(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(uuid)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLiveRadio_lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -6656,6 +6873,303 @@ public func FfiConverterTypeLibraryTrack_lift(_ buf: RustBuffer) throws -> Libra
 #endif
 public func FfiConverterTypeLibraryTrack_lower(_ value: LibraryTrack) -> RustBuffer {
     return FfiConverterTypeLibraryTrack.lower(value)
+}
+
+
+/**
+ * One country, language or genre with how many stations Radio Browser
+ * lists for it.
+ */
+public struct LiveCategory: Equatable, Hashable {
+    public var kind: LiveCategoryKind
+    /**
+     * What to ask for: a country code (`JP`), a language or a tag.
+     */
+    public var key: String
+    /**
+     * The name to show.
+     */
+    public var name: String
+    public var stationCount: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: LiveCategoryKind, 
+        /**
+         * What to ask for: a country code (`JP`), a language or a tag.
+         */key: String, 
+        /**
+         * The name to show.
+         */name: String, stationCount: UInt32) {
+        self.kind = kind
+        self.key = key
+        self.name = name
+        self.stationCount = stationCount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LiveCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveCategory {
+        return
+            try LiveCategory(
+                kind: FfiConverterTypeLiveCategoryKind.read(from: &buf), 
+                key: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                stationCount: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LiveCategory, into buf: inout [UInt8]) {
+        FfiConverterTypeLiveCategoryKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt32.write(value.stationCount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveCategory_lift(_ buf: RustBuffer) throws -> LiveCategory {
+    return try FfiConverterTypeLiveCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveCategory_lower(_ value: LiveCategory) -> RustBuffer {
+    return FfiConverterTypeLiveCategory.lower(value)
+}
+
+
+/**
+ * What Swift shows: saved and recent stations, and whether each one's
+ * stream address should be looked up again before playing.
+ */
+public struct LiveRadio: Equatable, Hashable {
+    public var saved: [LiveStation]
+    public var recent: [LiveStation]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(saved: [LiveStation], recent: [LiveStation]) {
+        self.saved = saved
+        self.recent = recent
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LiveRadio: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveRadio: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveRadio {
+        return
+            try LiveRadio(
+                saved: FfiConverterSequenceTypeLiveStation.read(from: &buf), 
+                recent: FfiConverterSequenceTypeLiveStation.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LiveRadio, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeLiveStation.write(value.saved, into: &buf)
+        FfiConverterSequenceTypeLiveStation.write(value.recent, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveRadio_lift(_ buf: RustBuffer) throws -> LiveRadio {
+    return try FfiConverterTypeLiveRadio.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveRadio_lower(_ value: LiveRadio) -> RustBuffer {
+    return FfiConverterTypeLiveRadio.lower(value)
+}
+
+
+/**
+ * One live station, as Radio Browser lists it.
+ */
+public struct LiveStation: Equatable, Hashable {
+    /**
+     * Radio Browser's station UUID: what identifies the station for good.
+     */
+    public var uuid: String
+    public var name: String
+    /**
+     * What AVPlayer plays: the stream address with playlists resolved.
+     */
+    public var streamUrl: String
+    /**
+     * The address the station listed, tried when `stream_url` fails.
+     */
+    public var listedUrl: String
+    public var homepage: String?
+    /**
+     * The station's logo, when it has one (often missing or small).
+     */
+    public var artworkUrl: String?
+    public var country: String
+    /**
+     * ISO 3166-1 alpha-2, upper case (`GB`, `JP`); empty when not given.
+     */
+    public var countryCode: String
+    public var languages: [String]
+    public var tags: [String]
+    /**
+     * As Radio Browser reports it (`MP3`, `AAC`, `AAC+`), upper case;
+     * empty when unknown.
+     */
+    public var codec: String
+    public var bitrateKbps: UInt32
+    public var hls: Bool
+    /**
+     * Whether `stream_url` is `https`. A plain `http` stream still plays;
+     * the station's details say it isn't encrypted.
+     */
+    public var secure: Bool
+    /**
+     * Radio Browser's play count (its popularity ranking).
+     */
+    public var plays: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Radio Browser's station UUID: what identifies the station for good.
+         */uuid: String, name: String, 
+        /**
+         * What AVPlayer plays: the stream address with playlists resolved.
+         */streamUrl: String, 
+        /**
+         * The address the station listed, tried when `stream_url` fails.
+         */listedUrl: String, homepage: String?, 
+        /**
+         * The station's logo, when it has one (often missing or small).
+         */artworkUrl: String?, country: String, 
+        /**
+         * ISO 3166-1 alpha-2, upper case (`GB`, `JP`); empty when not given.
+         */countryCode: String, languages: [String], tags: [String], 
+        /**
+         * As Radio Browser reports it (`MP3`, `AAC`, `AAC+`), upper case;
+         * empty when unknown.
+         */codec: String, bitrateKbps: UInt32, hls: Bool, 
+        /**
+         * Whether `stream_url` is `https`. A plain `http` stream still plays;
+         * the station's details say it isn't encrypted.
+         */secure: Bool, 
+        /**
+         * Radio Browser's play count (its popularity ranking).
+         */plays: UInt64) {
+        self.uuid = uuid
+        self.name = name
+        self.streamUrl = streamUrl
+        self.listedUrl = listedUrl
+        self.homepage = homepage
+        self.artworkUrl = artworkUrl
+        self.country = country
+        self.countryCode = countryCode
+        self.languages = languages
+        self.tags = tags
+        self.codec = codec
+        self.bitrateKbps = bitrateKbps
+        self.hls = hls
+        self.secure = secure
+        self.plays = plays
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LiveStation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveStation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveStation {
+        return
+            try LiveStation(
+                uuid: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                streamUrl: FfiConverterString.read(from: &buf), 
+                listedUrl: FfiConverterString.read(from: &buf), 
+                homepage: FfiConverterOptionString.read(from: &buf), 
+                artworkUrl: FfiConverterOptionString.read(from: &buf), 
+                country: FfiConverterString.read(from: &buf), 
+                countryCode: FfiConverterString.read(from: &buf), 
+                languages: FfiConverterSequenceString.read(from: &buf), 
+                tags: FfiConverterSequenceString.read(from: &buf), 
+                codec: FfiConverterString.read(from: &buf), 
+                bitrateKbps: FfiConverterUInt32.read(from: &buf), 
+                hls: FfiConverterBool.read(from: &buf), 
+                secure: FfiConverterBool.read(from: &buf), 
+                plays: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LiveStation, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.uuid, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.streamUrl, into: &buf)
+        FfiConverterString.write(value.listedUrl, into: &buf)
+        FfiConverterOptionString.write(value.homepage, into: &buf)
+        FfiConverterOptionString.write(value.artworkUrl, into: &buf)
+        FfiConverterString.write(value.country, into: &buf)
+        FfiConverterString.write(value.countryCode, into: &buf)
+        FfiConverterSequenceString.write(value.languages, into: &buf)
+        FfiConverterSequenceString.write(value.tags, into: &buf)
+        FfiConverterString.write(value.codec, into: &buf)
+        FfiConverterUInt32.write(value.bitrateKbps, into: &buf)
+        FfiConverterBool.write(value.hls, into: &buf)
+        FfiConverterBool.write(value.secure, into: &buf)
+        FfiConverterUInt64.write(value.plays, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveStation_lift(_ buf: RustBuffer) throws -> LiveStation {
+    return try FfiConverterTypeLiveStation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveStation_lower(_ value: LiveStation) -> RustBuffer {
+    return FfiConverterTypeLiveStation.lower(value)
 }
 
 
@@ -10658,6 +11172,199 @@ public func FfiConverterTypeJamendoShelf_lower(_ value: JamendoShelf) -> RustBuf
 
 
 /**
+ * Which stations to list.
+ */
+
+public enum LiveAsk: Equatable, Hashable {
+    
+    /**
+     * The most played stations everywhere.
+     */
+    case top
+    /**
+     * Stations whose name matches the text.
+     */
+    case search(text: String
+    )
+    /**
+     * One country's stations, most played first (`code` is ISO 3166-1).
+     */
+    case country(code: String
+    )
+    /**
+     * Stations in one language, most played first.
+     */
+    case language(name: String
+    )
+    /**
+     * Stations with one tag (a genre such as `jazz`), most played first.
+     */
+    case genre(tag: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LiveAsk: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveAsk: FfiConverterRustBuffer {
+    typealias SwiftType = LiveAsk
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveAsk {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .top
+        
+        case 2: return .search(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .country(code: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .language(name: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .genre(tag: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LiveAsk, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .top:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .search(text):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case let .country(code):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(code, into: &buf)
+            
+        
+        case let .language(name):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case let .genre(tag):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(tag, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveAsk_lift(_ buf: RustBuffer) throws -> LiveAsk {
+    return try FfiConverterTypeLiveAsk.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveAsk_lower(_ value: LiveAsk) -> RustBuffer {
+    return FfiConverterTypeLiveAsk.lower(value)
+}
+
+
+
+/**
+ * What kind of list to browse.
+ */
+
+public enum LiveCategoryKind: Equatable, Hashable {
+    
+    case country
+    case language
+    case genre
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LiveCategoryKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLiveCategoryKind: FfiConverterRustBuffer {
+    typealias SwiftType = LiveCategoryKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LiveCategoryKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .country
+        
+        case 2: return .language
+        
+        case 3: return .genre
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LiveCategoryKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .country:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .language:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .genre:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveCategoryKind_lift(_ buf: RustBuffer) throws -> LiveCategoryKind {
+    return try FfiConverterTypeLiveCategoryKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLiveCategoryKind_lower(_ value: LiveCategoryKind) -> RustBuffer {
+    return FfiConverterTypeLiveCategoryKind.lower(value)
+}
+
+
+
+/**
  * What a line of lyrics is.
  */
 
@@ -12929,6 +13636,30 @@ fileprivate struct FfiConverterOptionTypeJamendoBecause: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeLiveStation: FfiConverterRustBuffer {
+    typealias SwiftType = LiveStation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLiveStation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLiveStation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypePlayQueue: FfiConverterRustBuffer {
     typealias SwiftType = PlayQueue?
 
@@ -13365,6 +14096,56 @@ fileprivate struct FfiConverterSequenceTypeLibraryTrack: FfiConverterRustBuffer 
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeLibraryTrack.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLiveCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [LiveCategory]
+
+    public static func write(_ value: [LiveCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLiveCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LiveCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LiveCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLiveCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLiveStation: FfiConverterRustBuffer {
+    typealias SwiftType = [LiveStation]
+
+    public static func write(_ value: [LiveStation], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLiveStation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LiveStation] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LiveStation]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLiveStation.read(from: &buf))
         }
         return seq
     }
@@ -14619,6 +15400,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_history() != 64763) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_recent_live_stations() != 14559) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_recent_searches() != 6613) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14671,6 +15455,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_is_favourite() != 60223) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_is_live_station_saved() != 22642) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_is_station_saved() != 63483) {
@@ -14736,6 +15523,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_listen_songs() != 60133) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_live_categories() != 21601) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_live_radio() != 15092) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_live_station_failed() != 41476) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_live_stations() != 6920) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_mark_recording() != 48226) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -14797,6 +15596,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_revision() != 34234) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_save_live_station() != 23735) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_save_playback() != 47578) {
@@ -14880,7 +15682,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_tracks_to_pick() != 21309) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_tune_live_station() != 49283) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_unlink_musicbrainz() != 58832) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_unsave_live_station() != 6884) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_localnotifier_schedule() != 19447) {
