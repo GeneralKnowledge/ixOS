@@ -53,7 +53,7 @@ private struct ArtworkBackdrop: ViewModifier {
 }
 
 /// Play, Shuffle and (when there is one) a station, side by side.
-private struct PageActions: View {
+struct PageActions: View {
     let disabled: Bool
     let play: (_ shuffle: Bool) -> Void
     var station: (() -> Void)? = nil
@@ -96,7 +96,7 @@ private struct PageActions: View {
 
 /// A shelf inside a list: the row reaches both edges so it scrolls under
 /// them.
-private extension View {
+extension View {
     func shelfRow() -> some View {
         listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
             .listRowBackground(Color.clear)
@@ -114,7 +114,7 @@ struct AlbumView: View {
     let album: LibraryAlbum
 
     @State private var editingArtwork = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @Environment(\.songActions) private var actions
 
     private var current: LibraryAlbum { model.library.albums.first { $0.id == album.id } ?? album }
@@ -136,7 +136,7 @@ struct AlbumView: View {
                     TrackRow(
                         model: model, player: player, track: track,
                         number: track.number ?? UInt32(index + 1),
-                        showDetails: { details = track.id }
+                        showDetails: { openSurface(ListenRoute.track(track.id)) }
                     ) {
                         player.play(model.queue(tracks, from: index))
                     }
@@ -153,10 +153,10 @@ struct AlbumView: View {
             .listRowBackground(Color.clear)
             if let artist, !others.isEmpty {
                 Shelf(title: "More by \(artist.name)", items: others, identifier: "album.moreByArtist") { other in
-                    NavigationLink(value: ListenRoute.album(other)) {
+                    ForgeSurfaceLink(ListenRoute.album(other)) {
                         ArtworkTile(title: other.title, subtitle: nil, url: other.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: other)))
-                            .surfaceSource(.album(other))
+                            .forgeSurfaceSource(ListenRoute.album(other))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("album.otherAlbum")
@@ -168,9 +168,6 @@ struct AlbumView: View {
         .artworkBackdrop(title: current.title, url: current.artworkUrl)
         .navigationTitle(current.title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 FavouriteButton(model: model, id: current.id, identifier: "album.favourite")
@@ -213,7 +210,7 @@ struct AlbumView: View {
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
             if let artist {
-                NavigationLink(value: ListenRoute.artist(artist)) {
+                ForgeSurfaceLink(ListenRoute.artist(artist)) {
                     Text(artist.name).font(.title3).foregroundStyle(.tint)
                 }
                 .buttonStyle(.plain)
@@ -255,17 +252,23 @@ struct AlbumView: View {
 // MARK: An artist
 
 /// An artist: their picture over its colours, Play, Shuffle and their
-/// station, Top Songs (all of them a tap away), albums as a shelf, and more
-/// on Jamendo when their songs came from there.
+/// station, Top Songs (all of them a tap away), albums as a shelf, and,
+/// when their songs came from Jamendo, everything Jamendo has by them:
+/// albums, EPs and singles, not only the songs in the library.
 struct ArtistView: View {
     let model: ListenModel
     let player: TakePlayer
     let artist: LibraryArtist
 
     @State private var editingArtwork = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var showingAll = false
     @Environment(\.songActions) private var actions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Everything Jamendo has by this artist, once asked.
+    @State private var jamendo: JamendoArtistPage?
+    @State private var jamendoProblem: String?
+    @State private var jamendoAttempt = 0
 
     /// The artist as the library has it now (artwork may have changed).
     private var current: LibraryArtist { model.library.artists.first { $0.id == artist.id } ?? artist }
@@ -283,13 +286,13 @@ struct ArtistView: View {
                identifier: "artist")
             Section {
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
+                    TrackRow(model: model, player: player, track: track, showDetails: { openSurface(ListenRoute.track(track.id)) }) {
                         player.play(model.queue(shown, from: index))
                     }
                 }
                 if tracks.count > top.count {
                     Button(showingAll ? "Show Top Songs" : "Show All \(tracks.count) Songs") {
-                        withAnimation { showingAll.toggle() }
+                        withForgeAnimation(.standard, reduceMotion: reduceMotion) { showingAll.toggle() }
                     }
                     .accessibilityIdentifier("artist.allSongs")
                 }
@@ -301,33 +304,33 @@ struct ArtistView: View {
                     .accessibilityAddTraits(.isHeader)
             }
             if !albums.isEmpty {
-                Shelf(title: "Albums", items: albums, identifier: "artist.albums") { album in
-                    NavigationLink(value: ListenRoute.album(album)) {
+                Shelf(title: jamendo == nil ? "Albums" : "Your Albums", items: albums, identifier: "artist.albums") { album in
+                    ForgeSurfaceLink(ListenRoute.album(album)) {
                         ArtworkTile(title: album.title, subtitle: "\(album.trackCount) \(album.trackCount == 1 ? "song" : "songs")",
                                     url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))
-                            .surfaceSource(.album(album))
+                            .forgeSurfaceSource(ListenRoute.album(album))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("artist.album")
                 }
                 .shelfRow()
             }
-            if let jamendo = tracks.first(where: { $0.id.hasPrefix("jamendo:") }) {
-                Section {
-                    NavigationLink(value: ListenRoute.jamendoMore(trackId: jamendo.id, by: .artist)) {
-                        Label("More by \(current.name) on Jamendo", systemImage: "sparkles")
-                    }
-                    .accessibilityIdentifier("artist.moreOnJamendo")
-                }
+            if jamendoTrack(in: tracks) != nil {
+                onJamendo
             }
         }
         .listStyle(.plain)
         .artworkBackdrop(title: current.name, url: current.artworkUrl)
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
+        .task(id: "\(jamendoTrack(in: tracks) ?? "")|\(jamendoAttempt)") { await loadJamendo(tracks) }
+        .onChange(of: model.resumes) {
+            if jamendo == nil && jamendoProblem == nil { jamendoAttempt += 1 }
+        }
+        .refreshable {
+            model.refreshJamendo()
+            jamendoAttempt += 1
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -341,6 +344,63 @@ struct ArtistView: View {
         .sheet(isPresented: $editingArtwork) {
             ArtworkSheet(model: model, title: current.name, url: current.artworkUrl,
                          target: .artist(id: current.id), circle: true)
+        }
+    }
+
+    /// A Jamendo song of this artist's in the library, to find them on
+    /// Jamendo by; nil when none came from there.
+    /// A song merged into another counts too (its id is in `merged`).
+    private func jamendoTrack(in tracks: [LibraryTrack]) -> String? {
+        tracks.lazy.flatMap { [$0.id] + $0.merged.map(\.id) }.first { $0.hasPrefix("jamendo:") }
+    }
+
+    /// Everything on Jamendo by the artist, or why it isn't here yet.
+    @ViewBuilder
+    private var onJamendo: some View {
+        // A refresh that fails says so above what is still shown.
+        if let jamendoProblem {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Can't Ask Jamendo").font(.headline)
+                    Text(jamendoProblem).font(.subheadline).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                Button("Try Again", systemImage: "arrow.clockwise") { jamendoAttempt += 1 }
+                    .accessibilityIdentifier("artist.jamendoRetry")
+            }
+        }
+        if let jamendo {
+            JamendoReleases(model: model, player: player, page: jamendo,
+                            identifier: "artist.jamendo", onJamendo: true)
+            SimilarJamendoArtists(model: model, artistId: jamendo.artist.id, identifier: "artist.jamendo")
+            Section {
+                Button("Open Their Jamendo Page", systemImage: "sparkles") {
+                    actions.go(.jamendoArtist(.id(jamendo.artist.id, name: jamendo.artist.name)))
+                }
+                .accessibilityIdentifier("artist.moreOnJamendo")
+            } footer: {
+                Text("Music from Jamendo, each track under its artist's Creative Commons licence.")
+            }
+        } else if jamendoProblem == nil {
+            Section {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Finding more by \(current.name) on Jamendo…")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("artist.jamendoLoading")
+            }
+        }
+    }
+
+    private func loadJamendo(_ tracks: [LibraryTrack]) async {
+        guard let trackId = jamendoTrack(in: tracks) else { return }
+        jamendoProblem = nil
+        let artist = await model.canonical(.ofTrack(trackId, name: current.name))
+        switch await model.jamendoArtist(artist) {
+        case .success(let page): jamendo = page
+        case .failure(let failure): if !failure.stopped { jamendoProblem = failure.message }
         }
     }
 

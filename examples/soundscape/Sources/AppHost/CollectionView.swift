@@ -35,7 +35,7 @@ struct FavouriteButton: View {
 struct FavouritesView: View {
     let model: ListenModel
     let player: TakePlayer
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
 
     private var collection: MusicCollection { model.collection }
 
@@ -50,7 +50,7 @@ struct FavouritesView: View {
                 }
                 Section("Songs") {
                     ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                        TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
+                        TrackRow(model: model, player: player, track: track, showDetails: { openSurface(ListenRoute.track(track.id)) }) {
                             player.play(model.queue(tracks, from: index))
                         }
                     }
@@ -75,9 +75,6 @@ struct FavouritesView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Favourites")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .overlay {
             if tracks.isEmpty && collection.favouriteAlbums.isEmpty && collection.favouriteArtists.isEmpty {
                 ForgeStateView.empty(
@@ -206,7 +203,7 @@ struct PlaylistView: View {
 
     @State private var detail: PlaylistDetail?
     @State private var renaming = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingDelete = false
     @Environment(\.dismiss) private var dismiss
 
@@ -225,9 +222,6 @@ struct PlaylistView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { detail = model.playlist(id) }
         .onChange(of: model.collection) { detail = model.playlist(id) }
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if detail != nil {
                 ToolbarItem(placement: .primaryAction) {
@@ -293,7 +287,7 @@ struct PlaylistView: View {
                     let entry = row.entry
                     TrackRow(model: model, player: player, track: entry.track,
                              remove: { removeEntry(at: index, of: detail) },
-                             showDetails: { details = entry.track.id }) {
+                             showDetails: { openSurface(ListenRoute.track(entry.track.id)) }) {
                         player.play(model.queue(tracks, from: index))
                     }
                 }
@@ -364,7 +358,7 @@ struct ToPickView: View {
     let model: ListenModel
     let player: TakePlayer
 
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
 
     var body: some View {
         let tracks = model.toPick
@@ -372,8 +366,8 @@ struct ToPickView: View {
             Section {
                 ForEach(tracks) { track in
                     TrackRow(model: model, player: player, track: track,
-                             showDetails: { details = track.id }) {
-                        details = track.id
+                             showDetails: { openSurface(ListenRoute.track(track.id)) }) {
+                        openSurface(ListenRoute.track(track.id))
                     }
                 }
             } footer: {
@@ -383,9 +377,6 @@ struct ToPickView: View {
             }
         }
         .navigationTitle("To Pick")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .overlay {
             if tracks.isEmpty {
                 ForgeStateView.empty(
@@ -453,7 +444,7 @@ struct AddToPlaylistSheet: View {
 struct RecentlyPlayedView: View {
     let model: ListenModel
     let player: TakePlayer
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingClear = false
 
     var body: some View {
@@ -463,7 +454,7 @@ struct RecentlyPlayedView: View {
             ForEach(Array(recent.enumerated()), id: \.element.track.id) { index, play in
                 VStack(alignment: .leading, spacing: 0) {
                     TrackRow(model: model, player: player, track: play.track,
-                             showDetails: { details = play.track.id }) {
+                             showDetails: { openSurface(ListenRoute.track(play.track.id)) }) {
                         player.play(model.queue(tracks, from: index))
                     }
                     Text(Self.when(play.playedMs))
@@ -475,9 +466,6 @@ struct RecentlyPlayedView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Recently Played")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if !recent.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -518,7 +506,7 @@ struct DuplicatesView: View {
     let model: ListenModel
     let player: TakePlayer
 
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
 
     var body: some View {
         let groups = model.duplicates
@@ -527,7 +515,7 @@ struct DuplicatesView: View {
                 Section {
                     ForEach(Array(group.tracks.enumerated()), id: \.element.id) { index, track in
                         TrackRow(model: model, player: player, track: track,
-                                 showDetails: { details = track.id }) {
+                                 showDetails: { openSurface(ListenRoute.track(track.id)) }) {
                             player.play(model.queue(group.tracks, from: index))
                         }
                     }
@@ -553,9 +541,6 @@ struct DuplicatesView: View {
             }
         }
         .navigationTitle("Same Song")
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .overlay {
             if groups.isEmpty {
                 ForgeStateView.empty(
@@ -628,6 +613,7 @@ struct LyricsScroll: View {
     /// Space at the left and right.
     var edge: CGFloat = 24
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lines: [LyricLine] = []
     @State private var currentLine: Int?
     @State private var currentWord: Int?
@@ -649,7 +635,7 @@ struct LyricsScroll: View {
             }
             .onChange(of: currentLine) { _, line in
                 guard let line else { return }
-                withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo(line, anchor: .center) }
+                withForgeAnimation(.standard, reduceMotion: reduceMotion) { scroller.scrollTo(line, anchor: .center) }
             }
         }
         .onAppear { lines = lyricLines(lyrics: lyrics) }
@@ -672,7 +658,7 @@ struct LyricsScroll: View {
                 .font(timed ? .title2.weight(.bold) : .title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .scaleEffect(isSung ? 1.0 : 0.97, anchor: .leading)
-                .animation(.easeOut(duration: 0.2), value: isSung)
+                .forgeAnimation(.quick, value: isSung)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if timed, let at = line.atSeconds { player?.seek(to: at) }

@@ -5395,6 +5395,45 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      */
     func trustOffer()  -> TrustOffer?
     
+    /**
+     * Adds the trusted devices `members` (admin only).
+     */
+    func addGroupMembers(id: String, members: [String]) async throws  -> RelayGroup
+    
+    /**
+     * Makes a group named `name` with this device as admin and the
+     * trusted devices `members`, and tells each of them.
+     */
+    func createGroup(name: String, members: [String]) async throws  -> RelayGroup
+    
+    func group(id: String) async throws  -> RelayGroup
+    
+    /**
+     * How many members have our message `message_id`.
+     */
+    func groupDelivery(id: String, messageId: String) throws  -> GroupDelivery
+    
+    /**
+     * The groups this device is in or was in, in the order made.
+     */
+    func groups() async throws  -> [RelayGroup]
+    
+    /**
+     * Leaves the group: every other member is told, and this device
+     * sends and takes nothing more in it. Its conversation stays.
+     */
+    func leaveGroup(id: String) async throws 
+    
+    /**
+     * Removes `member` (admin only): it is told, and sent nothing after.
+     */
+    func removeGroupMember(id: String, member: String) async throws  -> RelayGroup
+    
+    /**
+     * Renames the group (admin only).
+     */
+    func renameGroup(id: String, name: String) async throws  -> RelayGroup
+    
 }
 /**
  * The app's core. The Swift app opens one per process and shares it.
@@ -6375,6 +6414,152 @@ open func trustOffer() -> TrustOffer?  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Adds the trusted devices `members` (admin only).
+     */
+open func addGroupMembers(id: String, members: [String])async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_add_group_members(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterSequenceString.lower(members)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Makes a group named `name` with this device as admin and the
+     * trusted devices `members`, and tells each of them.
+     */
+open func createGroup(name: String, members: [String])async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_create_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(name),FfiConverterSequenceString.lower(members)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+open func group(id: String)async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * How many members have our message `message_id`.
+     */
+open func groupDelivery(id: String, messageId: String)throws  -> GroupDelivery  {
+    return try  FfiConverterTypeGroupDelivery_lift(try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_group_delivery(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(messageId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The groups this device is in or was in, in the order made.
+     */
+open func groups()async throws  -> [RelayGroup]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_groups(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeRelayGroup.lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Leaves the group: every other member is told, and this device
+     * sends and takes nothing more in it. Its conversation stays.
+     */
+open func leaveGroup(id: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_leave_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_void,
+            completeFunc: ffi_relay_core_rust_future_complete_void,
+            freeFunc: ffi_relay_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Removes `member` (admin only): it is told, and sent nothing after.
+     */
+open func removeGroupMember(id: String, member: String)async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_remove_group_member(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterString.lower(member)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
+}
+    
+    /**
+     * Renames the group (admin only).
+     */
+open func renameGroup(id: String, name: String)async throws  -> RelayGroup  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_rename_group(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterString.lower(name)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeRelayGroup_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
 }
     
 
@@ -9006,6 +9191,75 @@ public func FfiConverterTypeDevicesSynced_lower(_ value: DevicesSynced) -> RustB
 }
 
 
+/**
+ * How far one of our group messages has got.
+ */
+public struct GroupDelivery: Equatable, Hashable {
+    /**
+     * Members that have it.
+     */
+    public var delivered: UInt32
+    /**
+     * Members it was for (everyone but this device).
+     */
+    public var of: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Members that have it.
+         */delivered: UInt32, 
+        /**
+         * Members it was for (everyone but this device).
+         */of: UInt32) {
+        self.delivered = delivered
+        self.of = of
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GroupDelivery: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGroupDelivery: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GroupDelivery {
+        return
+            try GroupDelivery(
+                delivered: FfiConverterUInt32.read(from: &buf), 
+                of: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GroupDelivery, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.delivered, into: &buf)
+        FfiConverterUInt32.write(value.of, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGroupDelivery_lift(_ buf: RustBuffer) throws -> GroupDelivery {
+    return try FfiConverterTypeGroupDelivery.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGroupDelivery_lower(_ value: GroupDelivery) -> RustBuffer {
+    return FfiConverterTypeGroupDelivery.lower(value)
+}
+
+
 public struct HttpHeader: Equatable, Hashable {
     public var name: String
     public var value: String
@@ -9846,6 +10100,177 @@ public func FfiConverterTypeQueryItem_lift(_ buf: RustBuffer) throws -> QueryIte
 #endif
 public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
     return FfiConverterTypeQueryItem.lower(value)
+}
+
+
+/**
+ * A group, for the app and the `relay` command.
+ */
+public struct RelayGroup: Equatable, Hashable {
+    public var id: String
+    /**
+     * Its conversation in Chats.
+     */
+    public var conversationId: String
+    public var name: String
+    public var admin: String
+    /**
+     * Whether this device is the admin: it may add, remove and rename.
+     */
+    public var isAdmin: Bool
+    public var members: [RelayGroupMember]
+    /**
+     * This device left or was removed: the conversation is read-only.
+     */
+    public var left: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * Its conversation in Chats.
+         */conversationId: String, name: String, admin: String, 
+        /**
+         * Whether this device is the admin: it may add, remove and rename.
+         */isAdmin: Bool, members: [RelayGroupMember], 
+        /**
+         * This device left or was removed: the conversation is read-only.
+         */left: Bool) {
+        self.id = id
+        self.conversationId = conversationId
+        self.name = name
+        self.admin = admin
+        self.isAdmin = isAdmin
+        self.members = members
+        self.left = left
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RelayGroup: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRelayGroup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayGroup {
+        return
+            try RelayGroup(
+                id: FfiConverterString.read(from: &buf), 
+                conversationId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                admin: FfiConverterString.read(from: &buf), 
+                isAdmin: FfiConverterBool.read(from: &buf), 
+                members: FfiConverterSequenceTypeRelayGroupMember.read(from: &buf), 
+                left: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RelayGroup, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.conversationId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.admin, into: &buf)
+        FfiConverterBool.write(value.isAdmin, into: &buf)
+        FfiConverterSequenceTypeRelayGroupMember.write(value.members, into: &buf)
+        FfiConverterBool.write(value.left, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroup_lift(_ buf: RustBuffer) throws -> RelayGroup {
+    return try FfiConverterTypeRelayGroup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroup_lower(_ value: RelayGroup) -> RustBuffer {
+    return FfiConverterTypeRelayGroup.lower(value)
+}
+
+
+public struct RelayGroupMember: Equatable, Hashable {
+    public var endpointId: String
+    public var name: String
+    /**
+     * This device.
+     */
+    public var isMe: Bool
+    /**
+     * A trusted device here: messages go to it. A member this device
+     * hasn't paired with is skipped for now.
+     */
+    public var trusted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpointId: String, name: String, 
+        /**
+         * This device.
+         */isMe: Bool, 
+        /**
+         * A trusted device here: messages go to it. A member this device
+         * hasn't paired with is skipped for now.
+         */trusted: Bool) {
+        self.endpointId = endpointId
+        self.name = name
+        self.isMe = isMe
+        self.trusted = trusted
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RelayGroupMember: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRelayGroupMember: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayGroupMember {
+        return
+            try RelayGroupMember(
+                endpointId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                isMe: FfiConverterBool.read(from: &buf), 
+                trusted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RelayGroupMember, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.isMe, into: &buf)
+        FfiConverterBool.write(value.trusted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroupMember_lift(_ buf: RustBuffer) throws -> RelayGroupMember {
+    return try FfiConverterTypeRelayGroupMember.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayGroupMember_lower(_ value: RelayGroupMember) -> RustBuffer {
+    return FfiConverterTypeRelayGroupMember.lower(value)
 }
 
 
@@ -14847,6 +15272,56 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeRelayGroup: FfiConverterRustBuffer {
+    typealias SwiftType = [RelayGroup]
+
+    public static func write(_ value: [RelayGroup], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRelayGroup.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RelayGroup] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RelayGroup]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRelayGroup.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeRelayGroupMember: FfiConverterRustBuffer {
+    typealias SwiftType = [RelayGroupMember]
+
+    public static func write(_ value: [RelayGroupMember], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRelayGroupMember.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RelayGroupMember] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RelayGroupMember]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRelayGroupMember.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSiteHeader: FfiConverterRustBuffer {
     typealias SwiftType = [SiteHeader]
 
@@ -15188,6 +15663,17 @@ public func storageEngine() -> String  {
 })
 }
 /**
+ * The conversation id of group `group_id`, for the app.
+ */
+public func groupConversationId(groupId: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_group_conversation_id(
+        FfiConverterString.lower(groupId),uniffiCallStatus
+    )
+})
+}
+/**
  * The framework kind of a Relay error.
  */
 public func relayErrorKind(error: RelayError) -> ErrorKind  {
@@ -15386,6 +15872,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_storage_engine() != 50209) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_func_group_conversation_id() != 38956) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_func_relay_error_kind() != 51284) {
@@ -15596,6 +16085,30 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_trust_offer() != 46070) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_add_group_members() != 41097) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_create_group() != 45680) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_group() != 62003) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_group_delivery() != 17973) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_groups() != 9431) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_leave_group() != 61655) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_remove_group_member() != 8900) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_rename_group() != 52887) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_chatcore_account() != 28427) {

@@ -145,6 +145,23 @@ def rule_urlsession(app):
     return False, "iOS requests go through ureq, not the `http` service"
 
 
+# The app names itself to the services it asks through the `http` service
+# too, not only through its ureq fallback: `UreqClient::with_user_agent`
+# never reaches URLSession, so without `.user_agent(..)` on the host client
+# iPhone requests went out with iOS's default (shared API layer audit,
+# 2026-11-28).
+def rule_user_agent(app):
+    if app.name in NO_RUST:
+        return None
+    files = [p for p in rust_sources(app) if "prefer_installed(" in read(p)]
+    if not files:
+        return None
+    bare = [p.name for p in files if ".user_agent(" not in read(p)]
+    if bare:
+        return False, "the `http` service sends no app User-Agent (add `.user_agent(..)` in `prefer_installed`): " + ", ".join(bare)
+    return True, ""
+
+
 def rule_location(app):
     own = [p for p in swift_sources(app) if "CLLocationManager" in read(p)]
     if not own:
@@ -738,6 +755,26 @@ def rule_floating_bars(app):
                     bad.append(f"{path.name}:{i + 1}")
     if bad:
         return False, "floats a bar by hand; use ForgeUI's forgeBar: " + ", ".join(bad)
+    return True, ""
+
+
+# Liquid Glass comes from ForgeUI (`forgeGlass`, `forgeGlassProminentButton`)
+# and passive notices from `forgeMaterial`: one copy of the iOS 26 and
+# Xcode 16 checks, and the material table decides which surface is glass
+# (docs/forgeui.md, materials; design programme V2.1, November 2026).
+GLASS_BY_HAND = re.compile(r"\.glassEffect\s*\(|\.buttonStyle\s*\(\s*\.glass(Prominent)?\b|\bGlassEffectContainer\b")
+
+
+def rule_glass(app):
+    # On the whole file with comments and strings masked, so a call split
+    # across lines is caught and a comment that mentions one is not.
+    bad = []
+    for path in swift_sources(app):
+        code = swift_code_mask(read(path))
+        for m in GLASS_BY_HAND.finditer(code):
+            bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "draws Liquid Glass by hand; use ForgeUI's forgeGlass: " + ", ".join(bad)
     return True, ""
 
 
@@ -1376,6 +1413,137 @@ def rule_swift6_traps(app):
         return False, "Swift 6.2 refuses this in the iOS build: " + ", ".join(bad)
     return True, ""
 
+# Layered Navigation (ForgeAppKit, docs/forgeappkit.md): a pushed page is a
+# surface for one thing, and opening a thing already open goes back to it.
+# Every stack that pushes by value applies the rule to its path
+# (`NavigationStack(path: $path.forgeLayered())`), its destinations come in
+# through `forgeLayeredDestination(for:)`, and a page opens a route on its
+# stack (`forgeOpenSurface`) rather than pushing beside the path with
+# `navigationDestination(item:)`. The routes' identities themselves are the
+# type checker's job: `forgeLayered()` only takes a `ForgeSurfaceRoute`.
+LAYERED_PUSH = re.compile(r"NavigationLink\s*\(\s*value:|\.navigationDestination\s*\(\s*(for|item):|\bforgeLayered(Destination)?\b")
+LAYERED_PROBLEMS = [
+    (re.compile(r"\.navigationDestination\s*\(\s*for:"), "navigationDestination(for:); use forgeLayeredDestination(for:)"),
+    (re.compile(r"NavigationStack\s*\(\s*path:(?![^)\n]*forgeLayered)"), "a stack path without forgeLayered()"),
+    (re.compile(r"\.navigationDestination\s*\(\s*item:"), "navigationDestination(item:) pushes beside the path; open the route with forgeOpenSurface"),
+]
+BARE_STACK = re.compile(r"\bNavigationStack\s*\{")
+
+
+def braced(code, start):
+    """The text from the `{` at `start` to its matching `}`."""
+    depth = 0
+    for i in range(start, len(code)):
+        if code[i] == "{":
+            depth += 1
+        elif code[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return code[start:i + 1]
+    return code[start:]
+
+
+def owned(block):
+    """`block` (a stack's braces) without the stacks nested in it, such as
+    a sheet's own stack: what is left belongs to this stack."""
+    for m in reversed(list(re.finditer(r"\bNavigationStack\b", block[1:]))):
+        i = m.end() + 1
+        while i < len(block) and block[i] in " \t\n":
+            i += 1
+        if i < len(block) and block[i] == "(":  # NavigationStack(path: ...)
+            depth = 0
+            while i < len(block):
+                depth += {"(": 1, ")": -1}.get(block[i], 0)
+                i += 1
+                if depth == 0:
+                    break
+            while i < len(block) and block[i] in " \t\n":
+                i += 1
+        if i < len(block) and block[i] == "{":
+            block = block[:i] + block[i + len(braced(block, i)):]
+    return block
+
+
+def rule_layered_navigation(app):
+    codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
+    if not any(LAYERED_PUSH.search(code) for _, code in codes):
+        return None  # pushes nothing by value
+    bad = []
+    for path, code in codes:
+        for pattern, why in LAYERED_PROBLEMS:
+            for m in pattern.finditer(code):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} ({why})")
+        # Layered destinations under a stack with no path never settle.
+        for m in BARE_STACK.finditer(code):
+            if re.search(r"\bforgeLayeredDestination\s*\(", owned(braced(code, m.end() - 1))):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1} (a stack with layered destinations and no forgeLayered() path)")
+    if bad:
+        return False, "pushes pages outside Layered Navigation: " + ", ".join(bad)
+    return True, ""
+
+
+# Nothing at the bottom of a screen hides behind the tab bar. On iOS 26 the
+# tab bar floats over the content, and a `.bottomBar` toolbar inside a
+# TabView sits behind it (Relay's Send and Receive, #443, 2026-11-24). An app
+# with tabs floats its bottom actions with ForgeUI's `forgeBar` (or a
+# `.safeAreaInset`) instead; a full-screen app with no tabs keeps the toolbar.
+BOTTOM_BAR = re.compile(r"placement\s*:\s*(?:ToolbarItemPlacement\s*)?\.bottomBar\b")
+
+
+def without_previews(code):
+    """`code` without `#Preview { ... }` blocks and `PreviewProvider`
+    structs: a preview's TabView is no app tab bar."""
+    preview = re.compile(r"#Preview\b[^{]*\{|\bstruct\s+\w+\s*:[^{]*\bPreviewProvider\b[^{]*\{")
+    for m in reversed(list(preview.finditer(code))):
+        code = code[: m.start()] + code[m.end() - 1 + len(braced(code, m.end() - 1)):]
+    return code
+
+
+def rule_tab_bar_clear(app):
+    codes = [(path, swift_code_mask(read(path))) for path in swift_sources(app)]
+    if not any(re.search(r"\bTabView\b", without_previews(code)) for _, code in codes):
+        return None  # no tab bar to hide behind
+    bad = []
+    for path, code in codes:
+        for m in BOTTOM_BAR.finditer(code):
+            bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "a bottom toolbar in an app with tabs sits behind the iOS 26 tab bar; float it with forgeBar: " + ", ".join(bad)
+    return True, ""
+
+
+TILE_CONTAINER = re.compile(r"\b(?:LazyVGrid|LazyHGrid|LazyHStack|Grid|HStack)\s*[({]")
+
+
+def rule_one_tap_one_page(app):
+    """Links side by side (a grid, a shelf, "Artist · Album" in an HStack)
+    use ForgeSurfaceLink: in a List row, every NavigationLink in the row
+    opens on one tap (Soundscape's genre grid opened all twenty genres,
+    2026-11-24). Outside a List it makes no difference, so the rule
+    doesn't try to tell."""
+    sources = swift_sources(app)
+    if not sources:
+        return None
+    bad = []
+    for path in sources:
+        code = without_previews(swift_code_mask(read(path)))
+        for m in TILE_CONTAINER.finditer(code):
+            i = m.end() - 1
+            if code[i] == "(":  # LazyVGrid(columns: ...) {
+                depth = 0
+                while i < len(code):
+                    depth += {"(": 1, ")": -1}.get(code[i], 0)
+                    i += 1
+                    if depth == 0:
+                        break
+                while i < len(code) and code[i] in " \t\n":
+                    i += 1
+            if i < len(code) and code[i] == "{" and re.search(r"\bNavigationLink\s*[({]", braced(code, i)):
+                bad.append(f"{path.name}:{code.count(chr(10), 0, m.start()) + 1}")
+    if bad:
+        return False, "links side by side (grid, shelf, HStack) use ForgeSurfaceLink, not NavigationLink (a List row opens every link in it on one tap): " + ", ".join(bad)
+    return True, ""
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -1393,6 +1561,10 @@ RULES = [
     ("resume", "Coming back from the background through `ForgeHost.onResume` in the model, never a view watching `scenePhase`", rule_resume),
     ("now-playing", "Lock screen, headphone buttons, calls and unplugged headphones through `ForgeNowPlaying`", rule_now_playing),
     ("floating-bars", "Bars over content (mini-players, banners) through ForgeUI's `forgeBar`", rule_floating_bars),
+    ("layered-navigation", "Pushed pages through ForgeAppKit's Layered Navigation: a thing already open is gone back to, never stacked twice", rule_layered_navigation),
+    ("one-tap-one-page", "Links side by side (a grid, a shelf, an HStack) use ForgeAppKit's `ForgeSurfaceLink`: a List row opens every `NavigationLink` in it on one tap", rule_one_tap_one_page),
+    ("tab-bar-clear", "No bottom toolbar in an app with tabs: on iOS 26 it sits behind the floating tab bar; bottom actions float with `forgeBar`", rule_tab_bar_clear),
+    ("glass", "Liquid Glass only through ForgeUI (`forgeGlass`, `forgeGlassProminentButton`), never `glassEffect` or `.glass` button styles by hand", rule_glass),
     ("notices", "Problems in a screen that still works (offline, can't update) through ForgeUI's `ForgeNotice`", rule_notices),
     ("form-toolbar", "Form sheets' Cancel and confirm buttons through ForgeUI's `forgeFormToolbar`, never a hand-built spinner", rule_form_toolbar),
     ("icon-tile", "Coloured icon tiles through `ForgeRow` (a tone or a ForgeUI accent), never a symbol on a raw-coloured rectangle", rule_icon_tile),
@@ -1409,6 +1581,7 @@ RULES = [
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
+    ("user-agent", "The app's User-Agent on `http` service requests too", rule_user_agent),
     ("location", "Location through the `location` service", rule_location),
     ("rust-cancellation", "Rust work cancelled from Swift through ForgeKit's `withRustCancellation`", rule_rust_cancellation),
     ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),

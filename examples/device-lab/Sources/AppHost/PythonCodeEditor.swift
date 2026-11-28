@@ -29,8 +29,18 @@ struct PythonCodeEditor: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
     func makeUIView(context: Context) -> CodeTextView {
-        // TextKit 1, for the line fragments the gutter draws from.
-        let view = CodeTextView(usingTextLayoutManager: false)
+        // TextKit 1, for the line fragments the gutter draws from, built by
+        // hand and passed to the designated initialiser. The
+        // `usingTextLayoutManager:` convenience initialiser skips
+        // CodeTextView's own initialiser, leaving its stored properties
+        // (the breakpoint set) unset: Python Lab crashed on open.
+        let storage = NSTextStorage()
+        let layout = NSLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layout.addTextContainer(container)
+        let view = CodeTextView(frame: .zero, textContainer: container)
         view.delegate = context.coordinator
         context.coordinator.view = view
         view.smartQuotesType = .no

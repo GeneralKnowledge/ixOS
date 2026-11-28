@@ -32,6 +32,37 @@ fn a_request_reaches_the_host_with_a_timeout_and_its_response_comes_back() {
 }
 
 #[test]
+fn the_app_user_agent_goes_out_unless_a_request_sets_its_own() {
+    let host = Arc::new(FakeHost::answering(|_| Ok(Response::new(200, Vec::new()))));
+    let client = HostClient::new(host.clone()).user_agent("Example/1.0 (ixOS)");
+    let agent = |seen: &forge_services::http::HostRequest| {
+        seen.request
+            .headers
+            .iter()
+            .filter(|h| h.name.eq_ignore_ascii_case("user-agent"))
+            .map(|h| h.value.clone())
+            .collect::<Vec<_>>()
+    };
+
+    client.send(&Request::get("https://example.com/a")).unwrap();
+    client
+        .send(&Request::get("https://example.com/b").header("user-agent", "Own/2"))
+        .unwrap();
+    client
+        .open_stream(&Request::get("https://example.com/events"))
+        .unwrap();
+    let seen = host.seen();
+    assert_eq!(agent(&seen[0]), vec!["Example/1.0 (ixOS)"]);
+    assert_eq!(agent(&seen[1]), vec!["Own/2"]);
+    assert_eq!(agent(&seen[2]), vec!["Example/1.0 (ixOS)"]);
+
+    // Without one, the host's own default is left alone.
+    let plain = HostClient::new(host.clone());
+    plain.send(&Request::get("https://example.com/c")).unwrap();
+    assert!(agent(&host.seen()[3]).is_empty());
+}
+
+#[test]
 fn invalid_urls_never_reach_the_host() {
     let host = Arc::new(FakeHost::answering(|_| Ok(Response::new(200, Vec::new()))));
     let client = HostClient::new(host.clone());

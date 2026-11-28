@@ -77,6 +77,8 @@ let package = Package(
                 .product(name: "ForgeKit", package: "forgekit"),
                 // forgeLaunchAppearance()
                 .product(name: "ForgeUI", package: "forgekit"),
+                // Layered Navigation (ForgeSurfaceRoute, forgeLayered)
+                .product(name: "ForgeAppKit", package: "forgekit"),
             ],
             path: "Sources/AppHost",
             swiftSettings: appSettings

@@ -48,8 +48,9 @@ Chrome stays native: system backgrounds, the tab bar, sheets, menus, materials.
   the playing artwork, the average colour and the most saturated colour, with brightness clamped so white text
   keeps at least 4.5:1 contrast over the darkest stop. A song without artwork uses the hue of its stand-in (the
   coloured initial `Artwork` already draws), so every song has a colour. Changes animate over 0.6 s.
-- **Over artwork colour** (Now Playing, lyrics): always dark appearance, white primary text, white at 60% for
-  secondary, as Weather does over its skies.
+- **Over artwork colour** (Now Playing, lyrics): always dark appearance, white primary text, white at 75% for
+  secondary (`ArtworkPalette.secondaryTextOpacity`; the palette is darkened until that also reads 4.5:1),
+  as Weather does over its skies.
 
 ### Type
 
@@ -57,7 +58,7 @@ Chrome stays native: system backgrounds, the tab bar, sheets, menus, materials.
 |---|---|
 | Screen titles | System large titles (native) |
 | Soundscape's own headings (Listen greeting, shelf titles) | `.title2.bold()` / `.title3.bold()` in the rounded design |
-| Now Playing title / artist | `.title3.bold()` / `.title3` at 60% white, one line each, marquee not used |
+| Now Playing title / artist | `.title3.bold()` / `.title3` at 75% white, one line each, marquee not used |
 | Track rows | `.body` title, `.subheadline` secondary |
 | Times | `.caption.monospacedDigit()` |
 
@@ -78,14 +79,17 @@ transport, which scale with `@ScaledMetric`.
 - Lists and grids sit on the system background; shelves are plain scroll views, not cards.
 - Liquid Glass is for controls that float over content, never for the content itself (lists, artwork,
   shelves). On iOS 26 the mini-player is regular glass (`soundscapeGlass`), Now Playing's small round
-  buttons are clear glass over the artwork colours (`nowPlayingCircle`), and the Undo banner is glass
-  (ForgeAppKit). The tab bar, navigation bars, menus and sheets get glass from the system. On iOS 17 to 25
-  each falls back to the look it had: `.regularMaterial` cards and a faint white disc.
+  buttons are clear glass over the artwork colours (`nowPlayingCircle`), both on ForgeUI's `forgeGlass`. The
+  Undo banner is passive, so it uses ForgeUI's standard material, not glass (`forgeMaterial`, ForgeAppKit).
+  The tab bar, navigation bars, menus and sheets get glass from the system. On iOS 17 to 25 each falls back
+  to the look it had: `.regularMaterial` cards and a faint white disc. Motion is ForgeUI's ForgeMotion
+  (`emphasised` for the artwork spring, `ambient` for palette fades), all off under Reduce Motion.
 - iOS shows glass only to an app whose binary records the iOS 26 SDK. Linux builds get that from our xtool
   fork (1.24.0-ixos.1); the laptop's upstream 1.24.0 recorded SDK 17.0, so every build before 2026-11-24
   ran in compatibility mode (the old opaque tab bar).
-- Now Playing: artwork palette gradient, the artwork itself blurred very large over it at 50%, and a dark scrim
-  at the bottom third so controls always read.
+- Now Playing: artwork palette gradient, the artwork itself blurred very large over it at up to 45% (fainter
+  over a bright cover, so secondary text keeps 4.5:1 over every region of the cover, not just its average),
+  and a dark scrim at the bottom third so controls always read.
 
 ### Spacing
 
@@ -102,6 +106,12 @@ item gap 12, section gap 24, Now Playing edges 28.
 | Scrubbing | The bar thickens from 6 to 12 pt while dragging; times brighten | Same, no animation |
 | Transport taps | SF Symbol bounce on next / previous | No bounce |
 | Lyrics | Line being sung brightens and scrolls to the centre | Same, no scale |
+| Transport press | Dims, faint disc, shrinks to 90% (0.15 s) | Dims and disc only, no shrink |
+
+Every animation is on ForgeUI's ForgeMotion (`quick`, `standard`, `emphasised`, `ambient`) and off under
+Reduce Motion, with one documented exception: touch feedback (the transport press, the scrubber thickening as
+a finger lands) runs at 0.15 s, faster than any ForgeMotion kind, as ForgeUI's own press styles do (0.12 s).
+Under Reduce Motion the scrubber change is instant and the press keeps only its fade, which isn't movement.
 
 Haptics stay ForgeAppKit's small vocabulary (success / failure); no new kinds.
 
@@ -139,6 +149,12 @@ Full screen, dark, over the artwork palette:
 
 The queue is a sheet with shuffle and repeat at the top and Up Next below (tap to jump, swipe to remove). A/B
 comparison keeps its own A / B switch in place of the transport.
+
+Changing song never leaves silence while the new one loads (Reuben, 2026-11-24). Tapping another song, Next,
+Previous or a song in Up Next while one plays keeps the current song playing; the new one loads silently on
+the second player, the mini-player shows a spinner and "Loading <song>…", Now Playing shows the same under
+the transport, and the moment it can play the players swap. If it fails, the current song plays on and the
+mini-player says why. Pausing while it loads makes it the song, paused. A newer tap replaces an older load.
 
 ## Radio (Reuben, 2026-11-22 20:28 and 20:36)
 
@@ -224,7 +240,7 @@ A design principle for all of Soundscape, set before more queue UI: **navigation
 bury the person under screens.** Soundscape is connected, layered spaces, not a succession of unrelated
 screens. It is built from SwiftUI's own stack, sheets and transitions, not a custom navigation framework.
 
-**Three treatments.** Every destination declares one (`ListenRoute.style`):
+**Three treatments.** Every destination declares one (`ListenRoute.surfaceStyle`):
 
 | Treatment | Where | How it looks |
 |---|---|---|
@@ -235,7 +251,7 @@ screens. It is built from SwiftUI's own stack, sheets and transitions, not a cus
 
 **The rules.** Each surface has an identity that doesn't depend on how it was reached
 (`ListenRoute.surfaceID`: `artist:<id>`, `album:<id>`, `playlist:<id>` and so on), and every tab's stack
-applies one rule to its path (`LayeredPath.settle`, tested on Linux):
+applies one rule to its path (ForgeAppKit's `ForgeLayeredPath.settle`, tested on Linux):
 
 1. Opening a surface that is already in the stack goes back to that one; nothing is copied. Artist, then
    one of its albums, then the artist again: the artist page comes back as it was left.
@@ -330,7 +346,18 @@ and light and dark mode.
     the first artist page, scrolled where you left it, with one Back to go. Albums grow out of their tiles
     and pull back into them. Up Next half raised shows the player behind it; with Reduce Transparency on it
     is solid.
-12. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
+12. Changing song: while a Jamendo song plays, tap another one and press Next: the song playing carries on
+    with "Loading …" in the mini-player until the new one starts, with no silence in between.
+13. A library artist with Jamendo songs: below your songs, "Albums on Jamendo", "EPs on Jamendo" and
+    "Singles on Jamendo" list everything they have, not just what you saved. Leave and open the artist again,
+    or relaunch the app: it opens at once without "Finding more…" (kept answers). Pull down asks Jamendo again.
+14. Liquid Glass (after the xtool fork is installed on the laptop): the tab bar and navigation bars are
     glass; the mini-player is a glass card that responds to a touch; Now Playing's heart, More, pin and
-    thumbs buttons are clear glass; Undo is a glass banner. With Reduce Transparency on, all of them are
-    solid.
+    thumbs buttons are clear glass; Undo is a frosted banner, not glass. With Reduce Transparency on, all
+    of them are solid.
+15. Similar Artists: on a Jamendo artist's page, a row of round artist tiles under their releases says
+    "Popular in <genre> this week"; tapping one opens just that artist (not every tile in the row).
+16. Now Playing: tapping the song's title or artist opens a menu with "Go to Album" (the album's name
+    under it) and "Go to Artist" (the artist's name). A library song opens its album and artist pages; a
+    Jamendo song not in the library opens its Jamendo release and Jamendo artist. The More menu offers the
+    same two.

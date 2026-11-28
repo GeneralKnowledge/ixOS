@@ -77,6 +77,49 @@ impl PlanState {
     }
 }
 
+/// A tests-first request (the 1060 lab's C0 benchmark, 2026-11-25): with
+/// tests it worked out itself, Bonsai 9B wrote a wrong test in about two
+/// tasks of three, then "fixed" correct code against it; with correct
+/// tests it wrote passing code. So Bonsai writes the tests, the person
+/// checks (and may edit) them, and only then does Bonsai write the code,
+/// which must leave the tests as the person approved them.
+pub const TESTS_TASK: &str = "tests";
+pub const CODE_TASK: &str = "code";
+/// Where a tests-first request's tests go.
+pub const TESTS_FILE: &str = "test_app.py";
+pub const TESTS_FIRST_THOUGHT: &str =
+    "Tests first: Bonsai writes the tests, you check them, then Bonsai writes the code.";
+/// Shown while the tests wait for the person.
+pub const TESTS_REVIEW_NOTE: &str = "Check the tests before Bonsai writes the code. If a test \
+     expects the wrong thing, fix it in Python Lab first: the code must pass the tests as you \
+     approve them.";
+
+/// The two tasks of a tests-first request, with the tests in `file`.
+pub fn tests_first_tasks(file: &str) -> Vec<PlanTask> {
+    vec![
+        PlanTask {
+            id: TESTS_TASK.into(),
+            description: format!(
+                "Write only the tests, in {file}: a unittest.TestCase that imports the module \
+                 the request describes and checks what the request states, with small examples \
+                 whose expected values you worked out by hand. Don't write the module itself: \
+                 the next task writes it, after the person has checked your tests."
+            ),
+            after: Vec::new(),
+            criteria: vec![Criterion::TestsWritten { path: file.into() }],
+        },
+        PlanTask {
+            id: CODE_TASK.into(),
+            description: format!(
+                "Write the code the request asks for, so the tests in {file} pass. The person \
+                 checked those tests: read them first, and don't change {file}."
+            ),
+            after: vec![TESTS_TASK.into()],
+            criteria: vec![Criterion::TestsPass],
+        },
+    ]
+}
+
 /// The most recoveries one task gets before the plan fails.
 pub const MAX_RECOVERIES: u32 = 2;
 
@@ -494,6 +537,10 @@ pub struct PlanView {
     /// Whether it ever ran (its checkpoint was taken): a plan that didn't
     /// starts afresh, with no files to put back.
     pub started: bool,
+    /// A tests-first request's test file.
+    pub tests_file: Option<String>,
+    /// The tests as the person approved them.
+    pub tests_approved: Option<String>,
     /// Model answers the Scripted model has used up when the plan goes
     /// on: all of them, except a task's that ended unverified with no
     /// recovery after it (resuming runs that task again from scratch).
@@ -527,6 +574,8 @@ impl PlanView {
             blocked: None,
             replan: None,
             started: false,
+            tests_file: None,
+            tests_approved: None,
             resume_turns: 0,
         };
         // Executor task id -> plan task id.
@@ -555,9 +604,18 @@ impl PlanView {
                         .cloned()
                         .collect();
                     kept.extend(tasks.iter().cloned());
+                    // The harness writes a tests-first request's plan
+                    // itself: no model answer to count.
+                    let fixed = view.tests_file.is_some() && view.tasks.is_empty();
                     view.tasks = kept;
                     view.replan = None;
-                    view.resume_turns += 1;
+                    if !fixed {
+                        view.resume_turns += 1;
+                    }
+                }
+                Entry::TestsFirst { file, .. } => view.tests_file = Some(file.clone()),
+                Entry::TestsApproved { content, .. } => {
+                    view.tests_approved = Some(content.clone());
                 }
                 Entry::PlanInvalid { .. } | Entry::RecoveryInvalid { .. } => view.resume_turns += 1,
                 Entry::Recovery {
@@ -642,7 +700,87 @@ impl PlanView {
                 _ => {}
             }
         }
+        // Until the person approves the tests, a tests-first plan keeps its
+        // tests task first and every other task after it, whatever a
+        // replan wrote, so nothing can run past the review.
+        if let (Some(file), None) = (view.tests_file.clone(), &view.tests_approved) {
+            // The tests task keeps its own checks and waits for nothing
+            // (a revision or replan can't swap them, or make a cycle).
+            let tests = tests_first_tasks(&file).remove(0);
+            // It also moves first, so the task list stays in the order the
+            // tasks run (restart_point() reads it that way).
+            match view.tasks.iter().position(|t| t.id == TESTS_TASK) {
+                Some(index) => {
+                    let mut task = view.tasks.remove(index);
+                    task.criteria = tests.criteria;
+                    task.after.clear();
+                    view.tasks.insert(0, task);
+                }
+                None => view.tasks.insert(0, tests),
+            }
+            for task in view.tasks.iter_mut().filter(|t| t.id != TESTS_TASK) {
+                if !task.after.iter().any(|a| a == TESTS_TASK) {
+                    task.after.push(TESTS_TASK.into());
+                }
+            }
+        } else if view.tests_file.is_some() {
+            // Approved: the tests ran first, so they stay first (put back
+            // if a replan left them out), and restart_point() picks their
+            // checkpoint only until a later task is verified: never one
+            // that rolls back the tests or a later task's work.
+            let task = match view.tasks.iter().position(|t| t.id == TESTS_TASK) {
+                Some(index) => view.tasks.remove(index),
+                None => {
+                    tests_first_tasks(view.tests_file.as_deref().unwrap_or(TESTS_FILE)).remove(0)
+                }
+            };
+            view.tasks.insert(0, task);
+        }
+        // Approved tests bind every task after the tests task, and the
+        // request itself, whatever a revision or replan wrote since.
+        if let (Some(file), Some(content)) = (view.tests_file.clone(), view.tests_approved.clone())
+        {
+            let unchanged = Criterion::FileUnchanged {
+                path: file.clone(),
+                content: content.clone(),
+            };
+            for check in [Criterion::TestsPass, unchanged] {
+                if !view.criteria.contains(&check) {
+                    view.criteria.push(check);
+                }
+            }
+            for task in view.tasks.iter_mut().filter(|t| t.id != TESTS_TASK) {
+                if !task
+                    .criteria
+                    .iter()
+                    .any(|c| matches!(c, Criterion::FileUnchanged { path, .. } if *path == file))
+                {
+                    task.criteria.push(Criterion::FileUnchanged {
+                        path: file.clone(),
+                        content: content.clone(),
+                    });
+                }
+                view.notes.entry(task.id.clone()).or_default().insert(
+                    0,
+                    format!(
+                        "The person checked the tests in {file} and approved them. Read them, \
+                         and make them pass without changing {file}."
+                    ),
+                );
+            }
+        }
         Some(view)
+    }
+
+    /// A tests-first request whose tests are written and verified, waiting
+    /// for the person to check them.
+    pub fn awaiting_test_review(&self) -> bool {
+        self.tests_file.is_some()
+            && self.tests_approved.is_none()
+            && self.status_of(TESTS_TASK) == TaskStatus::Completed
+            // A plan that failed or stopped before the approval was saved
+            // still waits for it: Resume approves before anything else.
+            && self.state != PlanState::Discarded
     }
 
     /// Whether it can be approved or resumed: waiting for approval, ended

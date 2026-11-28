@@ -1393,7 +1393,11 @@ const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 fn default_catalogue() -> Arc<dyn BookCatalogue> {
     let http = native::http::HttpService::prefer_installed(
         Arc::new(UreqClient::with_user_agent(USER_AGENT).max_body_bytes(MAX_RESPONSE_BYTES)),
-        |client| client.max_body_bytes(MAX_RESPONSE_BYTES),
+        |client| {
+            client
+                .max_body_bytes(MAX_RESPONSE_BYTES)
+                .user_agent(USER_AGENT)
+        },
     );
     Arc::new(OpenLibrary::new(http))
 }

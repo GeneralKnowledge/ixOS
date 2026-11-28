@@ -5,7 +5,7 @@ import ForgeUI
 import SwiftUI
 
 /// Where each tab's stack can go.
-enum ListenRoute: Hashable {
+enum ListenRoute: ForgeSurfaceRoute {
     case artist(LibraryArtist)
     case album(LibraryAlbum)
     case track(String)
@@ -32,6 +32,14 @@ enum ListenRoute: Hashable {
     case jamendoGenre(JamendoGenre)
     /// More from Jamendo like a song: by its artist or in its genre.
     case jamendoMore(trackId: String, by: JamendoMore)
+    /// One of Discover's Jamendo shelves, all of it.
+    case jamendoShelf(JamendoShelf)
+    /// Jamendo artists to discover, all of them.
+    case jamendoArtists(JamendoArtistList)
+    /// A Jamendo artist's page: albums, EPs and singles.
+    case jamendoArtist(JamendoArtistRef)
+    /// One of a Jamendo artist's releases, with its songs.
+    case jamendoRelease(JamendoRelease, artist: JamendoArtist)
     /// All of the library's songs, albums (a grid) or artists.
     case songs
     case albums
@@ -43,8 +51,8 @@ enum ListenRoute: Hashable {
 extension ListenRoute {
     /// What the screen is, whichever way it was reached: an album opened
     /// from Search and from its artist is the same surface. A stack goes
-    /// back to an open surface instead of opening it again
-    /// (`LayeredPath.settle`). Nil for a screen that is new each time.
+    /// back to an open surface instead of opening it again (ForgeAppKit's
+    /// Layered Navigation). Nil for a screen that is new each time.
     var surfaceID: String? {
         switch self {
         case .artist(let artist): "artist:\(artist.id)"
@@ -65,6 +73,13 @@ extension ListenRoute {
         case .jamendoGenres: "jamendoGenres"
         case .jamendoGenre(let genre): "jamendoGenre:\(genre.tag)"
         case .jamendoMore(let trackId, let by): "jamendoMore:\(trackId):\(by)"
+        case .jamendoShelf(let shelf): "jamendoShelf:\(shelf)"
+        case .jamendoArtists(let list): "jamendoArtists:\(list)"
+        case .jamendoArtist(.id(let id, _)): "jamendoArtist:\(id)"
+        // Not yet resolved to the artist's id (`ListenModel.canonical`
+        // failed): a page of its own until it is.
+        case .jamendoArtist(.ofTrack(let trackId, _)): "jamendoArtistOf:\(trackId)"
+        case .jamendoRelease(let release, _): "jamendoRelease:\(release.id)"
         case .songs: "songs"
         case .albums: "albums"
         case .artists: "artists"
@@ -74,9 +89,9 @@ extension ListenRoute {
 
     /// Things (an artist, an album, a playlist) stack: they grow out of the
     /// tile they were opened from. Lists and areas are ordinary pushes.
-    var style: SurfaceStyle {
+    var surfaceStyle: ForgeSurfaceStyle {
         switch self {
-        case .artist, .album, .playlist, .smartPlaylist, .archiveItem: .stacked
+        case .artist, .album, .playlist, .smartPlaylist, .archiveItem, .jamendoArtist, .jamendoRelease: .stacked
         default: .fullScreen
         }
     }
@@ -104,7 +119,7 @@ struct ListenView: View {
     @State private var discoverPath: [ListenRoute] = []
     @State private var searchPath: [ListenRoute] = []
     @Namespace private var playerZoom
-    /// Where stacked surfaces grow from (`SurfaceSource`).
+    /// Where stacked surfaces grow from (`forgeSurfaceSource`).
     @Namespace private var surfaces
 
     init(core: SoundscapeCore, host: ForgeHost<SoundscapeCore>) {
@@ -204,19 +219,15 @@ struct ListenView: View {
     /// One tab's stack: its first screen, every screen it can push, and
     /// the mini-player floating above the tab bar.
     private func stack<Root: View>(_ path: Binding<[ListenRoute]>, @ViewBuilder root: () -> Root) -> some View {
-        // Layered Navigation: whatever pushes (a link, Now Playing's Go to
-        // Artist), a surface already open is gone back to, not copied.
-        let settled = Binding(
-            get: { path.wrappedValue },
-            set: { path.wrappedValue = LayeredPath.settle($0, identity: \.surfaceID) }
-        )
-        return NavigationStack(path: settled) {
-            root().navigationDestination(for: ListenRoute.self) { route in
+        // Layered Navigation: whatever pushes (a link, a song's details, Now
+        // Playing's Go to Artist), a surface already open is gone back to,
+        // not copied.
+        NavigationStack(path: path.forgeLayered()) {
+            root().forgeLayeredDestination(for: ListenRoute.self) { route in
                 ListenDestination(model: model, player: player, route: route)
-                    .modifier(SurfaceTransition(route: route))
             }
         }
-        .environment(\.surfaceNamespace, surfaces)
+        .forgeSurfaces(surfaces, path: path)
         // The mini-player above the tab bar, and Undo for what was just
         // removed above the mini-player.
         .modifier(MiniPlayerBar(model: model, player: player) {
@@ -232,14 +243,21 @@ struct ListenView: View {
     /// song): close the player and push it on the tab being looked at.
     private func go(_ route: ListenRoute) {
         showingNowPlaying = false
-        func push(_ path: inout [ListenRoute]) {
-            path = LayeredPath.settle(path + [route], identity: \.surfaceID)
+        // An artist reached from a song opens by the artist's id, so it is
+        // the same surface as the artist reached any other way.
+        if case .jamendoArtist(let artist) = route, case .ofTrack = artist {
+            Task { show(.jamendoArtist(await model.canonical(artist))) }
+        } else {
+            show(route)
         }
+    }
+
+    private func show(_ route: ListenRoute) {
         switch tab {
-        case .listen: push(&listenPath)
-        case .library: push(&libraryPath)
-        case .discover: push(&discoverPath)
-        case .search: push(&searchPath)
+        case .listen: listenPath.forgeOpen(route)
+        case .library: libraryPath.forgeOpen(route)
+        case .discover: discoverPath.forgeOpen(route)
+        case .search: searchPath.forgeOpen(route)
         }
     }
 }
@@ -275,6 +293,10 @@ struct ListenDestination: View {
         case .jamendoGenres: JamendoGenresView(model: model)
         case .jamendoGenre(let genre): JamendoTracksView(model: model, player: player, ask: .genre(genre))
         case .jamendoMore(let trackId, let by): JamendoTracksView(model: model, player: player, ask: .more(trackId: trackId, by: by))
+        case .jamendoShelf(let shelf): JamendoTracksView(model: model, player: player, ask: .shelf(shelf))
+        case .jamendoArtists(let list): JamendoArtistsView(model: model, list: list)
+        case .jamendoArtist(let artist): JamendoArtistView(model: model, player: player, artist: artist)
+        case .jamendoRelease(let release, let artist): JamendoReleaseView(model: model, player: player, release: release, artist: artist)
         case .songs: SongsView(model: model, player: player)
         case .albums: AlbumsView(model: model)
         case .artists: ArtistsView(model: model)

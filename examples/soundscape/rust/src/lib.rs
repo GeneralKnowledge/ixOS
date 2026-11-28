@@ -16,6 +16,8 @@ pub mod archive;
 pub mod catalogue;
 pub mod collection;
 pub mod jamendo;
+pub mod jamendo_cache;
+pub mod jamendo_explore;
 pub mod library;
 pub mod listen;
 pub mod lyrics;
@@ -46,7 +48,11 @@ use collection::CollectionFile;
 pub use collection::{
     counts_as_played, MusicCollection, Playlist, PlaylistDetail, PlaylistEntry, RecentPlay,
 };
-pub use jamendo::{JamendoGenre, JamendoMore, JamendoMoreTracks};
+pub use jamendo::{JamendoGenre, JamendoMore, JamendoMoreTracks, JamendoShelf};
+pub use jamendo_explore::{
+    JamendoArtist, JamendoArtistList, JamendoArtistPage, JamendoRelease, JamendoSimilarArtists,
+    ReleaseKind,
+};
 use library::LibraryFile;
 pub use library::{
     ArtworkTarget, AudioSource, Generation, ImportResult, Library, LibraryAlbum, LibraryArtist,
@@ -95,6 +101,8 @@ const COLLECTION_FILE: &str = "collection.json";
 const OFFLINE_FILE: &str = "offline.json";
 /// What was playing, to carry on after the app closes.
 const PLAYBACK_FILE: &str = "playback.json";
+/// Jamendo covers already compared, in the caches folder's `jamendo/`.
+const COVERS_FILE: &str = "covers.json";
 /// The largest music file imported.
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 /// The largest picture accepted as artwork.
@@ -102,6 +110,9 @@ const MAX_ARTWORK_BYTES: u64 = 20 * 1024 * 1024;
 /// The largest answer the take server may give (a library of a few hundred
 /// songs is well under this).
 const MAX_ANSWER_BYTES: u64 = 4 * 1024 * 1024;
+/// Who Soundscape says it is to the services it asks (MusicBrainz sends
+/// its own, in the form MusicBrainz asks for).
+const USER_AGENT: &str = "Soundscape/0.1 (ixOS)";
 
 /// What the command thread owns.
 struct State {
@@ -184,7 +195,29 @@ pub struct SoundscapeCore {
     playback: Arc<Published<PlaybackFile>>,
     /// True while `sync_downloads` runs, so a second one returns at once.
     syncing: Arc<AtomicBool>,
+    /// The app's HTTP client, with Jamendo's answers kept
+    /// (`jamendo_cache`).
     http: Arc<dyn HttpClient>,
+    answers: Arc<jamendo_cache::JamendoAnswers>,
+    /// Jamendo covers already compared (`jamendo_explore`), kept in the
+    /// caches folder across launches.
+    covers: Arc<jamendo_explore::Covers>,
+}
+
+/// A shelf's title in Discover.
+#[uniffi::export]
+pub fn jamendo_shelf_title(shelf: JamendoShelf) -> String {
+    jamendo::shelf_title(shelf)
+}
+
+/// Songs Jamendo suggests because of one you play: its title and tracks.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct JamendoBecause {
+    /// "Because You Like <artist>".
+    pub title: String,
+    /// The Jamendo track it starts from (`jamendo:<id>`).
+    pub from_track_id: String,
+    pub tracks: Vec<CatalogueTrack>,
 }
 
 /// The longest title, artist, album or genre a song keeps, in characters,
@@ -1051,6 +1084,190 @@ impl SoundscapeCore {
                 jamendo::more(http.as_ref(), &client_id, &track_id, by, cancel)
             })
             .await
+    }
+
+    /// Makes every Jamendo answer kept so far stale, for pull to refresh:
+    /// the next ask of each goes to Jamendo, and the kept answer is used
+    /// only if Jamendo can't answer (`jamendo_cache`).
+    pub fn refresh_jamendo(&self) {
+        self.answers.refresh();
+    }
+
+    /// Discover's Jamendo shelves, in the order shown.
+    pub fn jamendo_shelves(&self) -> Vec<JamendoShelf> {
+        jamendo::SHELVES.to_vec()
+    }
+
+    /// The tracks on one of Discover's Jamendo shelves. On-screen work.
+    pub async fn jamendo_shelf(
+        &self,
+        shelf: JamendoShelf,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<CatalogueTrack>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-shelf", work, move |cancel| {
+                jamendo::tracks(
+                    http.as_ref(),
+                    &client_id,
+                    &jamendo::Ask::Shelf(shelf),
+                    cancel,
+                )
+            })
+            .await
+    }
+
+    /// Jamendo artists to discover: this week's most popular, or the
+    /// newest. On-screen work.
+    pub async fn jamendo_artists(
+        &self,
+        list: JamendoArtistList,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<JamendoArtist>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artists", work, move |cancel| {
+                jamendo_explore::artists(http.as_ref(), &client_id, list, cancel)
+            })
+            .await
+    }
+
+    /// A Jamendo artist's page (`artist_id` is Jamendo's): their albums,
+    /// EPs and singles, with singles that share a cover grouped into one
+    /// album ([`jamendo_explore::releases`]). On-screen work.
+    pub async fn jamendo_artist(
+        &self,
+        artist_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoArtistPage, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let covers = Arc::clone(&self.covers);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist", work, move |cancel| {
+                let page = jamendo_explore::artist_page(
+                    http.as_ref(),
+                    &client_id,
+                    &artist_id,
+                    &covers,
+                    cancel,
+                );
+                covers.save();
+                page
+            })
+            .await
+    }
+
+    /// The page of the artist of the Jamendo track `track_id`
+    /// (`jamendo:<id>`), for a song found in search or the library.
+    /// On-screen work.
+    pub async fn jamendo_artist_of_track(
+        &self,
+        track_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoArtistPage, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let covers = Arc::clone(&self.covers);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist", work, move |cancel| {
+                let artist =
+                    jamendo_explore::artist_of(http.as_ref(), &client_id, &track_id, cancel)?;
+                let page = jamendo_explore::artist_page(
+                    http.as_ref(),
+                    &client_id,
+                    &artist,
+                    &covers,
+                    cancel,
+                );
+                covers.save();
+                page
+            })
+            .await
+    }
+
+    /// Artists like the Jamendo artist `artist_id`: others popular this
+    /// week in the genre most of their songs carry
+    /// ([`jamendo_explore::similar_artists`]). On-screen work.
+    pub async fn jamendo_similar_artists(
+        &self,
+        artist_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<JamendoSimilarArtists, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-similar", work, move |cancel| {
+                jamendo_explore::similar_artists(http.as_ref(), &client_id, &artist_id, cancel)
+            })
+            .await
+    }
+
+    /// The Jamendo artist id of the Jamendo track `track_id`
+    /// (`jamendo:<id>`), so a page reached from a song opens as the same
+    /// artist page as one reached from the artist. On-screen work.
+    pub async fn jamendo_artist_id_of_track(
+        &self,
+        track_id: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<String, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("jamendo-artist-of", work, move |cancel| {
+                jamendo_explore::artist_of(http.as_ref(), &client_id, &track_id, cancel)
+            })
+            .await
+    }
+
+    /// Songs like the Jamendo song you play most (favourites count as
+    /// plays too), in its genre, by artists not in your library. None when
+    /// no Jamendo song is in your library. On-screen work.
+    pub async fn jamendo_because(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Option<JamendoBecause>, SoundscapeError> {
+        let client_id = self.needs_jamendo_client_id()?;
+        let library = self.library();
+        let Some((track_id, artist)) = because_seed(&library, &self.collection.get()) else {
+            return Ok(None);
+        };
+        let known: std::collections::HashSet<String> = library
+            .tracks
+            .iter()
+            .map(|t| t.artist.to_lowercase())
+            .collect();
+        let http = Arc::clone(&self.http);
+        let work = self.rt.foreground(cancellation.as_deref());
+        let from = track_id.clone();
+        let more = self
+            .rt
+            .run("jamendo-because", work, move |cancel| {
+                jamendo::more(http.as_ref(), &client_id, &from, JamendoMore::Genre, cancel)
+            })
+            .await?;
+        let tracks: Vec<CatalogueTrack> = more
+            .tracks
+            .into_iter()
+            .filter(|t| {
+                t.artist
+                    .as_deref()
+                    .is_none_or(|a| !known.contains(&a.to_lowercase()))
+            })
+            .collect();
+        Ok((!tracks.is_empty()).then(|| JamendoBecause {
+            title: format!("Because You Like {artist}"),
+            from_track_id: track_id,
+            tracks,
+        }))
     }
 
     /// Internet Archive items (albums, concerts, recordings) matching
@@ -2120,7 +2337,19 @@ impl SoundscapeCore {
     ) -> Result<Arc<Self>, SoundscapeError> {
         // Studio (loop projects) was removed on 2026-11-18. Its files
         // (soundscape.json, recordings/) are left where they are.
-        let _ = (caches_directory, fresh);
+        let _ = fresh;
+        // Jamendo's answers and compared covers: files the app can lose.
+        let jamendo_caches =
+            (!caches_directory.is_empty()).then(|| Path::new(caches_directory).join("jamendo"));
+        let answers = Arc::new(jamendo_cache::JamendoAnswers::new(
+            http,
+            jamendo_caches.clone(),
+            Arc::new(|| u64::try_from(now_ms()).unwrap_or(0)),
+        ));
+        let covers = Arc::new(match &jamendo_caches {
+            Some(dir) => jamendo_explore::Covers::at(dir.join(COVERS_FILE)),
+            None => jamendo_explore::Covers::default(),
+        });
         let directory = DataDirectory::open(data_directory)?;
         // Only an address: an unreadable file is set aside rather than
         // keeping the projects from opening.
@@ -2252,7 +2481,9 @@ impl SoundscapeCore {
             playback: playback_published,
             progress: Arc::default(),
             syncing: Arc::default(),
-            http,
+            http: Arc::clone(&answers) as Arc<dyn HttpClient>,
+            answers,
+            covers,
         }))
     }
 }
@@ -2301,8 +2532,12 @@ impl Drop for SyncGuard {
 /// the core is made); ureq before that and in Linux tests.
 fn default_http() -> Arc<dyn HttpClient> {
     Arc::new(native::http::HttpService::prefer_installed(
-        Arc::new(UreqClient::with_user_agent("Soundscape/0.1 (ixOS)")),
-        |client| client.max_body_bytes(MAX_ANSWER_BYTES),
+        Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+        |client| {
+            client
+                .max_body_bytes(MAX_ANSWER_BYTES)
+                .user_agent(USER_AGENT)
+        },
     ))
 }
 
@@ -2332,4 +2567,22 @@ fn catalogue_track(track: QueueTrack) -> Option<CatalogueTrack> {
         rights,
         added_ms: 0,
     })
+}
+
+/// The Jamendo song in the library played most (a favourite counts as
+/// three plays), with its artist: what "Because You Like" starts from.
+fn because_seed(library: &Library, collection: &CollectionFile) -> Option<(String, String)> {
+    let plays = station::play_counts(collection);
+    library
+        .tracks
+        .iter()
+        .filter(|t| t.id.starts_with(jamendo::PREFIX) && !t.artist.trim().is_empty())
+        .map(|t| {
+            let score = plays.get(t.id.as_str()).copied().unwrap_or(0)
+                + if collection.is_favourite(&t.id) { 3 } else { 0 };
+            (score, t.id.clone(), t.artist.clone())
+        })
+        .filter(|(score, _, _)| *score > 0)
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)))
+        .map(|(_, id, artist)| (id, artist))
 }

@@ -108,7 +108,9 @@ private struct ForgeBannerView<Action>: View {
         .padding(.horizontal, theme.spacing.l)
         .padding(.vertical, theme.spacing.m)
         .frame(maxWidth: 520)
-        .modifier(BannerSurface(shape: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous)))
+        // A passive notice, so ForgeUI's standard material, not glass
+        // (glass is for controls; docs/forgeui.md, materials).
+        .forgeMaterial(in: RoundedRectangle(cornerRadius: theme.radius.l, style: .continuous))
         .padding(.horizontal, theme.spacing.l)
         // Room above for the shadow, which would otherwise fall on the
         // last row: the bar's measured height includes this padding.
@@ -122,33 +124,6 @@ private struct ForgeBannerView<Action>: View {
         .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Dismiss", dismiss)
         .accessibilityIdentifier("forge.banner")
-    }
-}
-
-/// The banner's card: Liquid Glass on iOS 26, as the system's own floating
-/// controls are; before that, material with a hairline edge and a shadow.
-private struct BannerSurface<S: InsettableShape>: ViewModifier {
-    let shape: S
-    @Environment(\.forgeTheme) private var theme
-
-    @ViewBuilder func body(content: Content) -> some View {
-        // The compiler check keeps it building with Xcode 16 (iOS 18 SDK).
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, macOS 26.0, *) {
-            content.glassEffect(.regular, in: shape)
-        } else {
-            material(content)
-        }
-        #else
-        material(content)
-        #endif
-    }
-
-    private func material(_ content: Content) -> some View {
-        content
-            .background(.regularMaterial, in: shape)
-            .overlay(shape.strokeBorder(theme.colors.separator.opacity(0.6), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
     }
 }
 #endif

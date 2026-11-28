@@ -78,6 +78,8 @@ forge_runtime::log_export!();
 
 /// How long one feed may take to answer.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+/// Who Commonplace says it is to the sites it reads, through either client.
+pub(crate) const USER_AGENT: &str = "Commonplace/0.1 (ixOS)";
 /// The most full articles one refresh fetches; the rest wait for the next.
 const FULL_ARTICLES_PER_REFRESH: u32 = 10;
 
@@ -144,8 +146,8 @@ impl AppCore {
         // URLSession once the host has installed its services (on iOS, just
         // after this core is made); ureq before that, and in Linux tests.
         let http = Arc::new(native::http::HttpService::prefer_installed(
-            Arc::new(UreqClient::new()),
-            |c| c,
+            Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+            |c| c.user_agent(USER_AGENT),
         ));
         let core = Self::open(storage_directory, http.clone(), full::system_lookup)?;
         // Only for the log line saying which transport fetched the feeds.
@@ -1236,7 +1238,7 @@ fn fetch(
             "Accept",
             "application/rss+xml, application/atom+xml, application/feed+json, application/json;q=0.9, application/xml;q=0.9, */*;q=0.5",
         )
-        .header("User-Agent", "Commonplace/0.1 (ixOS)");
+        .header("User-Agent", USER_AGENT);
     if let Some(etag) = etag {
         request = request.header("If-None-Match", etag);
     }

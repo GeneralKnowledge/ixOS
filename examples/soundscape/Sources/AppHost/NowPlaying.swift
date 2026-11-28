@@ -25,6 +25,9 @@ struct NowPlayingView: View {
     @State private var showingLyrics = false
     @State private var showingQueue = false
     @State private var addingToPlaylist = false
+    /// A Jamendo lookup for Go to Album or Go to Artist; a newer one, or
+    /// closing Now Playing, cancels it, so a late answer opens nothing.
+    @State private var lookup: Task<Void, Never>?
     @Namespace private var artworkSpace
 
     var body: some View {
@@ -70,6 +73,7 @@ struct NowPlayingView: View {
         // double tap plays or pauses.
         .accessibilityAction(.escape) { dismiss() }
         .accessibilityAction(.magicTap) { player.toggle() }
+        .onDisappear { lookup?.cancel() }
         .task(id: player.current?.artworkUrl ?? player.current?.song) {
             guard let current = player.current else { return }
             let found = await ArtworkPaletteLoader.palette(title: current.song, url: current.artworkUrl)
@@ -131,7 +135,7 @@ struct NowPlayingView: View {
                 .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
                 .scaleEffect(playing || reduceMotion ? 1 : 0.86)
                 .animation(SoundscapeMotion.spring(reduced: reduceMotion), value: playing)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: current.id)
+                .forgeAnimation(.standard, value: current.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.vertical, 20)
@@ -158,7 +162,25 @@ struct NowPlayingView: View {
         }
     }
 
-    private func titles(_ current: TakePlayer.Loaded, font: Font) -> some View {
+    /// The song's title and artist; tapping them offers the album and the
+    /// artist, as the artist line does in Apple Music.
+    @ViewBuilder private func titles(_ current: TakePlayer.Loaded, font: Font) -> some View {
+        if !player.isComparing, hasPlaces(current) {
+            Menu {
+                goToButtons(current, identifier: "nowPlayingSheet.titles")
+            } label: {
+                titleText(current, font: font)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows Go to Album and Go to Artist")
+            .accessibilityIdentifier("nowPlayingSheet.titles")
+        } else {
+            titleText(current, font: font)
+        }
+    }
+
+    private func titleText(_ current: TakePlayer.Loaded, font: Font) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(player.isComparing ? "Comparing · \(player.active == .a ? "A" : "B")" : current.song)
                 .font(font)
@@ -166,7 +188,7 @@ struct NowPlayingView: View {
                 .lineLimit(1)
             Text(subtitle(current))
                 .font(font == .headline ? .subheadline : .title3)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(ArtworkPalette.secondaryTextOpacity))
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -191,6 +213,95 @@ struct NowPlayingView: View {
         moreMenu(current)
     }
 
+    // MARK: Go to Album, Go to Artist
+
+    /// The song's album and artist in the library, else on Jamendo.
+    private struct Places {
+        var album: LibraryAlbum?
+        var artist: LibraryArtist?
+        /// The song on Jamendo (itself, or one merged into it).
+        var jamendo: String?
+    }
+
+    private func places(_ current: TakePlayer.Loaded) -> Places {
+        guard let trackId = current.trackId else { return Places() }
+        let track = model.track(trackId)?.track
+        let ids = [trackId] + (track?.merged.map(\.id) ?? [])
+        let jamendo = model.jamendoClientId == nil ? nil : ids.first { $0.hasPrefix("jamendo:") }
+        return Places(
+            album: track.flatMap { t in model.library.albums.first { $0.id == t.albumId } },
+            artist: track.flatMap { t in model.library.artists.first { $0.id == t.artistId } },
+            jamendo: jamendo)
+    }
+
+    private func hasPlaces(_ current: TakePlayer.Loaded) -> Bool {
+        let p = places(current)
+        return p.album != nil || p.artist != nil || p.jamendo != nil
+    }
+
+    /// Go to Album and Go to Artist, each naming where it goes. A song
+    /// not in the library goes to its Jamendo release and artist.
+    @ViewBuilder
+    private func goToButtons(_ current: TakePlayer.Loaded, identifier: String) -> some View {
+        let p = places(current)
+        if let album = p.album {
+            goButton("Go to Album", detail: album.title, systemImage: "square.stack",
+                     identifier: "\(identifier).goToAlbum") { go(.album(album)) }
+        } else if let jamendo = p.jamendo, current.album != nil {
+            goButton("Go to Album", detail: current.album, systemImage: "square.stack",
+                     identifier: "\(identifier).goToAlbum") {
+                look { await goToJamendoRelease(of: jamendo, artist: current.artist) }
+            }
+        }
+        if let artist = p.artist {
+            goButton("Go to Artist", detail: artist.name, systemImage: "music.mic",
+                     identifier: "\(identifier).goToArtist") { go(.artist(artist)) }
+        } else if let jamendo = p.jamendo {
+            goButton("Go to Artist", detail: current.artist, systemImage: "music.mic",
+                     identifier: "\(identifier).goToArtist") {
+                look {
+                    let artist = await model.canonical(.ofTrack(jamendo, name: current.artist))
+                    if !Task.isCancelled { go(.jamendoArtist(artist)) }
+                }
+            }
+        }
+    }
+
+    private func goButton(_ title: String, detail: String?, systemImage: String,
+                          identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label {
+                Text(title)
+                if let detail { Text(detail) }
+            } icon: {
+                Image(systemName: systemImage)
+            }
+        }
+        .accessibilityIdentifier(identifier)
+    }
+
+    /// The Jamendo release the song is on, found on its artist's page
+    /// (kept on the phone after the first time); the artist's page when
+    /// it isn't found there.
+    /// Starts a lookup in place of any still running.
+    private func look(_ work: @escaping @MainActor () async -> Void) {
+        lookup?.cancel()
+        lookup = Task { await work() }
+    }
+
+    private func goToJamendoRelease(of trackId: String, artist name: String?) async {
+        let artist = await model.canonical(.ofTrack(trackId, name: name))
+        let page = await model.jamendoArtist(artist)
+        guard !Task.isCancelled else { return }
+        guard case .success(let page) = page,
+              let release = page.releases.first(where: { $0.tracks.contains { $0.id == trackId } })
+        else {
+            go(.jamendoArtist(artist))
+            return
+        }
+        go(.jamendoRelease(release, artist: page.artist))
+    }
+
     /// Everything that isn't playback: the playlist, where the song comes
     /// from, more like it, the sleep timer, how songs join, and Stop.
     private func moreMenu(_ current: TakePlayer.Loaded) -> some View {
@@ -203,23 +314,14 @@ struct NowPlayingView: View {
                 .accessibilityIdentifier("nowPlayingSheet.startRadio")
                 Button("Add to Playlist", systemImage: "text.badge.plus") { addingToPlaylist = true }
                     .accessibilityIdentifier("nowPlayingSheet.addToPlaylist")
-                if let track = model.track(trackId)?.track {
-                    Section {
-                        if let album = model.library.albums.first(where: { $0.id == track.albumId }) {
-                            Button("Go to Album", systemImage: "square.stack") { go(.album(album)) }
-                                .accessibilityIdentifier("nowPlayingSheet.goToAlbum")
-                        }
-                        if let artist = model.library.artists.first(where: { $0.id == track.artistId }) {
-                            Button("Go to Artist", systemImage: "music.mic") { go(.artist(artist)) }
-                                .accessibilityIdentifier("nowPlayingSheet.goToArtist")
-                        }
-                    }
+                Section {
+                    goToButtons(current, identifier: "nowPlayingSheet")
                 }
                 if trackId.hasPrefix("jamendo:"), model.jamendoClientId != nil {
                     Section("On Jamendo") {
                         Button(current.artist.map { "More by \($0)" } ?? "More by This Artist",
                                systemImage: "music.mic") {
-                            go(.jamendoMore(trackId: trackId, by: .artist))
+                            go(.jamendoArtist(.ofTrack(trackId, name: current.artist)))
                         }
                         .accessibilityIdentifier("nowPlayingSheet.moreByArtist")
                         Button("More in This Genre", systemImage: "guitars") {
@@ -261,7 +363,7 @@ struct NowPlayingView: View {
             HStack(spacing: 12) {
                 Label(radio.title ?? "Radio", systemImage: "dot.radiowaves.left.and.right")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(ArtworkPalette.secondaryTextOpacity))
                     .lineLimit(1)
                 Spacer()
                 if let seed = radio.seed {
@@ -342,6 +444,20 @@ struct NowPlayingView: View {
             Spacer()
         }
         .padding(.vertical, 18)
+        // The song asked for, loading while this one plays on.
+        .overlay(alignment: .bottom) {
+            if let next = player.switching {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Loading \(next.song)…").lineLimit(1)
+                }
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.75))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("nowPlayingSheet.loading")
+                .transition(.opacity)
+            }
+        }
     }
 
     private var abSwitch: some View {
@@ -426,7 +542,9 @@ private struct NowPlayingBackground: View {
                     Artwork(title: current.song, url: current.artworkUrl, size: max(proxy.size.height, 1))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .blur(radius: 80)
-                        .opacity(0.45)
+                        // Fainter over a bright cover, so text keeps 4.5:1
+                        // over the composite (ArtworkPalette.fitted).
+                        .opacity(palette.artworkOpacity)
                 }
                 .id(current.id)
                 .transition(.opacity)
@@ -467,6 +585,9 @@ private struct NowPlayingScrubber: View {
                         .onChanged { drag in
                             let fraction = min(max(drag.location.x / width, 0), 1)
                             if dragging == nil {
+                                // Touch feedback, faster than ForgeMotion's kinds on
+                                // purpose (as ForgeUI's own press styles); off under
+                                // Reduce Motion.
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
                                     dragging = fraction * duration
                                 }
@@ -476,7 +597,7 @@ private struct NowPlayingScrubber: View {
                         }
                         .onEnded { _ in
                             if let to = dragging { player.seek(to: to) }
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { dragging = nil }
+                            withForgeAnimation(.quick, reduceMotion: reduceMotion) { dragging = nil }
                         }
                 )
             }
@@ -538,9 +659,21 @@ private struct TransportButton: View {
 
 private struct TransportPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        TransportPressBody(configuration: configuration)
+    }
+}
+
+/// Touch feedback: dims and shows a faint disc, and shrinks a little unless
+/// Reduce Motion is on (the fade stays: it isn't movement). 0.15 s, faster
+/// than ForgeMotion's kinds on purpose, as ForgeUI's own press styles.
+private struct TransportPressBody: View {
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.6 : 1)
-            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.9 : 1)
             .background {
                 Circle()
                     .fill(.white.opacity(configuration.isPressed ? 0.12 : 0))

@@ -5,10 +5,11 @@ import ForgeUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A trusted device in the navigation stack, by endpoint id (paired
-/// devices are pushed by their `String` device id).
-struct TrustedRoute: Hashable {
+/// A trusted device in the navigation stack, by endpoint id.
+struct TrustedRoute: ForgeSurfaceRoute {
     let endpointID: String
+    /// One screen per device, however it is reached.
+    var surfaceID: String? { "device:\(endpointID)" }
 }
 
 /// The trust look: a filled shield and the word, so it never rests on
@@ -25,11 +26,12 @@ struct TrustBadge: View {
 /// it is on this network now.
 struct TrustedDeviceRow: View {
     let device: Device
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "laptopcomputer.and.iphone")
-                .foregroundStyle(device.presence == .offline ? .secondary : Color.accentColor)
+                .foregroundStyle(device.presence == .offline ? AnyShapeStyle(.secondary) : AnyShapeStyle(theme.colors.accent.solid))
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.person.map { "\($0) (\(device.name))" } ?? device.name)

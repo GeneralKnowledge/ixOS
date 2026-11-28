@@ -1,4 +1,5 @@
 @preconcurrency import RelayFFI
+import ForgeAppKit
 import Foundation
 
 /// The deep link a message notification opens:
@@ -19,7 +20,13 @@ enum ChatLinks {
 }
 
 /// A conversation to open, and optionally a message in it to scroll to.
-struct ChatRoute: Hashable {
+struct ChatRoute: ForgeSurfaceRoute {
     var conversationId: String
     var messageId: String? = nil
+
+    /// A conversation is one screen however it is opened (the list, a
+    /// search result, a notification): opening it again goes back to it
+    /// (ForgeAppKit's Layered Navigation). The message to scroll to is not
+    /// part of it.
+    var surfaceID: String? { "conversation:\(conversationId)" }
 }

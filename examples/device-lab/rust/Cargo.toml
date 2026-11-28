@@ -64,3 +64,7 @@ codegen-units = 1
 [package.metadata.forge]
 # Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
 area = "tools"
+
+# App code has no unsafe Rust; UniFFI's generated scaffolding passes this too.
+[lints.rust]
+unsafe_code = "forbid"

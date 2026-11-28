@@ -1,4 +1,6 @@
 //! Only for the iOS size check: pulls the same stack into a static library.
+// Exported by its C symbol name so the static library keeps the stack.
+#[allow(unsafe_code)]
 #[no_mangle]
 pub extern "C" fn relay_spike_start() -> u8 {
     let rt = tokio::runtime::Runtime::new().unwrap();

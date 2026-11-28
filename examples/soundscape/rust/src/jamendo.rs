@@ -56,7 +56,55 @@ pub enum Ask {
     Genre(String),
     /// One track (Jamendo's track id), for its artist and genres.
     Track(String),
+    /// One of Discover's shelves.
+    Shelf(JamendoShelf),
+    /// Every track of one artist (Jamendo's artist id), for its releases:
+    /// up to [`RELEASES_PAGE`], newest first.
+    Releases(String),
 }
+
+/// A shelf of Jamendo tracks to explore, beyond one week's most popular.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JamendoShelf {
+    /// Jamendo's own featured tracks.
+    Picks,
+    /// The newest releases.
+    NewReleases,
+    /// Tracks gaining listeners fastest (Jamendo's "buzz").
+    Rising,
+    /// This month's most popular.
+    PopularThisMonth,
+    /// The most popular of all time.
+    PopularEver,
+    /// Popular tracks without singing.
+    Instrumental,
+}
+
+/// The shelves, in the order Discover shows them.
+pub const SHELVES: &[JamendoShelf] = &[
+    JamendoShelf::Picks,
+    JamendoShelf::NewReleases,
+    JamendoShelf::Rising,
+    JamendoShelf::PopularThisMonth,
+    JamendoShelf::Instrumental,
+    JamendoShelf::PopularEver,
+];
+
+/// A shelf's title.
+pub fn shelf_title(shelf: JamendoShelf) -> String {
+    match shelf {
+        JamendoShelf::Picks => "Jamendo's Picks",
+        JamendoShelf::NewReleases => "New Releases",
+        JamendoShelf::Rising => "Rising",
+        JamendoShelf::PopularThisMonth => "Popular This Month",
+        JamendoShelf::PopularEver => "All-Time Favourites",
+        JamendoShelf::Instrumental => "Instrumental",
+    }
+    .into()
+}
+
+/// Tracks asked for an artist's releases (Jamendo's largest page).
+pub const RELEASES_PAGE: u32 = 200;
 
 /// What "more from Jamendo" means for a track that is playing.
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,11 +240,31 @@ pub fn tracks_url(client_id: &str, ask: &Ask) -> String {
             encode(tag, false)
         ),
         Ask::Track(id) => format!("id={}&type={BOTH_TYPES}", encode(id, false)),
+        Ask::Shelf(shelf) => format!("{}&type={BOTH_TYPES}", shelf_query(*shelf)),
+        Ask::Releases(id) => format!(
+            "artist_id={}&order=releasedate_desc&type={BOTH_TYPES}",
+            encode(id, false)
+        ),
+    };
+    let limit = match ask {
+        Ask::Releases(_) => RELEASES_PAGE,
+        _ => PAGE,
     };
     format!(
-        "{API}/tracks/?client_id={}&format=json&limit={PAGE}&{what}&include=musicinfo&audioformat=mp32&imagesize=300",
+        "{API}/tracks/?client_id={}&format=json&limit={limit}&{what}&include=musicinfo&audioformat=mp32&imagesize=300",
         encode(client_id, false)
     )
+}
+
+fn shelf_query(shelf: JamendoShelf) -> &'static str {
+    match shelf {
+        JamendoShelf::Picks => "featured=1&order=popularity_week",
+        JamendoShelf::NewReleases => "order=releasedate_desc",
+        JamendoShelf::Rising => "order=buzzrate",
+        JamendoShelf::PopularThisMonth => "order=popularity_month",
+        JamendoShelf::PopularEver => "order=popularity_total",
+        JamendoShelf::Instrumental => "vocalinstrumental=instrumental&order=popularity_month",
+    }
 }
 
 /// Searches Jamendo. On-screen work, cancelled with the screen.
@@ -278,15 +346,24 @@ pub fn more(
 /// "success" with no results to a request that finds tracks a moment
 /// later (seen live, 2026-11-18), so an empty answer is asked again before
 /// it counts as none.
-fn results(
+pub(crate) fn results(
     http: &dyn HttpClient,
     client_id: &str,
     ask: &Ask,
     cancel: &CancelHandle,
 ) -> Result<Vec<Value>, SoundscapeError> {
+    results_at(http, &tracks_url(client_id, ask), cancel)
+}
+
+/// The `results` of Jamendo's answer at `url`, asked again when empty.
+pub(crate) fn results_at(
+    http: &dyn HttpClient,
+    url: &str,
+    cancel: &CancelHandle,
+) -> Result<Vec<Value>, SoundscapeError> {
     let mut found = Vec::new();
     for _ in 0..ATTEMPTS {
-        found = results_once(http, client_id, ask, cancel)?;
+        found = results_once(http, url, cancel)?;
         if !found.is_empty() {
             break;
         }
@@ -299,15 +376,11 @@ pub const ATTEMPTS: usize = 3;
 
 fn results_once(
     http: &dyn HttpClient,
-    client_id: &str,
-    ask: &Ask,
+    url: &str,
     cancel: &CancelHandle,
 ) -> Result<Vec<Value>, SoundscapeError> {
     let response = http
-        .send_cancellable(
-            &Request::get(tracks_url(client_id, ask)).timeout(TIMEOUT),
-            cancel,
-        )
+        .send_cancellable(&Request::get(url).timeout(TIMEOUT), cancel)
         .map_err(|err| match SoundscapeError::from(err) {
             SoundscapeError::Unreachable { reason } => SoundscapeError::Server {
                 reason: format!("can't reach Jamendo: {reason}"),
@@ -348,7 +421,7 @@ fn parse_results(body: &[u8]) -> Result<Vec<Value>, SoundscapeError> {
     Ok(json["results"].as_array().cloned().unwrap_or_default())
 }
 
-fn track(item: &Value) -> Option<CatalogueTrack> {
+pub(crate) fn track(item: &Value) -> Option<CatalogueTrack> {
     let id = text(&item["id"])?;
     let title = tag(text(&item["name"]).as_deref())?;
     let audio_url = text(&item["audio"]).filter(|u| u.starts_with("https://"))?;
@@ -396,7 +469,7 @@ fn track(item: &Value) -> Option<CatalogueTrack> {
 }
 
 /// A non-empty string or number, trimmed and capped.
-fn text(value: &Value) -> Option<String> {
+pub(crate) fn text(value: &Value) -> Option<String> {
     let s = match value {
         Value::String(s) => s.trim().to_string(),
         Value::Number(n) => n.to_string(),

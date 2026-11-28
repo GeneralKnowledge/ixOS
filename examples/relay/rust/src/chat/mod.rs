@@ -339,6 +339,18 @@ impl ChatCore {
         let devices = self.device_clients();
         let alerts = self.alerts();
         let result = background("chat-list", move || {
+            // Devices and groups first: a server that can't be reached
+            // mustn't keep them from being listed (and cached, for
+            // `cached_conversations`).
+            let mut on_relay = Vec::new();
+            for (client, user_id) in devices {
+                match client.list_conversations() {
+                    Ok(list) => {
+                        on_relay.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
+                    }
+                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
+                }
+            }
             let mut out = Vec::new();
             if let Some((client, user_id)) = server {
                 let list = client.list_conversations().map_err(ChatError::from)?;
@@ -347,14 +359,7 @@ impl ChatCore {
                 }
                 out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)));
             }
-            for (client, user_id) in devices {
-                match client.list_conversations() {
-                    Ok(list) => {
-                        out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
-                    }
-                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
-                }
-            }
+            out.extend(on_relay);
             Ok(out)
         })
         .await;
@@ -1125,6 +1130,9 @@ impl ChatCore {
     /// The client of the conversation: a trusted device's, or the server
     /// account's.
     fn route(&self, conversation_id: &str) -> Result<(ChatClient, String), ChatError> {
+        if let Some(group) = crate::group::conversation_group(conversation_id) {
+            return self.group_client(group);
+        }
         match crate::device_chat::conversation_device(conversation_id) {
             Some(endpoint_id) => self.device_client(endpoint_id),
             None => self.client_and_user(),
@@ -1171,14 +1179,21 @@ impl ChatCore {
             .filter(|d| d.trusted)
             .map(|d| d.endpoint_id)
             .collect();
+        let groups: Vec<String> = relay
+            .record
+            .get()
+            .groups
+            .iter()
+            .map(|g| crate::group::group_conversation(&g.id))
+            .collect();
         self.devices_lock().clients.retain(|id, client| {
-            let keep = trusted.contains(id);
+            let keep = trusted.contains(id) || groups.contains(id);
             if !keep {
                 client.shutdown();
             }
             keep
         });
-        trusted
+        let mut clients: Vec<(ChatClient, String)> = trusted
             .iter()
             .filter_map(|id| match self.device_client(id) {
                 Ok(found) => Some(found),
@@ -1187,7 +1202,36 @@ impl ChatCore {
                     None
                 }
             })
-            .collect()
+            .collect();
+        clients.extend(groups.iter().filter_map(|conversation| {
+            let group = crate::group::conversation_group(conversation)?;
+            match self.group_client(group) {
+                Ok(found) => Some(found),
+                Err(e) => {
+                    forge_runtime::logging::warn!("a group conversation didn't open: {e}");
+                    None
+                }
+            }
+        }));
+        clients
+    }
+
+    /// The client of group `group`'s conversation, opened on first use.
+    /// It is kept with the device conversations, by conversation id.
+    fn group_client(&self, group: &str) -> Result<(ChatClient, String), ChatError> {
+        self.ensure_running()?;
+        let relay = self.relay().ok_or(ChatError::NotSignedIn)?;
+        let conversation_id = crate::group::group_conversation(group);
+        if let Some(client) = self.devices_lock().clients.get(&conversation_id) {
+            return Ok((client.clone(), crate::device_chat::ME.to_string()));
+        }
+        if relay.record.get().group(group).is_none() {
+            return Err(ChatError::NotFound { conversation_id });
+        }
+        let repo = relay.group_repo(group).map_err(|e| ChatError::Storage {
+            reason: e.to_string(),
+        })?;
+        self.open_relay_client(&relay, &conversation_id, Arc::new(repo))
     }
 
     /// The client of `endpoint_id`'s conversation, opened on first use.
@@ -1211,7 +1255,27 @@ impl ChatCore {
             .map_err(|e| ChatError::Storage {
                 reason: e.to_string(),
             })?;
-        let directory = self.storage_directory.join("devices").join(endpoint_id);
+        self.open_relay_client(&relay, endpoint_id, Arc::new(repo))
+    }
+
+    /// Opens the client of one of Relay's own conversations (a device's,
+    /// kept by its endpoint id, or a group's, by its conversation id) on
+    /// `repo`, live while Relay is open.
+    fn open_relay_client(
+        &self,
+        relay: &Arc<crate::RelayCore>,
+        key: &str,
+        repo: Arc<dyn chat_core::ChatRepo>,
+    ) -> Result<(ChatClient, String), ChatError> {
+        let user_id = crate::device_chat::ME.to_string();
+        let conversation_id = match crate::group::conversation_group(key) {
+            Some(_) => key.to_string(),
+            None => crate::device_chat::device_conversation(key),
+        };
+        let directory = self
+            .storage_directory
+            .join("devices")
+            .join(key.replace(':', "-"));
         std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", directory.display()),
         })?;
@@ -1223,7 +1287,7 @@ impl ChatCore {
         let hub = self.events.clone();
         let events_user = user_id.clone();
         let client = ChatClient::open(
-            Arc::new(repo),
+            repo,
             ChatStore::in_directory(directory),
             config,
             move |event: chat_core::ChatEvent| hub.publish(types::event(event, &events_user)),
@@ -1236,14 +1300,12 @@ impl ChatCore {
             forge_runtime::logging::warn!("a device conversation isn't live: {e}");
         }
         let mut devices = self.devices_lock();
-        if let Some(opened) = devices.clients.get(endpoint_id) {
+        if let Some(opened) = devices.clients.get(key) {
             // Opened by another command meanwhile: keep that one.
             client.shutdown();
             return Ok((opened.clone(), user_id));
         }
-        devices
-            .clients
-            .insert(endpoint_id.to_string(), client.clone());
+        devices.clients.insert(key.to_string(), client.clone());
         Ok((client, user_id))
     }
 
@@ -1458,16 +1520,16 @@ fn server_repo(server_url: impl Into<String>) -> HttpRepo {
     HttpRepo::new(http_client(), server_url)
 }
 
+/// Who the chat path says it is to the chat server, through either client.
+const CHAT_USER_AGENT: &str = concat!("forge-chat-example/", env!("CARGO_PKG_VERSION"));
+
 fn http_client() -> Arc<dyn forge_net::HttpClient> {
     static CLIENT: std::sync::OnceLock<Arc<native::http::PreferInstalled>> =
         std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         Arc::new(native::http::HttpService::prefer_installed(
-            Arc::new(forge_net::UreqClient::with_user_agent(concat!(
-                "forge-chat-example/",
-                env!("CARGO_PKG_VERSION")
-            ))),
-            |client| client,
+            Arc::new(forge_net::UreqClient::with_user_agent(CHAT_USER_AGENT)),
+            |client| client.user_agent(CHAT_USER_AGENT),
         ))
     });
     Arc::clone(client) as Arc<dyn forge_net::HttpClient>

@@ -72,7 +72,8 @@ struct BonsaiHarnessView: View {
                         send: {
                             handOff(snapshot.project ?? model.project)
                             model.answerPlan()
-                        }
+                        },
+                        editTests: editTests(in: snapshot.project ?? model.project)
                     )
                 }
                 if let snapshot = model.snapshot, let task = snapshot.task {
@@ -176,12 +177,18 @@ struct BonsaiHarnessView: View {
             }
                 .disabled(model.isScripted || model.request.isEmpty)
                 .accessibilityIdentifier("harness.planRequest")
+            Button("Tests First, Then Code", systemImage: "checklist") {
+                handOff(model.project)
+                model.runTestsFirst()
+            }
+                .disabled(model.isScripted || model.request.isEmpty)
+                .accessibilityIdentifier("harness.testsFirst")
             Toggle("Show Plans Before They Run", isOn: $model.approvePlans)
                 .accessibilityIdentifier("harness.approvePlans")
         } header: {
             Text("Tasks")
         } footer: {
-            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts.")
+            Text("Each ladder task starts from a fresh project. Your own tasks work in the Python Lab project you choose, on its files, and Python Lab shows that project read-only while Bonsai works. A planned task is split into small tasks, each checked before the next starts. Tests first has Bonsai write the tests, waits for you to check them, then has it write code that passes them unchanged.")
         }
     }
 
@@ -298,6 +305,16 @@ struct BonsaiHarnessView: View {
             Text("Project \(snapshot.project ?? "")")
         }
         .onAppear { model.loadFiles() }
+    }
+
+    /// Opens `project` in Python Lab, to fix a test before approving it;
+    /// nil when this build has no Python Lab.
+    private func editTests(in project: String) -> (@MainActor () -> Void)? {
+        guard let pythonLab else { return nil }
+        return {
+            pythonLab.open(project: project)
+            showPythonLab = true
+        }
     }
 
     /// Python Lab's last second of typing is saved before Bonsai reads or

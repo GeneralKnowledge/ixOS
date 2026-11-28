@@ -200,6 +200,24 @@ fn the_background_interrupts_foreground_work_only() {
 }
 
 #[test]
+fn work_that_hands_back_a_partial_answer_after_cancellation_is_stopped() {
+    let (rt, _) = runtime();
+    rt.set_phase(AppPhase::Active);
+    let host = Cancellation::new();
+    // Notices the cancellation and returns what it had, as Ok: the caller
+    // must not take that for a complete answer.
+    let partial = rt.run("partial", rt.foreground(Some(&host)), |cancel| {
+        cancel.wait_timeout(Duration::from_secs(10));
+        Ok::<_, AppError>(1)
+    });
+    after(50, move || host.cancel());
+    assert_eq!(
+        block_on(partial),
+        Err(AppError::Stopped(ErrorKind::Cancelled))
+    );
+}
+
+#[test]
 fn coming_back_is_announced_and_foreground_work_runs_again() {
     let (rt, _) = runtime();
     let events = rt.events().unwrap();
@@ -313,12 +331,16 @@ fn finishing_until(
 ) -> impl std::future::Future<Output = Result<u32, AppError>> {
     let work = rt.finishing(None);
     rt.run("finish", work, move |cancel| {
-        // Wakes the wait below when released; the scope wakes it when cut off.
-        let wake = cancel.clone();
-        let link = release.handle().on_cancel(move || wake.cancel());
-        cancel.wait_timeout(Duration::from_secs(10));
-        drop(link);
-        if release.is_cancelled() {
+        // Released, or cut off by its scope. Released must not cancel the
+        // work itself: cancelled work is stopped, whatever it returns.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !release.is_cancelled()
+            && !cancel.is_cancelled()
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        if release.is_cancelled() && !cancel.is_cancelled() {
             Ok(1)
         } else {
             Err(AppError::Invalid) // what an I/O call reports when cut off

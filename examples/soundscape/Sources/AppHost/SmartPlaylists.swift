@@ -15,7 +15,7 @@ struct SmartPlaylistsSection: View {
         Section("Smart Playlists") {
             ForEach(model.collection.smartPlaylists, id: \.id) { list in
                 NavigationLink(value: ListenRoute.smartPlaylist(list.id)) {
-                    SmartPlaylistRow(list: list).surfaceSource(.smartPlaylist(list.id))
+                    SmartPlaylistRow(list: list).forgeSurfaceSource(ListenRoute.smartPlaylist(list.id))
                 }
                     .accessibilityIdentifier(list.builtIn ? "playlists.builtInSmart" : "playlists.smart")
                     .forgeRowActions {
@@ -96,7 +96,7 @@ struct SmartPlaylistView: View {
     @State private var detail: SmartPlaylistDetail?
     @State private var editing: EditorItem?
     @State private var freezing = false
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     @State private var confirmingDelete = false
     @Environment(\.dismiss) private var dismiss
 
@@ -117,9 +117,6 @@ struct SmartPlaylistView: View {
         // Plays, favourites and edits change what the rules let in.
         .onChange(of: model.collection) { detail = model.smartPlaylist(id) }
         .onChange(of: model.library) { detail = model.smartPlaylist(id) }
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
-        }
         .toolbar {
             if let detail {
                 ToolbarItem(placement: .primaryAction) { menu(detail) }
@@ -141,8 +138,7 @@ struct SmartPlaylistView: View {
                             isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete Smart Playlist", role: .destructive) {
                 Task {
-                    await model.deleteSmartPlaylist(id)
-                    dismiss()
+                    if await model.deleteSmartPlaylist(id) { dismiss() }
                 }
             }
             .accessibilityIdentifier("smartPlaylist.confirmDelete")
@@ -211,7 +207,7 @@ struct SmartPlaylistView: View {
             Section {
                 ForEach(Array(detail.entries.enumerated()), id: \.element.track.id) { index, entry in
                     TrackRow(model: model, player: player, track: entry.track,
-                             showDetails: { details = entry.track.id }) {
+                             showDetails: { openSurface(ListenRoute.track(entry.track.id)) }) {
                         player.play(model.queue(tracks, from: index))
                     }
                     .badge(counted ? Text("\(entry.playCount)") : nil)

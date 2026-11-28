@@ -19,6 +19,10 @@ struct DiscoverHome: View {
     let popular: [CatalogueTrack]
 
     @State private var byGenre: [String: [CatalogueTrack]] = [:]
+    @State private var byShelf: [JamendoShelf: [CatalogueTrack]] = [:]
+    @State private var artists: [JamendoArtist] = []
+    @State private var newArtists: [JamendoArtist] = []
+    @State private var because: JamendoBecause?
     @Environment(\.songActions) private var actions
 
     private var genres: [JamendoGenre] { model.discoverGenres(limit: 3) }
@@ -48,6 +52,19 @@ struct DiscoverHome: View {
                       identifier: "discover.popular") { track in
                     catalogueTile(track, in: popular, identifier: "discover.popularSong")
                 }
+                if let because {
+                    Shelf(title: LocalizedStringKey(because.title), items: because.tracks,
+                          identifier: "discover.because") { track in
+                        catalogueTile(track, in: because.tracks, identifier: "discover.becauseSong")
+                    }
+                }
+                shelf(.picks)
+                Shelf(title: "Artists to Discover", items: artists, seeAll: .jamendoArtists(.popular),
+                      identifier: "discover.artists") { artist in
+                    JamendoArtistTile(artist: artist)
+                }
+                shelf(.newReleases)
+                shelf(.rising)
                 Shelf(title: "Start a Station", items: model.jamendoGenres, identifier: "discover.stations") { genre in
                     Button {
                         actions.startRadio(.genre(name: genre.name), "\(genre.name) Station")
@@ -73,6 +90,13 @@ struct DiscoverHome: View {
                         catalogueTile(track, in: tracks, identifier: "discover.genreSong")
                     }
                 }
+                ForEach(model.jamendoShelves.filter { ![JamendoShelf.picks, .newReleases, .rising].contains($0) }, id: \.self) { kind in
+                    shelf(kind)
+                }
+                Shelf(title: "New on Jamendo", items: newArtists, seeAll: .jamendoArtists(.new),
+                      identifier: "discover.newArtists") { artist in
+                    JamendoArtistTile(artist: artist)
+                }
                 Shelf(title: "Recently Discovered", items: discovered, seeAll: .songs,
                       identifier: "discover.recent") { track in
                     Button {
@@ -96,8 +120,8 @@ struct DiscoverHome: View {
                             .font(.shelfTitle)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
-                        NavigationLink(value: ListenRoute.jamendoGenres) {
-                            Text("See All").font(.subheadline)
+                        ForgeSurfaceLink(ListenRoute.jamendoGenres) {
+                            Text("See All").font(.subheadline).foregroundStyle(.tint)
                         }
                         .accessibilityIdentifier("discover.genres")
                     }
@@ -112,6 +136,42 @@ struct DiscoverHome: View {
             .padding(.vertical, 8)
         }
         .task(id: genres.map(\.tag).joined(separator: ",")) { await loadGenres() }
+        .task { await loadExploring() }
+    }
+
+    /// One of Jamendo's shelves, with See All.
+    private func shelf(_ kind: JamendoShelf) -> some View {
+        let tracks = byShelf[kind] ?? []
+        return Shelf(title: LocalizedStringKey(jamendoShelfTitle(shelf: kind)), items: tracks,
+                     seeAll: .jamendoShelf(kind), identifier: "discover.shelf") { track in
+            catalogueTile(track, in: tracks, identifier: "discover.shelfSong")
+        }
+    }
+
+    /// Because You Like, artists and Jamendo's shelves, top of the page
+    /// first; each that can't load is left out quietly, as genres are.
+    private func loadExploring() async {
+        if because == nil, case .success(let found) = await model.jamendoBecause() {
+            because = found.map { JamendoBecause(title: $0.title, fromTrackId: $0.fromTrackId,
+                                                 tracks: Array($0.tracks.prefix(15))) }
+        }
+        for kind in model.jamendoShelves.prefix(1) where byShelf[kind] == nil {
+            if case .success(let found) = await model.jamendoTracks(on: kind) {
+                byShelf[kind] = Array(found.prefix(15))
+            }
+        }
+        if artists.isEmpty, case .success(let found) = await model.jamendoArtists(.popular) {
+            artists = Array(found.prefix(15))
+        }
+        for kind in model.jamendoShelves.dropFirst() where byShelf[kind] == nil {
+            if Task.isCancelled { return }
+            if case .success(let found) = await model.jamendoTracks(on: kind) {
+                byShelf[kind] = Array(found.prefix(15))
+            }
+        }
+        if newArtists.isEmpty, case .success(let found) = await model.jamendoArtists(.new) {
+            newArtists = Array(found.prefix(15))
+        }
     }
 
     private func catalogueTile(_ track: CatalogueTrack, in tracks: [CatalogueTrack], identifier: String) -> some View {

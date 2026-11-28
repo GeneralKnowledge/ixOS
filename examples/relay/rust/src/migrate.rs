@@ -119,7 +119,7 @@ fn moves(record: &Record) -> Vec<Move> {
                     path: file.filter(|p| p.exists()).map(Path::to_path_buf),
                 });
             }
-            Payload::Message { .. } => {}
+            _ => {}
         }
     }
     let pending: HashSet<u64> = record.deliveries.iter().map(|d| d.transfer).collect();

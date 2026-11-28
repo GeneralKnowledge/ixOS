@@ -10,13 +10,22 @@ struct TripListView: View {
     @State private var isStarting = false
     @State private var path: [Route] = []
 
-    enum Route: Hashable {
+    enum Route: ForgeSurfaceRoute {
         case recording
         case trip(Int64)
+
+        /// One recording screen and one screen per trip, however reached
+        /// (ForgeAppKit's Layered Navigation).
+        var surfaceID: String? {
+            switch self {
+            case .recording: "recording"
+            case .trip(let id): "trip:\(id)"
+            }
+        }
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $path.forgeLayered()) {
             List {
                 if let trip = model.recording {
                     Section {
@@ -43,7 +52,7 @@ struct TripListView: View {
             }
             .overlay { emptyState }
             .navigationTitle("FieldKit")
-            .navigationDestination(for: Route.self) { route in
+            .forgeLayeredDestination(for: Route.self) { route in
                 switch route {
                 case .recording: RecordingView(model: model)
                 case .trip(let id): TripDetailView(model: model, tripID: id)

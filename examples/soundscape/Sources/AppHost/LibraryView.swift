@@ -17,7 +17,7 @@ struct SearchTab: View {
     let player: TakePlayer
 
     @State private var search = ""
-    @State private var details: String?
+    @Environment(\.forgeOpenSurface) private var openSurface
     /// The catalogues' answer to `query`, once it arrives.
     @State private var catalogues: CatalogueSearch?
     @State private var cataloguesProblem: String?
@@ -53,9 +53,6 @@ struct SearchTab: View {
             case .failure(let failure):
                 if !failure.stopped { cataloguesProblem = failure.message }
             }
-        }
-        .navigationDestination(item: $details) { id in
-            TrackView(model: model, player: player, id: id)
         }
         .overlay {
             if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
@@ -144,7 +141,7 @@ struct SearchTab: View {
         if !found.tracks.isEmpty {
             Section("Songs") {
                 ForEach(Array(found.tracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(model: model, player: player, track: track, showDetails: { details = track.id }) {
+                    TrackRow(model: model, player: player, track: track, showDetails: { openSurface(ListenRoute.track(track.id)) }) {
                         remember()
                         player.play(model.queue(found.tracks, from: index))
                     }
@@ -164,7 +161,7 @@ struct GenreGrid: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 12) {
             ForEach(genres, id: \.tag) { genre in
-                NavigationLink(value: ListenRoute.jamendoGenre(genre)) {
+                ForgeSurfaceLink(ListenRoute.jamendoGenre(genre)) {
                     GenreTile(name: genre.name)
                 }
                 .buttonStyle(.plain)
@@ -426,7 +423,7 @@ struct AlbumRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Artwork(title: album.title, url: album.artworkUrl, size: 56)
-                .surfaceSource(.album(album))
+                .forgeSurfaceSource(ListenRoute.album(album))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(album.title).font(.headline).lineLimit(1)
@@ -453,7 +450,7 @@ struct ArtistRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Artwork(title: artist.name, url: artist.artworkUrl, size: 48, circle: true)
-                .surfaceSource(.artist(artist))
+                .forgeSurfaceSource(ListenRoute.artist(artist))
             VStack(alignment: .leading, spacing: 2) {
                 Text(artist.name).font(.headline).lineLimit(1)
                 Text(TakeFormat.artistSummary(artist))
@@ -582,14 +579,14 @@ struct TrackView: View {
                     Text(track.title).font(.title2.bold()).multilineTextAlignment(.center)
                     HStack(spacing: 6) {
                         if let artist {
-                            NavigationLink(value: ListenRoute.artist(artist)) { Text(artist.name) }
+                            ForgeSurfaceLink(ListenRoute.artist(artist)) { Text(artist.name) }
                                 .accessibilityIdentifier("track.artist")
                         } else {
                             Text(track.artist)
                         }
                         if let album {
                             Text("·").foregroundStyle(.secondary)
-                            NavigationLink(value: ListenRoute.album(album)) { Text(album.title) }
+                            ForgeSurfaceLink(ListenRoute.album(album)) { Text(album.title) }
                                 .accessibilityIdentifier("track.album")
                         }
                     }

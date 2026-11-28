@@ -42,25 +42,36 @@ private struct SketchbookScreen: View {
     }
 }
 
+/// A sketch open in the stack. It grows out of its tile and shrinks back
+/// into it (ForgeAppKit's Layered Navigation).
+struct SketchRoute: ForgeSurfaceRoute {
+    let id: UInt64
+    var surfaceID: String? { "sketch:\(id)" }
+    var surfaceStyle: ForgeSurfaceStyle { .stacked }
+}
+
 /// Screen 1: every sketch as a thumbnail, most recent first. New makes a
 /// sketch and opens it; a long press renames, duplicates or deletes.
 struct SketchListView: View {
     @Bindable var model: SketchbookModel
     let changes: UInt64
-    @State private var path: [UInt64] = []
+    @State private var path: [SketchRoute] = []
     @State private var renaming: SketchSummary?
+    /// Where an opened sketch grows from: its tile.
+    @Namespace private var surfaces
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 16)]
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: $path.forgeLayered()) {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(model.sketches) { sketch in
-                        NavigationLink(value: sketch.id) {
+                        ForgeSurfaceLink(SketchRoute(id: sketch.id)) {
                             SketchTile(sketch: sketch, version: model.thumbnailsSaved)
                         }
                         .buttonStyle(.plain)
+                        .forgeSurfaceSource(SketchRoute(id: sketch.id))
                         .accessibilityIdentifier("sketches.tile")
                         .contextMenu { menu(for: sketch) }
                     }
@@ -69,9 +80,9 @@ struct SketchListView: View {
             }
             .overlay { emptyState }
             .navigationTitle("Sketchbook")
-            .navigationDestination(for: UInt64.self) { id in
+            .forgeLayeredDestination(for: SketchRoute.self) { route in
                 #if os(iOS)
-                SketchView(model: model, sketchID: id, changes: changes)
+                SketchView(model: model, sketchID: route.id, changes: changes)
                 #else
                 // PencilKit's canvas is iOS only; the macOS build exists
                 // for the model tests.
@@ -105,6 +116,7 @@ struct SketchListView: View {
             )) { action in Task { await model.handle(action) } }
             .forgeFeedback(model.feedback)
         }
+        .forgeSurfaces(surfaces, path: $path)
     }
 
     @ViewBuilder private func menu(for sketch: SketchSummary) -> some View {
@@ -135,7 +147,7 @@ struct SketchListView: View {
     private func create(_ paper: Paper) {
         Task {
             if let sketch = await model.create(paper: paper) {
-                path = [sketch.summary.id]
+                path = [SketchRoute(id: sketch.summary.id)]
             }
         }
     }

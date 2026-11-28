@@ -194,22 +194,23 @@ struct PythonLabView: View {
                     .accessibilityIdentifier("pythonLab.rerun")
                 }
                 Spacer()
-                if model.hasWorkspace {
-                    NavigationLink {
-                        PythonRunHistoryView(model: model)
-                    } label: {
-                        Label("History", systemImage: "clock")
-                    }
-                    .fixedSize()
-                    .accessibilityLabel("Run history, \(model.runs.count) runs")
-                    .accessibilityIdentifier("pythonLab.history")
-                    Spacer()
-                }
                 Button("Clear", systemImage: "trash") { model.clearConsole() }
                     .disabled(model.console.isEmpty)
                     .accessibilityIdentifier("pythonLab.clear")
             }
             .buttonStyle(.borderless)
+            // A row of its own: in the row with Rerun and Clear, a link
+            // would make the whole row open History (docs/ios-ui.md,
+            // Layered Navigation rule 9).
+            if model.hasWorkspace {
+                NavigationLink {
+                    PythonRunHistoryView(model: model)
+                } label: {
+                    Label("History", systemImage: "clock")
+                }
+                .accessibilityLabel("Run history, \(model.runs.count) runs")
+                .accessibilityIdentifier("pythonLab.history")
+            }
         } header: {
             Text(model.lastRunFile.map { "Console: \($0)" } ?? "Console")
         } footer: {

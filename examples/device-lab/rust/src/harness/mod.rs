@@ -301,6 +301,10 @@ pub struct HarnessPlan {
     pub can_continue: bool,
     /// Blocked: the question to answer before it can go on.
     pub question: Option<String>,
+    /// A tests-first request's test file.
+    pub tests_file: Option<String>,
+    /// The tests waiting for the person to check them, as they are now.
+    pub tests_to_check: Option<String>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
@@ -466,9 +470,17 @@ impl BonsaiHarness {
                 _ => state.finished_ms,
             },
             limits: self.limits.clone(),
-            plan: current_plan
-                .and_then(PlanView::read)
-                .map(|view| plan_record(&view)),
+            plan: current_plan.and_then(PlanView::read).map(|view| {
+                let mut record = plan_record(&view);
+                if view.awaiting_test_review() {
+                    // Read now, so the person's edits in Python Lab show.
+                    record.tests_to_check = match (&state.root, &view.tests_file) {
+                        (Some(root), Some(file)) => std::fs::read_to_string(root.join(file)).ok(),
+                        _ => None,
+                    };
+                }
+                record
+            }),
             approve_plans: state.approve_plans,
         }
     }
@@ -526,6 +538,19 @@ impl BonsaiHarness {
         project: String,
     ) -> Result<(), HarnessError> {
         self.start_request(Arc::new(HostBrain(model)), request, &project, true)
+    }
+
+    /// A request in the person's own words, tests first: Bonsai writes the
+    /// tests, the plan waits while the person checks (and may edit) them,
+    /// and approving it has Bonsai write the code that passes them
+    /// unchanged. In the person's Python Lab project `project`.
+    pub fn start_custom_tests_first(
+        &self,
+        model: Arc<dyn HarnessModel>,
+        request: String,
+        project: String,
+    ) -> Result<(), HarnessError> {
+        self.start_tests_first(Arc::new(HostBrain(model)), request, &project)
     }
 
     /// Runs the plan on screen: approves it, or resumes it from its last
@@ -837,6 +862,31 @@ impl BonsaiHarness {
         project: &str,
         planned: bool,
     ) -> Result<(), HarnessError> {
+        let kind = if planned {
+            RequestKind::Plan
+        } else {
+            RequestKind::Task
+        };
+        self.start_kind(brain, request, project, kind)
+    }
+
+    /// [`Self::start_custom_tests_first`] with any brain.
+    pub fn start_tests_first(
+        &self,
+        brain: Arc<dyn Brain>,
+        request: String,
+        project: &str,
+    ) -> Result<(), HarnessError> {
+        self.start_kind(brain, request, project, RequestKind::TestsFirst)
+    }
+
+    fn start_kind(
+        &self,
+        brain: Arc<dyn Brain>,
+        request: String,
+        project: &str,
+        kind: RequestKind,
+    ) -> Result<(), HarnessError> {
         let request = request.trim().to_string();
         if request.is_empty() {
             return Err(HarnessError::EmptyTask);
@@ -863,17 +913,17 @@ impl BonsaiHarness {
                 reason: err.to_string(),
             });
         }
-        let job = if planned {
+        let job = match kind {
             // Each planned task carries its own checks.
-            Job::Plan {
+            RequestKind::Plan => Job::Plan {
                 request,
                 criteria: Vec::new(),
-            }
-        } else {
-            Job::Task {
+            },
+            RequestKind::Task => Job::Task {
                 request,
                 criteria: vec![Criterion::WorkRuns],
-            }
+            },
+            RequestKind::TestsFirst => Job::TestsFirst { request },
         };
         self.launch(brain, Arc::new(lab), project, job)
     }
@@ -968,8 +1018,17 @@ impl BonsaiHarness {
     /// Approves or resumes the plan on screen with `model` (the Scripted
     /// model when none).
     fn continue_with(&self, model: Option<Arc<dyn HarnessModel>>) -> Result<(), HarnessError> {
+        self.continue_brain(|project, view| Self::resume_brain(model, project, view))
+    }
+
+    /// Approves or resumes the plan on screen with the brain `brain` picks
+    /// for its project and plan.
+    pub(crate) fn continue_brain(
+        &self,
+        brain: impl FnOnce(&str, &PlanView) -> Arc<dyn Brain>,
+    ) -> Result<(), HarnessError> {
         let (project, root, view) = self.claim_plan(PlanView::can_continue)?;
-        let brain = Self::resume_brain(model, &project, &view);
+        let brain = brain(&project, &view);
         let lab = PythonLab::new(
             root,
             Arc::clone(&self.python),
@@ -1051,6 +1110,7 @@ impl BonsaiHarness {
                     }
                     Job::Plan { request, criteria } => run.plan(request, criteria, approve),
                     Job::Continue { plan } => run.continue_plan(&plan, approve),
+                    Job::TestsFirst { request } => run.tests_first(request),
                 }
                 let mut state = lock(&shared.state);
                 state.running = false;
@@ -1087,6 +1147,13 @@ fn recoverable(reason: &str) -> bool {
 }
 
 /// What a launch does.
+#[derive(Clone, Copy)]
+enum RequestKind {
+    Task,
+    Plan,
+    TestsFirst,
+}
+
 enum Job {
     /// One task.
     Task {
@@ -1100,6 +1167,8 @@ enum Job {
     },
     /// Approve or resume the plan with this id.
     Continue { plan: String },
+    /// A request run tests first (plan::tests_first_tasks).
+    TestsFirst { request: String },
 }
 
 /// A journal id: `prefix-<ms>`, never the same twice in this process.
@@ -1151,6 +1220,8 @@ fn plan_record(view: &PlanView) -> HarnessPlan {
         acceptance: view.criteria.iter().map(Criterion::describe).collect(),
         can_continue: view.can_continue(),
         question: view.blocked.as_ref().map(|(_, question)| question.clone()),
+        tests_file: view.tests_file.clone(),
+        tests_to_check: None,
     }
 }
 
@@ -1321,6 +1392,64 @@ impl Run {
         self.run_plan(&plan);
     }
 
+    /// A tests-first request: the harness writes its two-task plan itself
+    /// and runs it; the plan stops for the person after the tests task.
+    fn tests_first(&self, request: String) {
+        let plan = fresh_id("plan");
+        let file = plan::TESTS_FILE.to_string();
+        let opened = self
+            .record(Entry::PlanRequest {
+                plan: plan.clone(),
+                request,
+                criteria: Vec::new(),
+                model: self.brain.describe().id,
+                at_ms: now_ms(),
+            })
+            .and_then(|_| {
+                self.record(Entry::TestsFirst {
+                    plan: plan.clone(),
+                    file: file.clone(),
+                })
+            })
+            .and_then(|_| {
+                self.record(Entry::Plan {
+                    plan: plan.clone(),
+                    thought: plan::TESTS_FIRST_THOUGHT.into(),
+                    tasks: plan::tests_first_tasks(&file),
+                    model_ms: 0,
+                })
+            });
+        if opened.is_err() {
+            return;
+        }
+        logging::info!(target: "harness", "{plan} started, tests first");
+        self.run_plan(&plan);
+    }
+
+    /// Records the tests as they are now (the person's edits included) as
+    /// approved, and makes them part of the checkpoint the code task
+    /// starts from, so a recovery's rollback keeps them.
+    fn approve_tests(&self, view: &PlanView) -> Result<(), End> {
+        let Some(file) = view.tests_file.clone() else {
+            return Ok(());
+        };
+        let Some(content) = self.environment.read_text(&file) else {
+            return Err(End(
+                TaskStatus::Failed,
+                format!("{file} is gone, so there are no tests to approve."),
+            ));
+        };
+        self.environment
+            .checkpoint(&view.restart_point())
+            .map_err(|err| End(TaskStatus::Failed, format!("{CHECKPOINT_FAILED}: {err}")))?;
+        self.record(Entry::TestsApproved {
+            plan: view.id.clone(),
+            file,
+            content,
+            at_ms: now_ms(),
+        })
+    }
+
     /// Approves the plan, or resumes it from its last verified task. A
     /// plan that never ran starts afresh, and waits for approval first
     /// (when `approve`) unless that is what it is getting now.
@@ -1331,6 +1460,13 @@ impl Run {
         if view.blocked.is_some() {
             // Nothing runs until the person answers the question.
             return;
+        }
+        if view.awaiting_test_review() {
+            // Approving the tests: they stay as the person left them.
+            if let Err(end) = self.approve_tests(&view) {
+                return self.end_plan(plan, end);
+            }
+            return self.run_plan(plan);
         }
         if view.tasks.is_empty() {
             // It never got a plan: write one now.
@@ -1560,6 +1696,17 @@ impl Run {
                 Some((plan, &next.id)),
             );
             if status == TaskStatus::Completed {
+                if self
+                    .plan_view(plan)
+                    .is_some_and(|view| view.awaiting_test_review())
+                {
+                    let _ = self.plan_status(
+                        plan,
+                        PlanState::AwaitingApproval,
+                        Some(plan::TESTS_REVIEW_NOTE.into()),
+                    );
+                    return;
+                }
                 continue;
             }
             let failed = End(status, format!("Task {}: {reason}", next.id));

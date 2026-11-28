@@ -59,6 +59,7 @@ pub fn json_mode() -> bool {
 /// Switches to JSON mode: from here on, anything written to stdout (by this
 /// process or a child it starts) goes to stderr, and only [`finish`] writes
 /// to the real stdout.
+#[allow(unsafe_code)]
 pub fn enter_json_mode() {
     JSON.store(true, Ordering::Relaxed);
     let _ = std::io::stdout().flush();

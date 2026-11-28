@@ -70,7 +70,7 @@ struct ListenHome: View {
                 }
                 Shelf(title: "Your Playlists", items: collection.playlists, seeAll: .playlists,
                       identifier: "listen.playlists") { list in
-                    NavigationLink(value: ListenRoute.playlist(list.id)) {
+                    ForgeSurfaceLink(ListenRoute.playlist(list.id)) {
                         VStack(alignment: .leading, spacing: 6) {
                             PlaylistArtwork(list: list, size: SoundscapeMetrics.shelfArtwork)
                             Text(list.name)
@@ -83,17 +83,17 @@ struct ListenHome: View {
                         }
                         .frame(width: SoundscapeMetrics.shelfArtwork, alignment: .leading)
                         .accessibilityElement(children: .combine)
-                        .surfaceSource(.playlist(list.id))
+                        .forgeSurfaceSource(ListenRoute.playlist(list.id))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("listen.playlist")
                 }
                 Shelf(title: "Recently Added", items: recentAlbums, seeAll: .albums,
                       identifier: "listen.albums") { album in
-                    NavigationLink(value: ListenRoute.album(album)) {
+                    ForgeSurfaceLink(ListenRoute.album(album)) {
                         ArtworkTile(title: album.title, subtitle: album.artist, url: album.artworkUrl,
                                     download: model.downloadState(of: model.tracks(of: album)))
-                            .surfaceSource(.album(album))
+                            .forgeSurfaceSource(ListenRoute.album(album))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("listen.album")
@@ -126,6 +126,7 @@ struct ListenHome: View {
         // coming back from another tab (seen on the phone 2026-11-24).
         .modifier(GreetingSubtitle(text: Self.greeting(Date())))
         .refreshable {
+            model.refreshJamendo()
             await model.loadLibrary(fresh: true)
             await loadPopular()
         }
@@ -219,6 +220,7 @@ private struct ContinueCard: View {
     let toggle: () -> Void
     let open: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var palette: ArtworkPalette
 
     /// The song in the player.
@@ -298,7 +300,7 @@ private struct ContinueCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .task(id: "\(title)|\(artworkUrl ?? "")") {
             let found = await ArtworkPaletteLoader.palette(title: title, url: artworkUrl)
-            withAnimation(SoundscapeMotion.paletteFade) { palette = found }
+            withAnimation(SoundscapeMotion.palette(reduced: reduceMotion)) { palette = found }
         }
     }
 }

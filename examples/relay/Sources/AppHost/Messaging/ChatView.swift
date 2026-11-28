@@ -24,6 +24,7 @@ struct ChatView: View {
     var focusMessage: String? = nil
 
     @State private var draft = ""
+    @Environment(\.forgeTheme) private var theme
     @State private var draftLoaded = false
     @State private var replyingTo: ChatMessage?
     @State private var editing: ChatMessage?
@@ -31,6 +32,7 @@ struct ChatView: View {
     @State private var stashedDraft = ""
     @State private var deleting: ChatMessage?
     @State private var searching = false
+    @State private var showingGroup = false
     @State private var jumpTarget: String?
     @State private var highlighted: String?
     /// Whether the end of the transcript is on screen. A new message
@@ -50,6 +52,7 @@ struct ChatView: View {
     /// The attachment open in Quick Look.
     @State private var previewURL: URL?
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Records voice messages (Forge's audio module).
     @State private var recorder = ForgeAudioRecorder(maxDuration: 300)
     @State private var microphoneDenied = false
@@ -79,7 +82,7 @@ struct ChatView: View {
                 .overlay(alignment: .bottom) {
                     if newBelow {
                         Button(newMessagesLabel, systemImage: "arrow.down") {
-                            withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                            withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                         }
                         .relayProminentButton()
                         .buttonBorderShape(.capsule)
@@ -118,7 +121,7 @@ struct ChatView: View {
 
     private func reachedBottom(_ reached: Bool) {
         atBottom = reached
-        if reached { withAnimation { newBelow = false } }
+        if reached { withForgeAnimation(.standard, reduceMotion: reduceMotion) { newBelow = false } }
     }
 
     private var newMessagesLabel: String {
@@ -134,7 +137,7 @@ struct ChatView: View {
                 VStack { Divider() }
                 Text(count == 1 ? "1 new message" : "\(count) new messages")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(theme.colors.accent.text)
                 VStack { Divider() }
             }
             .padding(.vertical, 8)
@@ -169,15 +172,15 @@ struct ChatView: View {
                     // Stay where you are reading; the pill counts what came
                     // in, and the divider marks where it starts.
                     if !newBelow { firstUnread = messages.last?.id }
-                    withAnimation { newBelow = true }
+                    withForgeAnimation(.standard, reduceMotion: reduceMotion) { newBelow = true }
                     return
                 }
-                withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
             .onChange(of: composing) { _, focused in
                 // The keyboard is coming up: keep the newest message in view.
                 if focused && editing == nil {
-                    withAnimation { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                    withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                 }
             }
             .onChange(of: jumpTarget) { _, target in
@@ -187,12 +190,12 @@ struct ChatView: View {
     }
 
     private func jump(to target: String, proxy: ScrollViewProxy) {
-        withAnimation { proxy.scrollTo(target, anchor: .center) }
+        withForgeAnimation(.standard, reduceMotion: reduceMotion) { proxy.scrollTo(target, anchor: .center) }
         highlighted = target
         jumpTarget = nil
         Task {
             try? await Task.sleep(for: .seconds(1.5))
-            withAnimation { if highlighted == target { highlighted = nil } }
+            withForgeAnimation(.standard, reduceMotion: reduceMotion) { if highlighted == target { highlighted = nil } }
         }
     }
 
@@ -228,6 +231,12 @@ struct ChatView: View {
                 searching = true
             }
             .accessibilityIdentifier("chat.search")
+            if ChatModel.isGroup(conversationId) {
+                Button("Group Info", systemImage: "person.3") {
+                    showingGroup = true
+                }
+                .accessibilityIdentifier("chat.groupInfo")
+            }
             if muted {
                 Button("Unmute", systemImage: "bell") {
                     model.setMuted(conversationId, false)
@@ -260,6 +269,9 @@ struct ChatView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .primaryAction) { moreMenu }
+            }
+            .sheet(isPresented: $showingGroup, onDismiss: { Task { await model.refresh() } }) {
+                GroupInfoView(model: model, conversationId: conversationId)
             }
             .sheet(isPresented: $searching) {
                 MessageSearchSheet(model: model, conversationId: conversationId) { found in
@@ -733,9 +745,9 @@ private struct ConnectionBanner: View {
 
     private func bar(_ notice: ForgeNotice) -> some View {
         notice
-            .padding(.horizontal)
+            .relayPassiveNotice()
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .relayFloatingBar(cornerRadius: 18)
     }
 }
 
@@ -915,6 +927,7 @@ private struct MessageBubble: View {
     let quoted: Quote?
     let highlighted: Bool
     let actions: BubbleActions
+    @Environment(\.forgeTheme) private var theme
 
     private var live: Bool { message.status == .sent && !message.deleted }
 
@@ -949,7 +962,7 @@ private struct MessageBubble: View {
                                 .font(.caption2)
                                 .accessibilityIdentifier("chat.deleting")
                         } else if let delivery {
-                            DeliveryLabel(delivery: delivery)
+                            DeliveryLabel(delivery: delivery, groupText: groupDeliveryText)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -1013,7 +1026,7 @@ private struct MessageBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .foregroundStyle(message.isMine ? Color.white : Color.primary)
+            .foregroundStyle(ink)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous).fill(fill)
             )
@@ -1063,6 +1076,7 @@ private struct MessageBubble: View {
     /// those out there. Android does the same (relay-android.md).
     private var inDeviceConversation: Bool {
         message.conversationId.hasPrefix(deviceConversationPrefix)
+            || ChatModel.isGroup(message.conversationId)
     }
 
     /// Whether Edit and reactions are offered.
@@ -1077,11 +1091,16 @@ private struct MessageBubble: View {
 
     private var fill: Color {
         guard message.isMine else { return .incomingBubble }
-        switch message.status {
-        case .sending: return .accentColor.opacity(0.6)
-        case .sent: return .accentColor
-        case .failed: return .red
-        }
+        // Sending keeps the full accent: at 60% the text fell to 2.8:1, and
+        // the delivery caption already says Sending.
+        return message.status == .failed ? theme.colors.tone(.danger).solid : theme.colors.accent.solid
+    }
+
+    /// Text on the bubble: onAccent (white in light mode, midnight in dark)
+    /// on ours, the danger tone's on a failed one.
+    private var ink: Color {
+        guard message.isMine else { return .primary }
+        return message.status == .failed ? theme.colors.tone(.danger).onSolid : theme.colors.accent.onSolid
     }
 
     private var accessibilityText: String {
@@ -1106,9 +1125,16 @@ private struct MessageBubble: View {
         if model.deleting.contains(message.id) {
             text += ", deleting"
         } else if let delivery {
-            text += ", \(DeliveryLabel.text(delivery))"
+            text += ", \(groupDeliveryText ?? DeliveryLabel.text(delivery))"
         }
         return text
+    }
+
+    /// In a group, how many members have it ("Delivered to 2 of 3"), for
+    /// the label and VoiceOver alike.
+    private var groupDeliveryText: String? {
+        guard delivery == .sent || delivery == .sending else { return nil }
+        return model.groupDelivery(message)
     }
 }
 
@@ -1117,23 +1143,22 @@ private struct QuoteView: View {
     let quote: Quote
     /// Drawn on our own (tinted) bubble.
     let onMine: Bool
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         HStack(spacing: 6) {
             Rectangle()
-                .fill(onMine ? Color.white.opacity(0.8) : Color.accentColor)
+                .fill(onMine ? AnyShapeStyle(.foreground.opacity(0.8)) : AnyShapeStyle(theme.colors.accent.solid))
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 1) {
                 Text(author).font(.caption.bold())
                 Text(text).font(.caption).lineLimit(2)
             }
-            .opacity(0.85)
+            // Full strength on our bubble: dimmed it fell below 4.5:1.
+            .opacity(onMine ? 1 : 0.85)
         }
         .padding(6)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
-        )
+        .background { RelayInset(onMine: onMine) }
         .accessibilityAddTraits(.isButton)
     }
 
@@ -1195,6 +1220,7 @@ private struct MessageSearchSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+            .listStyle(.plain)
             .overlay {
                 if !query.isEmpty && results.isEmpty {
                     if resultsFor == query {
@@ -1272,9 +1298,11 @@ struct SearchResultRow: View {
 
 private struct DeliveryLabel: View {
     let delivery: ChatDelivery
+    /// "Delivered to 2 of 3" in a group chat, instead of the plain words.
+    var groupText: String? = nil
 
     var body: some View {
-        Text(Self.text(delivery))
+        Text(groupText ?? Self.text(delivery))
             .font(.caption2)
             .foregroundStyle(delivery == .failed ? Color.red : Color.secondary)
             .padding(.horizontal, 4)
