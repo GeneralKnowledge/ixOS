@@ -11,7 +11,7 @@ This page checks the idea, and Reuben's follow-up v1.0 specification, against wh
 3. **Most of the proposed stack isn't needed until there are paying customers.** No FastAPI, Postgres, Redis, S3, Crawlee, Firecrawl, n8n or six services for the first milestones: one extraction command that fetches a handful of pages, reads the structured data they already carry, fills a typed profile with an LLM, records where every field came from, and waits for a person to approve it.
 4. **The production app is where the plan is weakest, and it isn't blocked by code.** Apple rejects apps that are mostly brochures (guideline 4.2.2) and template apps submitted on a client's behalf (4.2.6). So a client app needs a real function (bookings, loyalty, an account) and the client's own paid Apple developer account. On top of that, ixOS has never shipped to the App Store and Reuben's own team is free. The first paid offer may have to be something other than an App Store app (decision D4).
 5. **Many target businesses already have a branded app offer from their booking provider** (Mindbody, Phorest and others for gyms and salons; riding schools have Equestrian Systems, EC Pro and a new ABRS system). The gap to look for is businesses with no platform app, and what they would actually pay for is a question for the sales test, not an assumption.
-6. **Time-box it against eSIM, VPN and Travel Hub.** Engineering for M0 and M1 is small; the expensive part is Reuben's evenings visiting businesses. The separate repository, dashboard and integrations wait until five real conversations say there is something to sell (gate at M2).
+6. **Time-box it against eSIM, VPN and Travel Hub.** Engineering for M0 and M1 is small; the expensive part is Reuben's evenings visiting businesses. The BusinessForge repository holds only the schema and the extraction tool until then; the server, dashboard and integrations wait until five real conversations say there is something to sell (gate at M2).
 
 ## Reuben's v1.0 specification, reviewed
 
@@ -36,7 +36,7 @@ Reuben followed up the same day with "BusinessForge: technical specification and
 | v1.0 | Change | Why |
 |---|---|---|
 | A dedicated "BusinessForge Showcase" app installed permanently on the phone | **A Business Preview module inside Device Lab** until there is a paid Apple team | All three free-team slots are full (Device Lab, WebDriverAgent, VPN). A standalone app means removing one of them, and a new App ID. Device Lab already installs every app at once by cable |
-| Showcase lives in the BusinessForge repository | **The preview's Rust crate and SwiftUI screens live in ixOS `examples/business-preview`**, hosted by Device Lab; it reads the profile schema crate from BusinessForge by git | Device Lab can only host apps in ixOS: ixOS depending on a BusinessForge Swift package would run the dependency the wrong way. It moves to the BusinessForge repo as its own app when a paid team gives it a slot |
+| Showcase lives in the BusinessForge repository | **The preview's Rust crate and SwiftUI screens live in ixOS `examples/business-preview`**, hosted by Device Lab; it reads the profile schema crate from BusinessForge by git (D2, decided: the schema crate lives there from the start) | Device Lab can only host apps in ixOS: ixOS depending on a BusinessForge Swift package would run the dependency the wrong way. It moves to the BusinessForge repo as its own app when a paid team gives it a slot |
 | M0 to M3 (PostgreSQL, multi-tenant API with row-level security, Redis workers, dashboard) before the phone shows anything; 16 to 25 days of work before a sales meeting | **A sales gate after the first preview** (M2 below); the server, database, tenants and dashboard come after it | None of that is needed to show five owners their app, and all of it is wasted if none of them want to pay. Packs as files, served from the existing Hetzner box or sent with Relay, are enough |
 | Two templates (Universal and Equestrian) in the MVP | **One template ("services business") with category vocabulary**; equestrian is a category of it (Horses as its Team screen, Shows as its News) | Riding schools, salons and trades share the same five screens. A second template is earned by a real prospect that doesn't fit (a restaurant menu, a shop catalogue) |
 | Per-client production apps made with `forge init`, each with its own Rust core | **One client app project, built per client with a different manifest, bundle id, name and icon** | `forge init` per client is a codebase per client, the thing v1.0's own principles avoid. One project keeps every client on the same fixes |
@@ -125,22 +125,25 @@ One JSON document per business, defined once in Rust (serde types, JSON Schema e
   "schema": "business-profile/0",
   "id": "riding-school-example",
   "category": "riding_school",
-  "name": { "value": "The Riding School", "source": "s1", "verified": true },
+  "name": { "value": "The Riding School", "source": "s1", "method": "jsonld", "verified": true },
   "branding": {
     "primary": { "value": "#171717", "source": "s2", "method": "css", "verified": true },
-    "logo": { "value": "images/logo.png", "source": "s1", "verified": true }
+    "logo": { "value": "images/logo.png", "source": "s1", "method": "html", "verified": true }
   },
   "services": [
     {
-      "name": { "value": "Private lesson (30 min)", "source": "s3", "verified": true },
-      "price": { "value": { "amount": "45.00", "currency": "GBP" }, "source": "s3", "confidence": 0.8, "verified": false }
+      "name": { "value": "Private lesson (30 min)", "source": "s3", "method": "html", "verified": true },
+      "price": { "value": { "amount": "45.00", "currency": "GBP" }, "source": "s3", "method": "llm", "confidence": 0.8, "verified": false }
     }
   ],
   "actions": {
-    "book": { "kind": "link", "value": "https://booking.example/riding-school", "source": "s4", "verified": true }
+    "book": { "kind": "link", "value": "https://booking.example/riding-school", "source": "s4", "method": "html", "verified": true }
   },
   "sources": {
-    "s1": { "url": "https://example.com/", "fetched": "2026-11-28T10:00:00Z" }
+    "s1": { "url": "https://example.com/", "fetched": "2026-11-28T10:00:00Z" },
+    "s2": { "url": "https://example.com/assets/site.css", "fetched": "2026-11-28T10:00:02Z" },
+    "s3": { "url": "https://example.com/lessons", "fetched": "2026-11-28T10:00:05Z" },
+    "s4": { "url": "https://example.com/book", "fetched": "2026-11-28T10:00:08Z" }
   },
   "preview": { "status": "concept", "consent": "none" }
 }
@@ -154,7 +157,7 @@ Rules the schema enforces:
 
 ### Extraction (M0)
 
-One command, run by a person (`extract <url>`), in Python or Rust (D2):
+One command in the BusinessForge repository, run by a person (`extract <url>`), in Python, validating against the JSON Schema the Rust crate exports (D2):
 
 1. Fetch the home page, robots.txt, sitemap and up to 20 same-site pages, politely (identify the client, obey robots.txt, a few seconds between requests).
 2. Read what is already structured: schema.org JSON-LD (LocalBusiness, Service, OpeningHoursSpecification, Offer), Open Graph, the web manifest, favicon and logo, theme colours.
@@ -181,14 +184,14 @@ Rust owns pack validation (hashes, schema version, image sizes, the label rule) 
 
 Reuben shows the preview to 5 businesses, at least 3 of the same kind. For each: did the preview get attention, what do they use for booking now, would they pay, and for what (an app, the maintained profile, bookings, loyalty), and how much. Record it in one table.
 
-**Gate:** at least 2 businesses ask for a paid next step. If none do, stop or change the offer before writing any more code. If they do, decide D4 and set up the separate repository.
+**Gate:** at least 2 businesses ask for a paid next step. If none do, stop or change the offer before writing any more code. If they do, decide D4 and add the server pieces to BusinessForge.
 
 ## Later stages (only after the gate)
 
 | Stage | What | Depends on |
 |---|---|---|
 | M3 | First paid offer, whichever D4 picks | Gate passed |
-| M4 | Separate repository; extraction as a service; prospects dashboard | More than a handful of prospects |
+| M4 | Extraction as a service and a prospects dashboard, in BusinessForge | More than a handful of prospects |
 | M5 | One integration, chosen by the first customer's booking provider and only with a provider API and their authorisation | A customer who needs it |
 | M6 | Client App Store app under the client's account | ixOS release route (first-app-store-release R0 to R5), Reuben's paid account, a real function per 4.2.2 |
 | M7 | Customer portal to edit their profile | Several customers |
@@ -236,7 +239,7 @@ Not legal advice; these need checking before any business is approached, and aga
 | # | Decision | Recommendation |
 |---|---|---|
 | D1 | What the first paid offer is tested as at M2 | Test both: the app and the maintained profile. Don't decide before talking to 5 businesses |
-| D2 | The new GeneralKnowledge/BusinessForge repository (v1.0 asks for it now) | Create it when you say so, holding only the schema crate, the extraction tool (Python, validating against the JSON Schema the Rust crate exports) and docs. No server, database or dashboard until the gate. Until you say so, M0 runs in a Claude Code session and its packs go in project files |
+| D2 | The new GeneralKnowledge/BusinessForge repository (v1.0 asks for it now) | **Decided 2026-11-28 (Reuben): create it now, schema and extractor only.** It holds the profile schema crate (Rust, exports JSON Schema), the extraction tool (Python) and docs. No server, database or dashboard until the gate. Packs of real prospects stay in project files, never in the repository. The ixOS preview (M1) depends on the schema crate by git |
 | D2b | Where the phone preview lives | A module in Device Lab (ixOS `examples/business-preview`), so it needs no slot and no App ID. It becomes its own "Showcase" app in BusinessForge only when a paid team frees slots |
 | D3 | First kind of business | Riding schools, because you have access to them, using the services template so hairdressers and trades come free |
 | D4 | First production route (after the gate) | Decide after M2. Options: a client App Store app with a real function (needs your paid account, the release route and their account), the profile service with a web page, or both |
