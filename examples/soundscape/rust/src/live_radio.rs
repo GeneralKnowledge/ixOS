@@ -278,6 +278,7 @@ pub fn stations_path(ask: &LiveAsk) -> Result<String, SoundscapeError> {
     Ok(match ask {
         LiveAsk::Top => format!("/json/stations/search?{common}"),
         LiveAsk::Search { text } => {
+            // cut: a search; the first 100 characters find the same stations, and nothing is kept
             let text: String = text.trim().chars().take(MAX_QUERY_CHARS).collect();
             if text.is_empty() {
                 format!("/json/stations/search?{common}")
@@ -455,10 +456,10 @@ fn flag(value: &Value) -> bool {
 
 /// Trimmed text, cut to [`MAX_TEXT_CHARS`]; `None` when empty.
 fn short(value: &Value) -> Option<String> {
-    // cut: a directory's display text; the first 200 characters say enough
     let text: String = value
         .as_str()?
         .trim()
+        // cut: a directory's display text; the first 200 characters say enough
         .chars()
         .take(MAX_TEXT_CHARS)
         .collect();
@@ -482,6 +483,7 @@ fn list(value: &Value) -> Vec<String> {
     };
     let mut out: Vec<String> = Vec::new();
     for part in text.split(',') {
+        // cut: a tag or language in Radio Browser's answer, not typed
         let part: String = part.trim().chars().take(40).collect();
         if !part.is_empty() && !out.iter().any(|p| p.eq_ignore_ascii_case(&part)) {
             out.push(part);
