@@ -13,6 +13,8 @@ struct LibraryTab: View {
     let player: TakePlayer
     let editServer: () -> Void
 
+    @Environment(LiveRadioModel.self) private var live
+
     private var collection: MusicCollection { model.collection }
     private var library: Library { model.library }
 
@@ -43,6 +45,8 @@ struct LibraryTab: View {
                          count: Int(model.offline.downloaded), identifier: "library.downloads")
                 category("Recently Played", systemImage: "clock", route: .recent,
                          count: nil, identifier: "library.recent")
+                category("Stations", systemImage: "dot.radiowaves.left.and.right", route: .liveSaved,
+                         count: live.kept.saved.count, identifier: "library.stations")
                 let toPick = model.toPick.count
                 if toPick > 0 {
                     category("To Pick", systemImage: "checkmark.circle.badge.questionmark", route: .toPick,

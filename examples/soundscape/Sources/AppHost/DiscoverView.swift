@@ -16,7 +16,7 @@ struct DiscoverView: View {
     let player: TakePlayer
 
     enum Source: String, CaseIterable, Identifiable {
-        case jamendo = "Jamendo", archive = "Internet Archive"
+        case jamendo = "Jamendo", archive = "Internet Archive", radio = "Live Radio"
         var id: String { rawValue }
     }
 
@@ -41,7 +41,14 @@ struct DiscoverView: View {
 
     private var query: String { search.trimmingCharacters(in: .whitespaces) }
     private var needsClientId: Bool { source == .jamendo && model.jamendoClientId == nil }
-    private var empty: Bool { source == .jamendo ? results.isEmpty : items.isEmpty }
+    private var empty: Bool {
+        switch source {
+        case .jamendo: results.isEmpty
+        case .archive: items.isEmpty
+        // Live radio shows its own states.
+        case .radio: false
+        }
+    }
 
     var body: some View {
         Group {
@@ -105,18 +112,22 @@ struct DiscoverView: View {
         Group {
             // Before a search: Jamendo as an editorial page of shelves
             // (S5); a search, or the Archive, is a list.
-            if source == .jamendo && query.isEmpty && !results.isEmpty {
+            if source == .radio {
+                // Live radio needs no Jamendo client ID or take server.
+                LiveRadioHome(query: query)
+            } else if source == .jamendo && query.isEmpty && !results.isEmpty {
                 DiscoverHome(model: model, player: player, popular: results)
             } else {
                 List {
                     switch source {
                     case .jamendo: jamendo
                     case .archive: archive
+                    case .radio: EmptyView()
                     }
                 }
             }
         }
-        .searchable(text: $search, prompt: source == .jamendo ? "Search Jamendo" : "Search the Internet Archive")
+        .searchable(text: $search, prompt: prompt)
         .refreshable { model.refreshJamendo(); attempt += 1 }
         .task(id: "\(source.rawValue)|\(model.jamendoClientId ?? "")|\(query)|\(attempt)") { await find() }
         .overlay {
@@ -130,6 +141,14 @@ struct DiscoverView: View {
             } else if !searching && empty && !query.isEmpty {
                 ForgeStateView.noResults(for: query)
             }
+        }
+    }
+
+    private var prompt: String {
+        switch source {
+        case .jamendo: "Search Jamendo"
+        case .archive: "Search the Internet Archive"
+        case .radio: "Search Stations"
         }
     }
 
@@ -189,7 +208,7 @@ struct DiscoverView: View {
             try? await Task.sleep(for: .milliseconds(400))
             if Task.isCancelled { return }
         }
-        if needsClientId { return }
+        if needsClientId || source == .radio { return }
         searching = true
         defer { searching = false }
         problem = nil
@@ -204,6 +223,8 @@ struct DiscoverView: View {
             case .success(let found): items = found
             case .failure(let failure): if !failure.stopped { problem = failure.message }
             }
+        case .radio:
+            break
         }
     }
 }

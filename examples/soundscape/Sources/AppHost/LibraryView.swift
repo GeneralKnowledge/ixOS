@@ -31,6 +31,20 @@ struct SearchTab: View {
             } else {
                 results(model.search(query))
                 catalogueResults
+                // In the list, not over it, so the stations link below
+                // stays reachable.
+                if model.search(query).isEmpty && catalogues?.isEmpty == true {
+                    Section {
+                        ForgeStateView.noResults(for: query)
+                            .listRowBackground(Color.clear)
+                    }
+                }
+                Section("Live Radio") {
+                    NavigationLink(value: ListenRoute.liveStations(.search(text: query), title: query)) {
+                        Label("Stations Matching “\(query)”", systemImage: "dot.radiowaves.left.and.right")
+                    }
+                    .accessibilityIdentifier("search.liveStations")
+                }
             }
         }
         .listStyle(.insetGrouped)
@@ -52,11 +66,6 @@ struct SearchTab: View {
             case .success(let found): catalogues = found
             case .failure(let failure):
                 if !failure.stopped { cataloguesProblem = failure.message }
-            }
-        }
-        .overlay {
-            if !query.isEmpty && model.search(query).isEmpty && catalogues?.isEmpty == true {
-                ForgeStateView.noResults(for: query)
             }
         }
     }
