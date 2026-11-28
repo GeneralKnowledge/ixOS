@@ -154,19 +154,23 @@ final class LivePlayer {
         // A few seconds buffered, then play: live, not a song to cache.
         item.preferredForwardBufferDuration = 8
         statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            let failed = item.status == .failed
-            Task { @MainActor in
-                guard let self, failed else { return }
-                log.warn("stream failed")
-                self.next()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    // Only the stream playing now: an old item's late news is dropped.
+                    guard let self, item.status == .failed, self.player.currentItem === item else { return }
+                    log.warn("stream failed")
+                    self.next()
+                }
             }
         }
         waitObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            let status = player.timeControlStatus
-            Task { @MainActor in
-                guard let self else { return }
-                self.isConnecting = status == .waitingToPlayAtSpecifiedRate
-                if status == .playing { self.failure = nil }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, player.currentItem === item else { return }
+                    let status = player.timeControlStatus
+                    self.isConnecting = status == .waitingToPlayAtSpecifiedRate
+                    if status == .playing { self.failure = nil }
+                }
             }
         }
         player.replaceCurrentItem(with: item)
