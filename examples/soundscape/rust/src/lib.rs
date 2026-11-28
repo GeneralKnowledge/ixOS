@@ -110,6 +110,9 @@ const MAX_ARTWORK_BYTES: u64 = 20 * 1024 * 1024;
 /// The largest answer the take server may give (a library of a few hundred
 /// songs is well under this).
 const MAX_ANSWER_BYTES: u64 = 4 * 1024 * 1024;
+/// Who Soundscape says it is to the services it asks (MusicBrainz sends
+/// its own, in the form MusicBrainz asks for).
+const USER_AGENT: &str = "Soundscape/0.1 (ixOS)";
 
 /// What the command thread owns.
 struct State {
@@ -2529,8 +2532,12 @@ impl Drop for SyncGuard {
 /// the core is made); ureq before that and in Linux tests.
 fn default_http() -> Arc<dyn HttpClient> {
     Arc::new(native::http::HttpService::prefer_installed(
-        Arc::new(UreqClient::with_user_agent("Soundscape/0.1 (ixOS)")),
-        |client| client.max_body_bytes(MAX_ANSWER_BYTES),
+        Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+        |client| {
+            client
+                .max_body_bytes(MAX_ANSWER_BYTES)
+                .user_agent(USER_AGENT)
+        },
     ))
 }
 

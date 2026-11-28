@@ -1515,16 +1515,16 @@ fn server_repo(server_url: impl Into<String>) -> HttpRepo {
     HttpRepo::new(http_client(), server_url)
 }
 
+/// Who the chat path says it is to the chat server, through either client.
+const CHAT_USER_AGENT: &str = concat!("forge-chat-example/", env!("CARGO_PKG_VERSION"));
+
 fn http_client() -> Arc<dyn forge_net::HttpClient> {
     static CLIENT: std::sync::OnceLock<Arc<native::http::PreferInstalled>> =
         std::sync::OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         Arc::new(native::http::HttpService::prefer_installed(
-            Arc::new(forge_net::UreqClient::with_user_agent(concat!(
-                "forge-chat-example/",
-                env!("CARGO_PKG_VERSION")
-            ))),
-            |client| client,
+            Arc::new(forge_net::UreqClient::with_user_agent(CHAT_USER_AGENT)),
+            |client| client.user_agent(CHAT_USER_AGENT),
         ))
     });
     Arc::clone(client) as Arc<dyn forge_net::HttpClient>
