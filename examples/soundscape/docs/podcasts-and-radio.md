@@ -253,10 +253,12 @@ next radio step, before P0.
   location stay in the lists as before.
 - **Screen**: Discover > Live Radio > **Radio Map** (MapKit, hybrid imagery with realistic elevation). It opens
   on the globe with the worldwide stations. Move or zoom in and **Stations Here** asks about the area in view; zoom back out to the globe and **Stations
-  Worldwide** brings the worldwide stations back. Tap
-  a station: it plays, and a card shows it with Save. **Show as List** gives the same stations as a list (also the
+  Worldwide** brings the worldwide stations back. Each pin is the station's logo (Radio Browser's `favicon`; its
+  initial when there is none), ringed pink while it plays. Tap a station: it plays, and a card shows it with Save.
+  Stations too close to tell apart share one pin with a count; tapping it lists them (Reuben, 28 November, after
+  the first phone run: stacked pins only ever opened the top one). **Show as List** gives the same stations as a list (also the
   VoiceOver route).
-- **Not yet**: clustering (MapKit's SwiftUI map has none; 300 pins is the limit for now), the person's own
+- **Not yet**: the person's own
   location (no permission asked), and live-checking that the servers honour `geo_distance` (the cloud can't
   reach Radio Browser; the phone check does it).
 
@@ -267,6 +269,10 @@ next radio step, before P0.
    Stations shows it.
 3. Zoom into the UK (or any country) and press Stations Here: pins only in that area, more of them than before.
 4. Show as List: the same stations, and a row plays.
+5. Logos: pins show station logos (or a coloured initial). Zoomed out over Europe, pins show counts; tap one: a
+   list of its stations, and a row plays. Zoom in: the group splits into single pins.
+
+Phone, Reuben, 28 November (Device Lab with #471): "The radio map is looking good" (checks 1-4 in general).
 
 ## Milestones
 

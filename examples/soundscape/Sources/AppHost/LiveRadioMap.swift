@@ -9,8 +9,42 @@ import SwiftUI
 // the globe. Which stations, and whether they are inside the area asked
 // about, is Rust's (`LiveAsk::Mapped`, `LiveAsk::Near`); this only draws.
 
+/// Stations close together on screen, drawn as one pin: the most played
+/// one's logo and how many there are. Tapping it lists them.
+struct LiveStationGroup: Identifiable {
+    /// The most played station's UUID.
+    let id: String
+    let coordinate: CLLocationCoordinate2D
+    /// Most played first.
+    let stations: [LiveStation]
+
+    /// Groups `stations` (most played first) into cells about a fourteenth
+    /// of the view's height across, so pins never hide each other; stations
+    /// at the very same place always share one.
+    static func make(_ stations: [LiveStation], span latitudeDelta: Double) -> [LiveStationGroup] {
+        let cell = max(latitudeDelta / 14, 0.0005)
+        var order: [String] = []
+        var members: [String: [LiveStation]] = [:]
+        for station in stations {
+            guard let at = station.location else { continue }
+            let key = "\(Int((at.latitude / cell).rounded(.down))):\(Int((at.longitude / cell).rounded(.down)))"
+            if members[key] == nil { order.append(key) }
+            members[key, default: []].append(station)
+        }
+        return order.compactMap { key in
+            guard let group = members[key], let first = group.first, let at = first.location else { return nil }
+            return LiveStationGroup(
+                id: first.uuid,
+                coordinate: CLLocationCoordinate2D(latitude: at.latitude, longitude: at.longitude),
+                stations: group
+            )
+        }
+    }
+}
+
 /// Live stations on the map: the most played worldwide at first, then the
-/// most played around wherever the map is moved to. Tap a station to play it.
+/// most played around wherever the map is moved to. Tap a station to play it;
+/// tap a group to list its stations.
 struct LiveRadioMap: View {
     @Environment(LivePlayer.self) private var player
     @Environment(LiveRadioModel.self) private var live
@@ -32,34 +66,46 @@ struct LiveRadioMap: View {
     /// The area in view once the map stops moving, when it is small enough
     /// to ask about on its own.
     @State private var area: LiveAsk?
+    /// How much of the globe is in view (degrees of latitude): how close
+    /// pins may be before they are grouped.
+    @State private var span: Double = 120
+    /// The group whose stations are listed.
+    @State private var opened: LiveStationGroup?
 
     var body: some View {
-        Map(position: $position, selection: $selected) {
-            ForEach(stations) { station in
-                if let at = station.location {
-                    Marker(
-                        station.name, systemImage: "dot.radiowaves.left.and.right",
-                        coordinate: CLLocationCoordinate2D(latitude: at.latitude, longitude: at.longitude)
-                    )
-                    .tint(player.station?.uuid == station.uuid ? .pink : .purple)
-                    .tag(station.uuid)
+        Map(position: $position) {
+            ForEach(LiveStationGroup.make(stations, span: span)) { group in
+                Annotation(group.stations.count == 1 ? group.stations[0].name : "", coordinate: group.coordinate) {
+                    pin(group)
                 }
             }
         }
         .mapStyle(.hybrid(elevation: .realistic, pointsOfInterest: .excludingAll))
+        .annotationTitles(.hidden)
         .mapControls {
             MapCompass()
             MapPitchToggle()
         }
         .onMapCameraChange(frequency: .onEnd) { context in
             area = Self.area(context.region)
+            span = context.region.span.latitudeDelta
         }
-        .onChange(of: selected) { _, uuid in
-            guard let uuid, let station = stations.first(where: { $0.uuid == uuid }) else { return }
-            // Already on: leave it. Paused or failed: tapping tries again.
-            let on = player.station?.uuid == uuid && (player.isPlaying || player.isConnecting)
-            if on { return }
-            Task { await player.tune(station) }
+        .sheet(item: $opened) { group in
+            NavigationStack {
+                List(group.stations) { LiveStationRow(station: $0) }
+                    .navigationTitle("\(group.stations.count) Stations")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { opened = nil }
+                                .accessibilityIdentifier("live.map.group.done")
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .environment(player)
+            .environment(live)
+            .accessibilityIdentifier("live.map.group")
         }
         .safeAreaInset(edge: .top) { searchHere }
         .safeAreaInset(edge: .bottom) { selectedCard }
@@ -87,6 +133,46 @@ struct LiveRadioMap: View {
         }
         .accessibilityIdentifier("live.map")
         .task(id: attempt) { await find() }
+    }
+
+    /// One pin: the station's logo (or the most played one's, with how many
+    /// are there), ringed while it plays.
+    private func pin(_ group: LiveStationGroup) -> some View {
+        let top = group.stations[0]
+        let count = group.stations.count
+        let playing = group.stations.contains { $0.uuid == player.station?.uuid }
+        return Button {
+            if count == 1 { play(top) } else { opened = group }
+        } label: {
+            Artwork(title: top.name, url: top.artworkUrl, size: 34, circle: true)
+                .overlay(Circle().strokeBorder(playing ? Color.pink : Color.white, lineWidth: playing ? 3 : 2))
+                .shadow(radius: 2)
+                .overlay(alignment: .topTrailing) {
+                    if count > 1 {
+                        Text(count > 99 ? "99+" : "\(count)")
+                            .font(.caption2.weight(.bold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.purple, in: Capsule())
+                            .offset(x: 8, y: -6)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(count == 1 ? top.name : "\(count) stations, including \(top.name)")
+        .accessibilityHint(count == 1 ? "Plays the station live" : "Lists the stations here")
+        .accessibilityIdentifier(count == 1 ? "live.map.pin" : "live.map.groupPin")
+    }
+
+    /// Plays `station` and shows its card. Already on: leave it; paused or
+    /// failed: tapping tries again.
+    private func play(_ station: LiveStation) {
+        selected = station.uuid
+        let on = player.station?.uuid == station.uuid && (player.isPlaying || player.isConnecting)
+        if on { return }
+        Task { await player.tune(station) }
     }
 
     /// Asks about the area in view, once the map has moved somewhere new;
@@ -142,6 +228,8 @@ struct LiveRadioMap: View {
         ask change: @escaping () -> Void
     ) -> some View {
         Button {
+            // The list mustn't pair the new ask with the old stations.
+            answered = false
             change()
             attempt += 1
         } label: {
