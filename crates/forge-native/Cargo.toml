@@ -27,3 +27,6 @@ tempfile = "3.14"
 [package.metadata.forge]
 # Project area (docs/areas.md), checked by scripts/check-boundaries.sh.
 area = "framework"
+
+[lints]
+workspace = true

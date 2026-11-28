@@ -519,7 +519,10 @@ interleaving, tests for the rest.
 | Concurrency in Rust code | `loom` | Exhaustive interleavings of the real code |
 
 Models live in `verification/relay/`, outside the Cargo workspace, with a
-CI job once a proof exists. Each model names the Rust function it describes,
+CI job once a proof exists. The current order (2026-11-28) is in
+[unsafe-and-verification.md](../../../docs/research/unsafe-and-verification.md#the-plan-cheapest-and-most-useful-first):
+property tests of trust and the mailbox rules first, then Lean for revocation
+across devices and for delivery. Each model names the Rust function it describes,
 and a test checks the code against the model's transitions, so they don't
 drift apart.
 
