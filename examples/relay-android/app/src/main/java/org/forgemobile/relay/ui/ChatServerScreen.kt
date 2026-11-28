@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -47,7 +48,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.forgemobile.relay.ChatModel
+import org.forgemobile.relay.host.ForgeServices
 import org.forgemobile.relay.kit.ForgeFailure
+import org.forgemobile.relay.kit.LocalForgeLocked
 
 /** The servers the form suggests: one on the computer next to you (`make chat-server`). */
 object ChatServers {
@@ -56,7 +59,7 @@ object ChatServers {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatServerScreen(model: ChatModel, back: () -> Unit) {
+fun ChatServerScreen(model: ChatModel, lockChanged: () -> Unit, back: () -> Unit) {
     val state by model.state.collectAsState()
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
     var name by rememberSaveable { mutableStateOf("") }
@@ -168,6 +171,32 @@ fun ChatServerScreen(model: ChatModel, back: () -> Unit) {
                 "muted",
             )
 
+            // The iPhone's Privacy section: Rust keeps the setting, and refuses it with no screen lock.
+            val canLock = ForgeServices.isInstalled && ForgeServices.biometrics.canLock
+            sectionHeader("Privacy", "privacy")
+            item(key = "appLock") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    Text("Require screen lock", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = state.appLock,
+                        onCheckedChange = { if (model.setAppLock(it)) lockChanged() },
+                        enabled = canLock || state.appLock,
+                        modifier = Modifier.testTag("settings.appLock"),
+                    )
+                }
+            }
+            sectionFooter(
+                if (canLock) {
+                    "Relay asks when it opens and after a minute away, and hides its content from the recent apps screen and screenshots."
+                } else {
+                    "Set a screen lock on this phone to lock Relay."
+                },
+                "privacy",
+            )
+
             if (account != null) {
                 item(key = "signOut") {
                     OutlinedButton(
@@ -184,7 +213,8 @@ fun ChatServerScreen(model: ChatModel, back: () -> Unit) {
         }
     }
 
-    failure?.let { shown ->
+    // Sign-up can fail after the app has locked: the failure waits for the unlock.
+    failure?.takeUnless { LocalForgeLocked.current }?.let { shown ->
         AlertDialog(
             onDismissRequest = { failure = null },
             title = { Text(shown.title) },

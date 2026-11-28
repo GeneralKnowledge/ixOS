@@ -68,10 +68,10 @@ value first; each starts when the one before has merged.
 | Chats | Voice messages | 5 (the `audio` service adapter) |
 | Chats | A chat server account (kept in the Keystore), rooms, New Conversation, sign out | **3** |
 | Chats | Notifications for new messages, with Reply and Mark as Read; tapping one opens the conversation | **3** (`LocalNotifier` adapter, `POST_NOTIFICATIONS`) |
-| Chats | Catching up in the background | 4 (`BackgroundScheduler` on WorkManager) |
+| Chats | Catching up in the background | **4** (`BackgroundScheduler` on WorkManager) |
 | Away from home | Relay's relay and lookup servers, the mailbox for devices that are off | **1** for the servers (Rust). The mailbox needs nothing on Android beyond them |
 | Security | Device key in the platform's secure store | **3** (Android Keystore `SecureStore` adapter; Rust moves the key in unchanged, as on iOS) |
-| Security | App lock with Face ID | 4 (`BiometricPrompt` adapter) |
+| Security | App lock with Face ID | **4** (`BiometricPrompt` adapter: fingerprint, face or the screen lock) |
 | Sites | Can Open My Site (the grant) | **1** |
 | Sites | Open a trusted device's site in the app | 5 (`WebView` with `shouldInterceptRequest` calling `fetch_site`) |
 | Assistant | Apple's on-device model; asking another device's model | Shown as unavailable in 2; a model waits for the Android AI stage ([android-local-ai.md](../../../docs/research/android-local-ai.md)) |
@@ -129,11 +129,55 @@ conversation's menu, and so does the iPhone (#417).
 
 Notifications come from a chat server's rooms, the way Rust announces them;
 device conversations have none on either platform. There is no push service,
-so they arrive while Relay is running. Catching up in the background
-(WorkManager) is stage 4.
+so they arrive while Relay is running, or when the background catch-up runs
+(stage 4).
 
 Not yet: voice messages (stage 5), and the Assistant tab (the Android AI
 stage).
+
+## App lock and background catch-up (stage 4)
+
+Two more forge-services adapters, installed by `ForgeServices.install()`:
+
+- **Biometrics** (`host/ForgeBiometrics.kt`): `BiometricPrompt` with a
+  fingerprint or face and the screen lock (`BIOMETRIC_WEAK or
+  DEVICE_CREDENTIAL`), so a phone with only a PIN can lock. The prompt needs
+  the activity on screen, which `MainActivity` (a `FragmentActivity` for this)
+  attaches while it lives. Android names no single sensor, so the switch says
+  "Require screen lock" where the iPhone names Face ID.
+- **Background** (`host/ForgeBackground.kt`): Rust's background tasks run as
+  WorkManager work, where iOS uses `BGTaskScheduler`. The task identifiers are
+  the app's list (`org.forgemobile.chat.refresh`, the same as Info.plist's).
+  A refresh waits for a network. Rust asks for its next run at the start of
+  each run, and WorkManager would cancel a running work replaced under its own
+  name, so each task alternates between two unique names. Started with Relay
+  closed, a run opens the cores first (`openForChats`, shared with notification
+  answers), so Rust has the handler. When WorkManager takes the time back, the
+  handler is told to stop, as when iOS ends the window.
+
+The lock itself (`kit/ForgeAppLock.kt`) is the Android form of
+`.forgeAppLock`: Rust keeps the setting (Chat Server, Privacy,
+`settings.appLock`) and refuses it on a phone with no screen lock. Relay locks
+at launch and after more than a minute away; the prompt's own trip off screen
+doesn't count. While the setting is on, the window has `FLAG_SECURE`, so the
+recent apps screen and screenshots show nothing, as the iPhone covers its
+snapshot. The lock screen is a window of its own, above the content and any
+dialog or menu it had open, so none of them can be touched; the content stays
+composed underneath, so a waiting code send, a draft or staged files survive.
+A dialog that can open by itself (an alert, a trust offer, a failed sign-up)
+checks `LocalForgeLocked` and waits for the unlock, since a window opened later
+would sit above the lock. If Chats couldn't open, the setting can't be read, so
+Relay stays locked. Back leaves the app. A prompt that answers "unavailable" opens the app only when the phone has
+no screen lock at all: a busy sensor on a locked phone stays locked. `ForgeAppLockState` is plain Kotlin, so JVM tests drive it
+with their own clock.
+
+Lessons for the iPhone's `.forgeAppLock`, not changed here: it unlocks on any
+`.unavailable`; its overlay doesn't cover a sheet or alert the content
+presented; and Relay turns the lock off when Chats isn't ready
+(`chat.phase == .ready && chat.appLock`).
+
+Not checked on a phone: the emulator in CI has no screen lock, so the switch
+stays off there, and WorkManager's real timing needs a device.
 
 ## Framework code on Android
 

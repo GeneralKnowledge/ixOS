@@ -64,6 +64,7 @@ import kotlinx.coroutines.launch
 import org.forgemobile.relay.RelayErrors
 import org.forgemobile.relay.RelayFormat
 import org.forgemobile.relay.RelayModel
+import org.forgemobile.relay.kit.LocalForgeLocked
 import org.forgemobile.relay.ServerChoice
 import org.forgemobile.relay.ui.theme.Forge
 import org.forgemobile.relay.ui.theme.ForgeTextRole
@@ -232,7 +233,8 @@ private fun Notices(model: RelayModel) {
     val state by model.state.collectAsState()
     val alert by model.alert.collectAsState()
     val scope = rememberCoroutineScope { Dispatchers.Main.immediate }
-    if (alert != null) return
+    // A trust offer can arrive while the app lock is up: it waits for the unlock.
+    if (alert != null || LocalForgeLocked.current) return
     val saved = state.savedDataNotice
     val away = state.awayNotice
     val offer = state.trustOffer

@@ -2,14 +2,15 @@ package org.forgemobile.relay
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.FragmentActivity
 import org.forgemobile.relay.host.ForgeServices
 import org.forgemobile.relay.ui.RelayApp
 
-class MainActivity : ComponentActivity() {
+// A FragmentActivity because BiometricPrompt (the app lock) needs one.
+class MainActivity : FragmentActivity() {
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         answer?.invoke(granted)
         answer = null
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
                 answer = done
                 permission.launch(name)
             }
+            ForgeServices.biometrics.attach(this)
         }
         setContent { RelayApp(app) }
     }
@@ -43,7 +45,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (ForgeServices.isInstalled) ForgeServices.permissions.attach(null)
+        if (ForgeServices.isInstalled) {
+            ForgeServices.permissions.attach(null)
+            ForgeServices.biometrics.attach(null)
+        }
         super.onDestroy()
     }
 

@@ -9,6 +9,9 @@
 //   a text field, Mark as Read); a tap or an action comes back to Rust as a NotificationResponse.
 // - PermissionProvider: notifications only (POST_NOTIFICATIONS on Android 13 and later), asked
 //   through the activity on screen.
+// - Biometrics (ForgeBiometrics.kt): BiometricPrompt, with the screen lock as the fallback, for
+//   the app lock.
+// - Background (ForgeBackground.kt): Rust's background tasks as WorkManager work.
 //
 // It lives in this app until a second Android app needs it, like the rest of host/
 // (docs/architecture.md#framework-principles).
@@ -66,6 +69,8 @@ import uniffi.relay_core.PermissionProvider
 import uniffi.relay_core.PermissionStatus
 import uniffi.relay_core.SecureStore
 import uniffi.relay_core.deliverNotificationResponse
+import uniffi.relay_core.installNativeBackground
+import uniffi.relay_core.installNativeBiometrics
 import uniffi.relay_core.installNativeServices
 import uniffi.relay_core.nativeServicesInstalled
 
@@ -79,15 +84,24 @@ object ForgeServices {
         private set
     lateinit var permissions: AndroidPermissions
         private set
+    lateinit var biometrics: AndroidBiometrics
+        private set
 
-    /** Installs the services once per process, before any Rust core opens. */
+    /**
+     * Installs the services once per process, before any Rust core opens. [backgroundTasks]
+     * are the app's background task identifiers (forge.toml `[ios] background_tasks`).
+     */
     @Synchronized
-    fun install(context: Context) {
+    fun install(context: Context, backgroundTasks: List<String> = emptyList()) {
         if (nativeServicesInstalled()) return
         val app = context.applicationContext
         secureStore = KeystoreSecureStore(app)
         notifier = AndroidNotifier(app)
         permissions = AndroidPermissions(app)
+        biometrics = AndroidBiometrics(app)
+        // The optional services first: Rust looks them up when a core opens.
+        installNativeBiometrics(biometrics)
+        installNativeBackground(WorkManagerScheduler(app, backgroundTasks))
         installNativeServices(
             AppDirectories(
                 documents = app.filesDir.absolutePath,
