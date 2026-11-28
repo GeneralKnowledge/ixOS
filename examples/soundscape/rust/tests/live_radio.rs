@@ -325,14 +325,23 @@ fn saved_and_recent_stations_are_kept_by_uuid() {
     assert_eq!(file.recent.len(), 2, "each station once");
     assert_eq!(file.recent[0].station.uuid, KYOTO, "newest first");
 
-    // Kyoto's details were checked when saved (3,000); playing unchecked
-    // details doesn't make them fresh.
-    assert!(!file.is_stale(KYOTO, 3_000 + STALE_MS));
-    assert!(file.is_stale(KYOTO, 3_000 + STALE_MS + 1));
+    // Saving and playing aren't lookups: Kyoto's details were never
+    // checked, so they are looked up when tuned.
+    assert!(file.is_stale(KYOTO, 3_000));
     file.played(kyoto.clone(), 200_000, Some(200_000));
     assert!(
-        !file.is_stale(KYOTO, 3_000 + STALE_MS + 1),
+        !file.is_stale(KYOTO, 200_000 + STALE_MS),
         "a lookup refreshes it"
+    );
+    assert!(file.is_stale(KYOTO, 200_000 + STALE_MS + 1));
+    // Saving again keeps the lookup's time.
+    file.save(kyoto.clone(), 300_000).unwrap();
+    assert!(!file.is_stale(KYOTO, 200_000 + STALE_MS));
+    // A failed stream makes every copy stale.
+    file.mark_stale(KYOTO);
+    assert!(
+        file.is_stale(KYOTO, 200_001),
+        "looked up again after a failure"
     );
     let mut stranger = kyoto.clone();
     stranger.uuid = "00000000-0000-0000-0000-000000000000".into();
