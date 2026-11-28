@@ -89,6 +89,24 @@ Two smaller notes, not changed:
 
 Today `CodeSession.lean` is tied to the Rust only loosely: the model's header names the Rust it describes, the Rust has an `invariant_holds` that mirrors the model's invariant, and a test replays random sequences through the Rust and checks that invariant after every step. That is sampled invariant checking, not conformance: a change can keep the invariant while departing from the model's transitions, and the test won't notice. For V5 and V6, close both gaps. The Lean model itself runs a seeded set of a few thousand random event sequences (`#eval`) and writes the state after each step to a committed fixture. The Rust tests then replay those sequences through the production code and compare the states step by step, and the Lean CI job fails if the fixture no longer matches what the model produces. Then a change on either side, in the Rust or in the Lean, that shows up in any of those sequences fails a check. Like any test, this samples behaviour: it narrows drift a lot, but it doesn't rule out every change. A hand-written Rust copy of the model would only catch the Rust drifting from that copy, not the copy drifting from Lean. Once V1 is in place, CI re-checks the proof whenever a model changes.
 
+## Status of V1 to V4 (2026-11-28)
+
+Done, and all run in CI except where noted:
+
+| Step | Where | What it checks | Shown to work by |
+|---|---|---|---|
+| V1 | `.github/workflows/lean.yml`, `verification/relay/lean-toolchain` | Every `.lean` file in `verification/relay/` checks, with no `sorry`, whenever a model changes | Its first run on the PR that added it |
+| V2 | `examples/relay/rust/src/trust_props.rs` | 2,000 random sequences of up to 60 steps over five devices: trust (by the person, or from an introducer's offer), revoke, forget, code transfers under each policy, introducer lists, grants, person marks, rights and Hellos. After every step, every rule listed in the plan above | Undoing the forgotten-device fix fails it, with a short counterexample; so does a revoke that keeps the grants |
+| V3 | `examples/relay/rust/src/mailbox_props.rs` | The real `MailboxStore` (SQLite and files) against an in-memory model: 500 mixed sequences of register, deregister, deposits (right and wrong sender, any pass, sizes up to past the limit, any life), acks, sweeps and the clock moving, plus 500 sequences that fill one mailbox. Every answer must match the model, and so must what is listed and counted | Dropping the per-pass quota, the per-recipient quota or the "pass belongs to this recipient" check each fails it |
+| V4 | `examples/relay/rust/src/parser_props.rs` | Random and CBOR-shaped bytes as mailbox server requests (decoded ones run against a real store) and as `relay/device/1` messages; sealed items with bytes changed, or made of random parts; mailbox intros with bytes changed. Nothing panics, no damaged item opens, and a damaged intro never yields a different key | A 50,000-case run (`PROPTEST_CASES=50000`) was clean |
+
+Two things the tests made precise:
+
+- **The hourly deposit cap (200 a pass) isn't reached** by these sequences. The model has the rule, and it is unit-tested in `mailbox_server.rs`, but V3 alone wouldn't notice it breaking.
+- **A mailbox intro signs only the key and its date.** The pass and the server in it are taken on trust from the connection, which is fine because an intro only ever arrives inside an authenticated `relay/device/1` Hello. If intros ever travel any other way (through the mailbox itself, say), sign the whole intro first.
+
+For longer runs on the laptop, `PROPTEST_CASES=<n> cargo test --lib parser_props` takes the place of a separate `cargo-fuzz` setup. Add cargo-fuzz only if a parser grows beyond CBOR and serde.
+
 ## Recommendation
 
 Take V1 to V4 now: about two days in all, every piece runs in CI, and V2 alone would have caught today's bug. Leave V5 and V6 for when My Devices and delivery stop moving, and the cryptography for an outside review before anything public.
