@@ -339,6 +339,18 @@ impl ChatCore {
         let devices = self.device_clients();
         let alerts = self.alerts();
         let result = background("chat-list", move || {
+            // Devices and groups first: a server that can't be reached
+            // mustn't keep them from being listed (and cached, for
+            // `cached_conversations`).
+            let mut on_relay = Vec::new();
+            for (client, user_id) in devices {
+                match client.list_conversations() {
+                    Ok(list) => {
+                        on_relay.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
+                    }
+                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
+                }
+            }
             let mut out = Vec::new();
             if let Some((client, user_id)) = server {
                 let list = client.list_conversations().map_err(ChatError::from)?;
@@ -347,14 +359,7 @@ impl ChatCore {
                 }
                 out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)));
             }
-            for (client, user_id) in devices {
-                match client.list_conversations() {
-                    Ok(list) => {
-                        out.extend(list.into_iter().map(|c| types::conversation(c, &user_id)))
-                    }
-                    Err(e) => forge_runtime::logging::warn!("a device conversation: {e}"),
-                }
-            }
+            out.extend(on_relay);
             Ok(out)
         })
         .await;
