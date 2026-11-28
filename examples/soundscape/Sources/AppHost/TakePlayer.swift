@@ -169,6 +169,9 @@ final class TakePlayer {
         pause: { [weak self] in self?.stoppedBySystem() },
         play: { [weak self] in self?.resume() }
     )
+    /// Live radio has the lock screen (`stepAside`): nothing here updates
+    /// it until music plays again or live radio ends (`showOnLockScreen`).
+    @ObservationIgnored private var steppedAside = false
     /// The lock screen's picture for `current`, and the address it came from.
     @ObservationIgnored private var artwork: UIImage?
     @ObservationIgnored private var artworkUrl: String?
@@ -543,6 +546,7 @@ final class TakePlayer {
         if switching != nil, playerB.currentItem?.status == .readyToPlay { playerB.play() }
         isPlaying = true
         // Back after live radio took the lock screen (`stepAside`).
+        steppedAside = false
         setUpRemoteCommands()
         updateNowPlaying()
     }
@@ -552,11 +556,13 @@ final class TakePlayer {
     /// Playing music again takes them back.
     func stepAside() {
         if isPlaying { pause() }
+        steppedAside = true
         nowPlaying.end()
     }
 
     /// Puts the music back on the lock screen after live radio ended.
     func showOnLockScreen() {
+        steppedAside = false
         guard current != nil else { return }
         setUpRemoteCommands()
         updateNowPlaying()
@@ -981,7 +987,9 @@ final class TakePlayer {
     // MARK: Lock screen
 
     private func updateNowPlaying() {
-        guard let current else { return }
+        // Artwork arriving or the length becoming known must not take the
+        // lock screen back from live radio.
+        guard let current, !steppedAside else { return }
         nowPlaying.update(.init(
             title: isComparing ? "\(active == .a ? "A" : "B"): \(current.label)" : current.song,
             artist: isComparing ? "Comparing takes" : current.artist ?? current.label,

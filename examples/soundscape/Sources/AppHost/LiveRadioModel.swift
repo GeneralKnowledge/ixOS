@@ -72,9 +72,14 @@ public final class LiveRadioModel {
     /// Saves the station to Library > Stations, or removes it.
     public func toggleSaved(_ station: LiveStation) async {
         do {
-            kept = isSaved(station.uuid)
-                ? try await core.unsaveLiveStation(uuid: station.uuid)
-                : try await core.saveLiveStation(station: station)
+            if isSaved(station.uuid) {
+                _ = try await core.unsaveLiveStation(uuid: station.uuid)
+            } else {
+                _ = try await core.saveLiveStation(station: station)
+            }
+            // Read now, not the call's own answer: a slower earlier call
+            // can't put back an older list.
+            kept = core.liveRadio()
         } catch {
             log.warn("save station failed: \(error)")
             problem = ListenModel.message(error)
@@ -83,7 +88,8 @@ public final class LiveRadioModel {
 
     public func clearRecent() async {
         do {
-            kept = try await core.clearRecentLiveStations()
+            _ = try await core.clearRecentLiveStations()
+            kept = core.liveRadio()
         } catch {
             problem = ListenModel.message(error)
         }

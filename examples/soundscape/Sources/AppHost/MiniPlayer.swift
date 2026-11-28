@@ -78,13 +78,13 @@ struct MiniPlayer: View {
                     .accessibilityLabel("Connecting")
             }
             Button { live.toggle() } label: {
-                Image(systemName: live.isPlaying ? "stop.fill" : "play.fill")
+                Image(systemName: live.isPlaying || live.isConnecting ? "stop.fill" : "play.fill")
                     .font(.title3)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel(live.isPlaying ? "Stop" : "Play Live")
+            .accessibilityLabel(live.isPlaying || live.isConnecting ? "Stop" : "Play Live")
             .accessibilityIdentifier("nowPlaying.playPause")
             if !inline {
                 Button { live.stop() } label: {

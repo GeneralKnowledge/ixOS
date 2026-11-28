@@ -42,6 +42,8 @@ final class LivePlayer {
     @ObservationIgnored private var address: String?
     /// When this load started playing; nil until it has.
     @ObservationIgnored private var startedAt: Date?
+    /// How long it had played without a break when it last began waiting.
+    @ObservationIgnored private var steadyFor: TimeInterval = 0
     /// Whether this address was rejoined after a stall already.
     @ObservationIgnored private var rejoined = false
     /// Counts down while the stream waits; cancelled when it plays.
@@ -87,6 +89,10 @@ final class LivePlayer {
         let number = tuneNumber
         radio?.stop()
         music?.stepAside()
+        // The station playing stops now, not once the lookup answers, so
+        // its late news can't act under the new station.
+        unload()
+        isPlaying = false
         self.station = station
         failure = nil
         isConnecting = true
@@ -142,6 +148,9 @@ final class LivePlayer {
         artworkTask?.cancel()
         artwork = nil
         nowPlaying.end()
+        // After `end()`, which cleared the shared entry: the paused music
+        // shows again.
+        music?.showOnLockScreen()
     }
 
     // MARK: Playing
@@ -173,6 +182,7 @@ final class LivePlayer {
         self.address = address
         // A rejoin that doesn't start counts as failed, like a new address.
         startedAt = nil
+        steadyFor = 0
         if !rejoining { rejoined = false }
         let item = AVPlayerItem(url: url)
         // A few seconds buffered, then play: live, not a song to cache.
@@ -200,6 +210,8 @@ final class LivePlayer {
                         self.watchdog?.cancel()
                         self.watchdog = nil
                     case .waitingToPlayAtSpecifiedRate where self.watchdog == nil:
+                        // The steady stretch ends here; the wait doesn't count.
+                        self.steadyFor = self.startedAt.map { Date().timeIntervalSince($0) } ?? 0
                         self.watch(item, for: self.startedAt == nil ? Self.connectTimeout : Self.stallTimeout)
                     default:
                         break
@@ -244,7 +256,7 @@ final class LivePlayer {
     /// rejoined once (again once it has played steadily since); otherwise
     /// the next address is tried.
     private func stalled() {
-        if let startedAt, rejoined, Date().timeIntervalSince(startedAt) > Self.steadyAfter {
+        if startedAt != nil, rejoined, steadyFor >= Self.steadyAfter {
             rejoined = false
         }
         guard let address, startedAt != nil, !rejoined else {
