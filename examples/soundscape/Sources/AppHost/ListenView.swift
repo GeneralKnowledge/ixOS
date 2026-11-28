@@ -46,6 +46,12 @@ enum ListenRoute: ForgeSurfaceRoute {
     case artists
     /// Songs that look like one song from several sources.
     case duplicates
+    /// Live radio: countries, languages or genres to browse.
+    case liveCategories(LiveCategoryKind)
+    /// Live stations for one country, language, genre or search.
+    case liveStations(LiveAsk, title: String)
+    /// Library > Stations: saved and recently played live stations.
+    case liveSaved
 }
 
 extension ListenRoute {
@@ -84,6 +90,9 @@ extension ListenRoute {
         case .albums: "albums"
         case .artists: "artists"
         case .duplicates: "duplicates"
+        case .liveCategories(let kind): "liveCategories:\(kind)"
+        case .liveStations(let ask, _): "liveStations:\(ask)"
+        case .liveSaved: "liveSaved"
         }
     }
 
@@ -109,8 +118,12 @@ struct ListenView: View {
     @State private var model: ListenModel
     @State private var player = TakePlayer()
     @State private var radio = Radio()
+    /// Live radio: its stations' data and its own player.
+    @State private var liveModel: LiveRadioModel
+    @State private var live = LivePlayer()
     @State private var editingServer = false
     @State private var showingNowPlaying = false
+    @State private var showingLive = false
     /// Songs on their way to a playlist, from a song's menu anywhere.
     @State private var addingToPlaylist: PlaylistAdd?
     @AppStorage("soundscape.tab") private var tab: SoundscapeTab = .listen
@@ -126,6 +139,7 @@ struct ListenView: View {
         let model = ListenModel(core: core)
         model.follow(host)
         _model = State(initialValue: model)
+        _liveModel = State(initialValue: LiveRadioModel(core: core))
     }
 
     var body: some View {
@@ -137,6 +151,31 @@ struct ListenView: View {
             .onChange(of: player.current == nil) { _, stopped in
                 if stopped { showingNowPlaying = false }
             }
+            .fullScreenCover(isPresented: $showingLive) {
+                LiveNowPlayingView()
+                    .environment(live)
+                    .environment(liveModel)
+            }
+            // Music playing again ends live radio and takes the lock
+            // screen back.
+            .onChange(of: player.isPlaying) { _, playing in
+                guard playing, live.isLive else { return }
+                live.stop()
+                player.showOnLockScreen()
+            }
+            .onChange(of: live.isLive) { _, isLive in
+                if !isLive { showingLive = false }
+            }
+            .alert(
+                "Can't Change Your Stations",
+                isPresented: Binding(get: { liveModel.problem != nil }, set: { if !$0 { liveModel.problem = nil } })
+            ) {
+                Button("OK", role: .cancel) { liveModel.problem = nil }
+            } message: {
+                Text(liveModel.problem ?? "")
+            }
+            .environment(live)
+            .environment(liveModel)
             .sheet(isPresented: $editingServer) {
                 ServerSheet(model: model)
             }
@@ -157,13 +196,14 @@ struct ListenView: View {
             )) { action in Task { await model.handle(action) } }
             .task(id: model.server) { await model.loadLibrary() }
             // VoiceOver's two-finger double tap plays or pauses anywhere.
-            .accessibilityAction(.magicTap) { player.toggle() }
+            .accessibilityAction(.magicTap) { live.isLive ? live.toggle() : player.toggle() }
             // The radio keeps a few songs queued ahead, and ends when
             // something else plays.
             .task(id: "\(player.current?.trackId ?? "")|\(player.upcoming.count)") {
                 await radio.follow(model: model, player: player)
             }
             .onAppear {
+                live.attach(model: liveModel, music: player, radio: radio)
                 player.onPlayed = { [model] trackId, recordingId in
                     Task { await model.recordPlay(trackId: trackId, recordingId: recordingId) }
                 }
@@ -231,12 +271,16 @@ struct ListenView: View {
         // The mini-player above the tab bar, and Undo for what was just
         // removed above the mini-player.
         .modifier(MiniPlayerBar(model: model, player: player) {
-            MiniPlayer(model: model, player: player, zoom: playerZoom, open: openNowPlaying)
+            MiniPlayer(model: model, player: player, live: live, zoom: playerZoom, open: openNowPlaying)
         })
     }
 
     private func openNowPlaying() {
-        if player.current != nil { showingNowPlaying = true }
+        if live.isLive {
+            showingLive = true
+        } else if player.current != nil {
+            showingNowPlaying = true
+        }
     }
 
     /// From Now Playing to a screen (an album, an artist, more like this
@@ -301,6 +345,9 @@ struct ListenDestination: View {
         case .albums: AlbumsView(model: model)
         case .artists: ArtistsView(model: model)
         case .duplicates: DuplicatesView(model: model, player: player)
+        case .liveCategories(let kind): LiveCategoriesView(kind: kind)
+        case .liveStations(let ask, let title): LiveStationsView(ask: ask, title: title)
+        case .liveSaved: LiveSavedView()
         }
     }
 }

@@ -197,6 +197,36 @@ Things that decide whether this feels solid or flaky:
   Extracting shared feed code waits for both: podcasts passed on the iPhone, and Commonplace's deferred feed
   check (#345).
 
+## L1, as built (28 November)
+
+- **Rust** (#466): `rust/src/live_radio.rs` and `live_radio.json`, as described above. Tested on Linux against
+  canned Radio Browser answers; not yet run against the live API.
+- **Lock screen** (#465): `ForgeNowPlaying` shows a live station as live, with no progress bar.
+- **Screens** (this PR's stack): Discover's source picker gains **Live Radio** (no Jamendo client ID needed):
+  Countries, Languages and Genres with station counts, Your Stations, and the most played worldwide; search
+  finds stations by name. Search's results end with **Stations matching "…"**. Library gains **Stations**
+  (saved and recently played). A station's row plays it; hold or swipe to save. The mini-player and a live Now
+  Playing show the station, LIVE (or why it isn't playing), play/stop and end. `LivePlayer` owns its own
+  AVPlayer: tuning in pauses the music and stops a generated station, and music playing again ends live radio.
+  A failed stream tries the listed address, then looks the station up again once by UUID, then says it isn't
+  broadcasting.
+- **Not in L1** (L2): the codec and content-type check on connect, failure memory, now-playing titles,
+  "Around the World", sleep timer on live, rejoin after interruptions beyond the system's own rules, and the click
+  reporting setting.
+
+### L1 phone checks (about 10 minutes, Device Lab)
+
+1. Discover > Live Radio: the most played stations list. Play one: the mini-player shows its name and LIVE.
+2. Countries > Japan: a station plays. Countries > United Kingdom: a station plays.
+3. Genres > Jazz (or any): a station plays. Note one MP3, one AAC and one HLS station played (the stream line on
+   Now Playing says which).
+4. Save one (hold its row, or the star on Now Playing). Library > Stations shows it. Close and reopen the app:
+   it's still saved, and plays.
+5. Lock the phone: the lock screen shows the station as live (no progress bar); pause and play work.
+6. With a station playing, play a song from your library: live radio ends and the music plays; the lock screen
+   shows the song.
+7. Search for a word, then Stations Matching: stations by name.
+
 ## Milestones
 
 | Order | Milestone | What it delivers | Phone check |

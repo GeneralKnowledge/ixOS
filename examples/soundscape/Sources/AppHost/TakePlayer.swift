@@ -542,6 +542,23 @@ final class TakePlayer {
         // again too, so the switch can finish.
         if switching != nil, playerB.currentItem?.status == .readyToPlay { playerB.play() }
         isPlaying = true
+        // Back after live radio took the lock screen (`stepAside`).
+        setUpRemoteCommands()
+        updateNowPlaying()
+    }
+
+    /// Live radio is tuning in: pause, keep the queue where it is, and
+    /// give the lock screen and headphone buttons to the live player.
+    /// Playing music again takes them back.
+    func stepAside() {
+        if isPlaying { pause() }
+        nowPlaying.end()
+    }
+
+    /// Puts the music back on the lock screen after live radio ended.
+    func showOnLockScreen() {
+        guard current != nil else { return }
+        setUpRemoteCommands()
         updateNowPlaying()
     }
 

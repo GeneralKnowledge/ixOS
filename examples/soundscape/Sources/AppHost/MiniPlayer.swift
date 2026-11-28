@@ -23,12 +23,83 @@ struct MiniPlayer: View {
 
     let model: ListenModel
     let player: TakePlayer
+    /// Live radio, shown instead of the music while a station is tuned in.
+    let live: LivePlayer
     let zoom: Namespace.ID
     let open: () -> Void
 
     @Environment(\.miniPlayerInline) private var inline
 
     var body: some View {
+        Group {
+            if let station = live.station {
+                liveBar(station)
+            } else {
+                musicBar
+            }
+        }
+        .padding(.leading, inline ? 6 : 10)
+        .padding(.trailing, inline ? 8 : 14)
+        // A bar of fixed height, like the tab bar under it.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .modifier(ZoomSource(id: Self.zoomID, namespace: zoom))
+    }
+
+    /// A live station: its name, LIVE (or why it isn't playing), play or
+    /// stop, and end live radio.
+    private func liveBar(_ station: LiveStation) -> some View {
+        HStack(spacing: 10) {
+            Button(action: open) {
+                HStack(spacing: 10) {
+                    Artwork(title: station.name, url: station.artworkUrl, size: inline ? 28 : 36)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(station.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        if !inline {
+                            if let failure = live.failure {
+                                Text(failure).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                            } else {
+                                LiveBadge()
+                            }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Live Radio: \(station.name)")
+            .accessibilityHint("Opens the station")
+            .accessibilityIdentifier("nowPlaying.open")
+            if live.isConnecting {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Connecting")
+            }
+            Button { live.toggle() } label: {
+                Image(systemName: live.isPlaying ? "stop.fill" : "play.fill")
+                    .font(.title3)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(live.isPlaying ? "Stop" : "Play Live")
+            .accessibilityIdentifier("nowPlaying.playPause")
+            if !inline {
+                Button { live.stop() } label: {
+                    Image(systemName: "xmark")
+                        .font(.body.bold())
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Stop Live Radio")
+                .accessibilityIdentifier("nowPlaying.endLive")
+            }
+        }
+    }
+
+    private var musicBar: some View {
         HStack(spacing: 10) {
             Button(action: open) {
                 HStack(spacing: 10) {
@@ -50,11 +121,6 @@ struct MiniPlayer: View {
             }
             controls
         }
-        .padding(.leading, inline ? 6 : 10)
-        .padding(.trailing, inline ? 8 : 14)
-        // A bar of fixed height, like the tab bar under it.
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .modifier(ZoomSource(id: Self.zoomID, namespace: zoom))
     }
 
     @ViewBuilder private var artwork: some View {
