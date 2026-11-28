@@ -8,15 +8,17 @@ Scope: Relay, Soundscape, Checklist, Commonplace, Good Dog, Pocket Library and U
 
 ## Ranked findings
 
-| # | App | Defect | Severity | Likelihood | Evidence |
-|---|---|---|---|---|---|
-| 1 | Relay | A message the server or device refuses (over 4,000 characters) is wiped from the composer, so the text is lost | Data loss | Medium (pasting a long text) | Source |
-| 2 | Good Dog | A session started before midnight and saved after it is refused, so the session can't be recorded | Data loss | Low to medium | Probe |
-| 3 | Pocket Library | EPUB import is refused with a form message ("Keep the title under 300 characters") that the person can't act on | Import fails | Low to medium | Probe |
-| 4 | Soundscape | Edit Song's errors are hidden behind its own sheet: Save seems to do nothing, and Cancel then shows the alert and drops the edits | Silent failure, lost edits | Low | Source |
-| 5 | Good Dog | After a clock change, the week's remaining reminders fire an hour early or late until the app is opened | Wrong time | Certain twice a year | Source |
-| 6 | Checklist | Importing the same spreadsheet twice duplicates any item whose cell has a double space or a tab | Duplicates | Low | Probe |
-| 7 | Urdu, Naturally | A name over 40 characters typed in Settings is lost on leaving the screen | Lost input | Low | Source |
+**Status (28 Nov 2026).** Every finding below is fixed on `main`, each in its own PR with a regression test (Rust) or a combined iOS build (Swift). All six phone checks passed on Device Lab 1.29922692 on 22 Nov. This page stays as the record of what was found and why; the fix PRs are in the last column. A second round on 22 Nov found that Cancel Sending on a Relay note already left in a device's mailbox said Cancelled although the note still arrived; fixed in #424.
+
+| # | App | Defect | Severity | Likelihood | Evidence | Fixed in |
+|---|---|---|---|---|---|---|
+| 1 | Relay | A message the server or device refuses (over 4,000 characters) is wiped from the composer, so the text is lost | Data loss | Medium (pasting a long text) | Source | #391 |
+| 2 | Good Dog | A session started before midnight and saved after it is refused, so the session can't be recorded | Data loss | Low to medium | Probe | #392 (+ #468 guided-session test) |
+| 3 | Pocket Library | EPUB import is refused with a form message ("Keep the title under 300 characters") that the person can't act on | Import fails | Low to medium | Probe | #394 |
+| 4 | Soundscape | Edit Song's errors are hidden behind its own sheet: Save seems to do nothing, and Cancel then shows the alert and drops the edits | Silent failure, lost edits | Low | Source | #395 |
+| 5 | Good Dog | After a clock change, the week's remaining reminders fire an hour early or late until the app is opened | Wrong time | Certain twice a year | Source | #397 |
+| 6 | Checklist | Importing the same spreadsheet twice duplicates any item whose cell has a double space or a tab | Duplicates | Low | Probe | #393 |
+| 7 | Urdu, Naturally | A name over 40 characters typed in Settings is lost on leaving the screen | Lost input | Low | Source | #396 |
 
 ### 1. Relay: a refused message is wiped from the composer
 
