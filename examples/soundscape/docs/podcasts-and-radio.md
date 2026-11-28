@@ -220,12 +220,22 @@ Things that decide whether this feels solid or flaky:
 2. Countries > Japan: a station plays. Countries > United Kingdom: a station plays.
 3. Genres > Jazz (or any): a station plays. Note one MP3, one AAC and one HLS station played (the stream line on
    Now Playing says which).
-4. Save one (hold its row, or the star on Now Playing). Library > Stations shows it. Close and reopen the app:
+4. Save one (hold its row, or the bookmark on Now Playing). Library > Stations shows it. Close and reopen the app:
    it's still saved, and plays.
 5. Lock the phone: the lock screen shows the station as live (no progress bar); pause and play work.
 6. With a station playing, play a song from your library: live radio ends and the music plays; the lock screen
    shows the song.
 7. Search for a word, then Stations Matching: stations by name.
+8. Stalls (Reuben's review, 28 November). With a station playing, turn on Airplane Mode: within about 20 seconds
+   Now Playing shows it connecting, and within about a minute it stops with a message that says the connection
+   failed (not that the station is gone), never connecting for ever. Turn Airplane Mode off and press Play: it
+   plays live again. Then, with it playing, switch from Wi-Fi to mobile data: it carries on, or rejoins by itself
+   within about 20 seconds.
+
+What it does on a stall: a stream that never starts within 15 seconds counts as failed; one that played and then
+waits 20 seconds for data is rejoined once (again only after a minute of steady playing), then counts as failed.
+A failed stream goes to the station's listed address, then a lookup by UUID, then a message. A stream that ends
+(a live stream shouldn't) is treated as a stall.
 
 ## Milestones
 

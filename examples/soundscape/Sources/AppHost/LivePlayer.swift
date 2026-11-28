@@ -14,9 +14,12 @@ private let log = ForgeLog("LiveRadio")
 /// repeat; pausing stops the stream and playing again rejoins it live,
 /// rather than playing an old buffer.
 ///
-/// When a stream fails, the station is looked up again by its UUID (it may
-/// have moved its stream), then its listed address is tried, then it says
-/// the station isn't broadcasting.
+/// When a stream fails, its listed address is tried, then the station is
+/// looked up again by its UUID (it may have moved its stream), then it says
+/// the station isn't broadcasting. A stream that never starts counts as
+/// failed after `connectTimeout`. One that stops sending (no error, just
+/// waiting) is rejoined once after `stallTimeout`, then counts as failed;
+/// so does one that ends, which a live stream shouldn't.
 @Observable
 @MainActor
 final class LivePlayer {
@@ -35,6 +38,22 @@ final class LivePlayer {
     /// Whether the station was looked up again after a failure already.
     @ObservationIgnored private var lookedUp = false
     @ObservationIgnored private var tuneNumber = 0
+    /// The address playing now, to rejoin it after a stall.
+    @ObservationIgnored private var address: String?
+    /// When this load started playing; nil until it has.
+    @ObservationIgnored private var startedAt: Date?
+    /// Whether this address was rejoined after a stall already.
+    @ObservationIgnored private var rejoined = false
+    /// Counts down while the stream waits; cancelled when it plays.
+    @ObservationIgnored private var watchdog: Task<Void, Never>?
+    @ObservationIgnored private var endObservers: [NSObjectProtocol] = []
+
+    /// How long a stream may take to start before the next address is tried.
+    static let connectTimeout: Duration = .seconds(15)
+    /// How long a playing stream may wait for data before it is rejoined.
+    static let stallTimeout: Duration = .seconds(20)
+    /// Played this long since it was rejoined, a later stall may rejoin again.
+    static let steadyAfter: TimeInterval = 60
     @ObservationIgnored private var artwork: UIImage?
     @ObservationIgnored private var artworkTask: Task<Void, Never>?
     @ObservationIgnored private lazy var nowPlaying = ForgeNowPlaying(
@@ -139,7 +158,8 @@ final class LivePlayer {
         load(first)
     }
 
-    private func load(_ address: String) {
+    /// Plays `address`; `rejoining` plays the same one again after a stall.
+    private func load(_ address: String, rejoining: Bool = false) {
         guard let url = URL(string: address) else {
             next()
             return
@@ -150,6 +170,10 @@ final class LivePlayer {
             log.warn("audio session: \(error)")
         }
         unload()
+        self.address = address
+        // A rejoin that doesn't start counts as failed, like a new address.
+        startedAt = nil
+        if !rejoining { rejoined = false }
         let item = AVPlayerItem(url: url)
         // A few seconds buffered, then play: live, not a song to cache.
         item.preferredForwardBufferDuration = 8
@@ -169,15 +193,67 @@ final class LivePlayer {
                     guard let self, player.currentItem === item else { return }
                     let status = player.timeControlStatus
                     self.isConnecting = status == .waitingToPlayAtSpecifiedRate
-                    if status == .playing { self.failure = nil }
+                    switch status {
+                    case .playing:
+                        self.failure = nil
+                        self.startedAt = Date()
+                        self.watchdog?.cancel()
+                        self.watchdog = nil
+                    case .waitingToPlayAtSpecifiedRate where self.watchdog == nil:
+                        self.watch(item, for: self.startedAt == nil ? Self.connectTimeout : Self.stallTimeout)
+                    default:
+                        break
+                    }
                 }
             }
+        }
+        // A live stream has no end: one that ends, or can't carry on, dropped.
+        for name in [AVPlayerItem.didPlayToEndTimeNotification, AVPlayerItem.failedToPlayToEndTimeNotification] {
+            endObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: item, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.player.currentItem === item else { return }
+                    log.warn("stream ended")
+                    self.stalled()
+                }
+            })
         }
         player.replaceCurrentItem(with: item)
         player.play()
         isPlaying = true
         isConnecting = true
+        watch(item, for: Self.connectTimeout)
         updateNowPlaying()
+    }
+
+    /// Calls `stalled()` if `item` is still waiting after `limit`.
+    private func watch(_ item: AVPlayerItem, for limit: Duration) {
+        watchdog?.cancel()
+        watchdog = Task { [weak self] in
+            try? await Task.sleep(for: limit)
+            guard !Task.isCancelled, let self, self.player.currentItem === item,
+                  self.player.timeControlStatus != .playing else { return }
+            self.watchdog = nil
+            self.stalled()
+        }
+    }
+
+    /// The stream stopped sending, or never started. One that played is
+    /// rejoined once (again once it has played steadily since); otherwise
+    /// the next address is tried.
+    private func stalled() {
+        if let startedAt, rejoined, Date().timeIntervalSince(startedAt) > Self.steadyAfter {
+            rejoined = false
+        }
+        guard let address, startedAt != nil, !rejoined else {
+            log.warn(startedAt == nil ? "stream didn't start in time" : "stream stalled again")
+            next()
+            return
+        }
+        log.warn("stream stalled; rejoining")
+        rejoined = true
+        load(address, rejoining: true)
     }
 
     /// The next address for the station: its listed one, then (once) its
@@ -194,7 +270,16 @@ final class LivePlayer {
         lookedUp = true
         let number = tuneNumber
         Task {
-            let found = try? await radioModel.failed(station.uuid)
+            let found: LiveStation?
+            do {
+                found = try await radioModel.failed(station.uuid)
+            } catch {
+                // Offline, or Radio Browser unreachable: say that, not that
+                // the station is gone.
+                guard number == tuneNumber, self.station?.uuid == station.uuid else { return }
+                fail(ListenModel.message(error))
+                return
+            }
             guard number == tuneNumber, self.station?.uuid == station.uuid else { return }
             guard let found, found.streamUrl != station.streamUrl || found.listedUrl != station.listedUrl else {
                 fail(found == nil
@@ -218,6 +303,10 @@ final class LivePlayer {
     private func unload() {
         statusObserver = nil
         waitObserver = nil
+        watchdog?.cancel()
+        watchdog = nil
+        for observer in endObservers { NotificationCenter.default.removeObserver(observer) }
+        endObservers = []
         player.pause()
         player.replaceCurrentItem(with: nil)
     }
