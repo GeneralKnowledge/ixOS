@@ -82,15 +82,17 @@ Glass marks things a person operates. A notice that only informs is not a contro
 | Now Playing's small controls over artwork | Liquid Glass (clear, over the palette clamped for white glyphs) |
 | Relay composer (chat and Assistant) | Liquid Glass |
 | New Messages button | Liquid Glass (prominent) |
-| Floating toolbar controls (Devices' Send) | Liquid Glass, from the system's toolbar and button styles |
+| Devices' Send and Receive, floating above the tab bar | Liquid Glass: Send prominent, Receive regular and interactive (not a bottom toolbar, which iOS 26 hides behind the tab bar, #443) |
 | Tab bars, navigation bars, sheets, menus | The system's own (glass on iOS 26) |
-| Relay's connection notice (Connecting, Reconnecting, Not connected) | Standard material or solid |
+| Relay's connection notice (Connecting, Reconnecting, Not connected) and the Chats list notices | Standard material or solid |
 | Notification banners (ForgeAppKit's Undo banner) | Standard material or solid |
 | Soundscape overlays (Up Next, Add to Playlist) | Standard thin material; solid under Reduce Transparency |
 | Message bubbles, cards, rows, tiles, lyrics | Solid |
 
-#437 and #438 put glass on the Undo banner and on Relay's connection notice. Both move to standard material in
-V2.1; anything not in this table defaults to solid until this table says otherwise.
+#437 and #438 put glass on the Undo banner and on Relay's connection notice; #441 moved both to the standard
+material (`forgeMaterial(in:)`), and #446 put the Chats notices on it too. The same table is code:
+`ForgeMaterial.material(for:)`, checked on Linux, and the parity rule `glass` keeps glass inside ForgeUI.
+Anything not in this table defaults to solid until this table says otherwise.
 
 ## Shared themes, from the references
 

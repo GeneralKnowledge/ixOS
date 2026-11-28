@@ -57,7 +57,7 @@ States: **no conversations** (first-run: pair a device or join a room, one clear
 | Composer | Floating glass card (#438) or iOS 26 `safeAreaBar` (decide on the phone), grows to 6 lines then scrolls | Glass card | V4.2 |
 
 States: **empty conversation** (who it is with and how it is protected, one line); **connecting /
-reconnecting / not connected** (the calm notice from #438, moving from glass to standard material in V2.1); **message failed** (red caption with Try
+reconnecting / not connected** (the calm notice from #438, on the standard material since #441); **message failed** (red caption with Try
 Again, nothing else turns red); **peer revoked** (composer replaced by an explanation and no send);
 **very long message**, **only emoji**, **deleted message** (placeholder).
 

@@ -19,7 +19,7 @@ app you enjoy using because it gets out of your way.**
 |---|---|
 | [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md) | Principles, the three layers, glass rules, what we avoid, how a design change reaches the product |
 | [DESIGN_REFERENCES.md](DESIGN_REFERENCES.md) | The reference study: what each product does, why it works, where it falls short, maturity, licences, comparison with ixOS today, and the hands-on capture still owed |
-| [DESIGN_TOKENS.md](DESIGN_TOKENS.md) | Shared ForgeUI tokens (existing and proposed) and each app's own colour, type, metrics and motion, with contrast checks |
+| [DESIGN_TOKENS.md](DESIGN_TOKENS.md) | Shared ForgeUI tokens (what exists, with the PR that added it, and what is proposed or deferred) and each app's own colour, type, metrics and motion, with contrast checks |
 | [SOUNDSCAPE_DESIGN_SPEC.md](SOUNDSCAPE_DESIGN_SPEC.md) | Soundscape's identity, every screen with its states, signature interactions |
 | [RELAY_DESIGN_SPEC.md](RELAY_DESIGN_SPEC.md) | Relay's identity, every screen with its states, signature interactions |
 | [DESIGN_QA.md](DESIGN_QA.md) | Evidence rules, accessibility, compatibility, performance budgets, states, screenshots, acceptance criteria, the PR checklist |
@@ -28,9 +28,29 @@ The apps' own design docs stay the record of what is built: Soundscape
 [design.md](../../examples/soundscape/docs/design.md), Relay
 [relay-design.md](../../examples/relay/docs/relay-design.md) (#438).
 
-## Where things stand (main at 5b31a175, 2026-11-24)
+## Where things stand
 
-This plan is based on main at 5b31a175, the merge of #438, which is also this PR's base.
+### Since the plan (reconciled with main on 2026-11-28)
+
+The plan below was written against main at 5b31a175 (2026-11-24). These have merged since, and the
+documents now describe them as built:
+
+| PR | What | Programme step | State |
+|---|---|---|---|
+| #440 | Soundscape Now Playing text reads over the blurred artwork: palette checked against every thumbnail region, secondary text 75%, artwork layer at most 45% | V2.1 companion | Merged 2026-11-24; compiled; phone check owed (artist line on white and mixed covers) |
+| #441 | ForgeUI `ForgeMaterial` and `ForgeMotion`, `ForgeRadius.xl`, notices on standard material, Relay Reduce Motion, parity rule `glass` | V2.1 | Merged 2026-11-24; compiled; phone check owed |
+| #443 | Relay Send and Receive float above the tab bar (iOS 26 put the bottom toolbar behind it) | Bug fix | Merged; compiled; phone check owed |
+| #446 | Relay Chats: full-width list, names aligned with the search field, notices on the standard material | Bug fix | Merged; compiled; phone check owed |
+| #455 | Relay's muted blue accent, `RelayColors` with contrast tests | V2.2 (Relay half) | Merged 2026-11-25; compiled; phone check owed (relay-design.md, check 8) |
+
+None of these has a phone report recorded here yet. V2.1's planned scope and what it shipped differ in four
+places ([tokens](DESIGN_TOKENS.md#materials-exists-441-forgematerialswift-forgematerialswiftuiswift)):
+no `ForgeGlassGroup`, no concentric shape, no scaled-padding helper (all deferred to the first screen that
+needs them), and the standard material is `forgeMaterial(in:)`.
+
+### The starting point (main at 5b31a175, 2026-11-24)
+
+This plan was based on main at 5b31a175, the merge of #438.
 
 | PR | What | State |
 |---|---|---|
@@ -47,14 +67,16 @@ iOS 26 SDK. No glass has been seen on the phone yet: earlier builds came from up
 
 ### Inconsistencies in the code
 
-| Area | Today |
-|---|---|
-| Glass | Three private copies of "glass on iOS 26, material before": `soundscapeGlass` (#437), `relayFloatingBar` / `relayProminentButton` (#438), ForgeAppKit's `BannerSurface` (#437), with variants chosen ad hoc. Two of the glass uses are passive notices, not controls: ForgeAppKit's banner (#437) and Relay's connection notice (#438). Under the [material table](DESIGN_PHILOSOPHY.md#material-by-component) they move to standard material in V2.1 |
-| Corner radii | ForgeUI 7 / 12 / 18; Soundscape mini-player 16 and overlays 28; Relay composer 24 |
-| Fallback shadows | Three hand-written values |
-| Motion | Soundscape has `SoundscapeMotion` with Reduce Motion; Relay has 12 animations and no Reduce Motion check |
-| Accent | Soundscape ForgeUI purple; Relay system blue. The brief's accents fail 4.5:1 on white, so they need light-mode partners ([tokens](DESIGN_TOKENS.md)) |
-| States | Soundscape uses `ForgeStateView` on 36 screens; Relay on 12, hand-made text elsewhere |
+As found on 2026-11-24. The last column says what has happened since.
+
+| Area | On 2026-11-24 | Now (2026-11-28) |
+|---|---|---|
+| Glass | Three private copies of "glass on iOS 26, material before": `soundscapeGlass` (#437), `relayFloatingBar` / `relayProminentButton` (#438), ForgeAppKit's `BannerSurface` (#437), with variants chosen ad hoc. Two of the glass uses are passive notices, not controls: ForgeAppKit's banner (#437) and Relay's connection notice (#438). Under the [material table](DESIGN_PHILOSOPHY.md#material-by-component) they move to standard material in V2.1 | Fixed (#441): one ForgeUI implementation, both notices on standard material, parity rule `glass` |
+| Corner radii | ForgeUI 7 / 12 / 18; Soundscape mini-player 16 and overlays 28; Relay composer 24 | `ForgeRadius.xl` 28 exists (#441); mini-player 16 and composer 24 remain until V3.1 and V4.2 |
+| Fallback shadows | Three hand-written values | Fixed (#441): one token |
+| Motion | Soundscape has `SoundscapeMotion` with Reduce Motion; Relay has 12 animations and no Reduce Motion check | Fixed (#441): Relay's chat animations go through `withForgeAnimation` and stop under Reduce Motion |
+| Accent | Soundscape ForgeUI purple; Relay system blue. The brief's accents fail 4.5:1 on white, so they need light-mode partners ([tokens](DESIGN_TOKENS.md)) | Relay done (#455, muted blue with tests); Soundscape still ForgeUI purple |
+| States | Soundscape uses `ForgeStateView` on 36 screens; Relay on 12, hand-made text elsewhere | Unchanged; Relay's Chats notices now share one look (#446) |
 
 ### What must not change
 
@@ -63,22 +85,24 @@ semantics, outbox, storage and networking; accessibility identifiers used by UI 
 
 ### Missing evidence
 
-Phone reports for #418, #437 and #438; any visual-regression baselines for either app; light-mode and AX5
-screenshots since the redesigns; a compile of the Xcode 16 path; hands-on captures of the closed-source
-references ([checklist](DESIGN_REFERENCES.md#hands-on-capture-checklist)).
+Phone reports for #418, #437, #438, #440, #441, #443, #446 and #455; any visual-regression baselines for
+either app; light-mode and AX5 screenshots since the redesigns; a compile of the Xcode 16 path (due at the
+end of V2); hands-on captures of the closed-source references
+([checklist](DESIGN_REFERENCES.md#hands-on-capture-checklist)).
 
 ## Shared foundation in ForgeUI
 
-Extract only on a real second use (AGENTS.md rule 1). Glass and motion have it now; everything else is a
+Extract only on a real second use (AGENTS.md rule 1). Glass and motion had it; everything else is a
 convention or a token.
 
-| Into ForgeUI | Why |
-|---|---|
-| `ForgeMaterial` (`forgeGlass`, glass prominent button, glass group, one fallback shadow) | Replaces three copies; encodes Apple's rules (regular vs clear, grouping, Reduce Transparency) once |
-| `ForgeMotion` (quick, standard, emphasised, ambient; Reduce Motion aware) | Relay gets Reduce Motion handling; Soundscape's motion names build on it |
-| `ForgeRadius.xl` (28), concentric shape for edge-hugging controls | Removes stray radii |
-| Scaled padding and frame helpers | Dynamic Type-aware sizes (as Element X's Compound does) |
-| `ForgeStateView` offline preset, custom accent values | Both apps need calm offline states and their own accent with contrast checks |
+| Into ForgeUI | Why | State |
+|---|---|---|
+| `ForgeMaterial` (`forgeGlass`, glass prominent button, glass group, one fallback shadow) | Replaces three copies; encodes Apple's rules (regular vs clear, grouping, Reduce Transparency) once | In main (#441), without the glass group |
+| `ForgeMotion` (quick, standard, emphasised, ambient; Reduce Motion aware) | Relay gets Reduce Motion handling; Soundscape's motion names build on it | In main (#441) |
+| `ForgeRadius.xl` (28), concentric shape for edge-hugging controls | Removes stray radii | `xl` in main (#441); concentric deferred |
+| Scaled padding and frame helpers | Dynamic Type-aware sizes (as Element X's Compound does) | Deferred to the first screen that needs one |
+| `ForgeStateView` offline preset | Both apps need a calm offline state | Deferred to the first screen that needs one (V4.1 at the latest) |
+| Custom accent values | Each app's own accent with contrast checks | Not needed: `withAccent` and `contrastIssues()` already do it (#455) |
 
 Stays in the apps: artwork palettes, shelves, visualisations, Layered Navigation (Soundscape); bubbles,
 grouping, delivery and trust presentation, device cards, the Assistant's identity (Relay); all colour
@@ -93,8 +117,8 @@ review; phone checks are listed and never assumed.
 |---|---|---|
 | This PR | The six design documents (docs only) | — |
 | #437, #438 (V1) | Liquid Glass in both apps; phone check on an SDK 26 binary | Both merged; compiled with fork xtool; phone checks owed |
-| V2.1 | ForgeUI `ForgeMaterial` + `ForgeMotion` + radius and scaled metrics; both apps and ForgeBanner move onto them; banner and connection notice to standard material; Relay gains Reduce Motion; parity rule against a fourth private glass helper | #441 merged 2026-11-24 (with #440); built clean for iOS on the laptop; phone checks owed |
-| V2.2 | App colour tokens with contrast tests (palettes adopted subject to visual review on the phone); offline state; first visual-regression baselines for both apps | V2.1 |
+| V2.1 | ForgeUI `ForgeMaterial` + `ForgeMotion` + radius; both apps and ForgeBanner move onto them; banner and connection notice to standard material; Relay gains Reduce Motion; parity rule against a fourth private glass helper | #441 merged 2026-11-24 (with #440); built clean for iOS on the laptop; phone checks owed. Scaled metrics, glass group and concentric shape deferred |
+| V2.2 | App colour tokens with contrast tests (palettes adopted subject to visual review on the phone); first visual-regression baselines for both apps | Relay's accent merged (#455). Still to do: `SoundscapeColors`; the baselines (need a phone sitting). The offline state moved to the first screen that needs it (V4.1 at the latest) |
 | V2.3 | Reference captures (Apple Music, Messages, Signal) and approved screen compositions (wireframes) for the first screens of V3 and V4, saved with the specs | Captures need Reuben with the iPhone; no code |
 | V3.1 | Soundscape Listen and Library | V2.2, V2.3 |
 | V3.2 | Soundscape Now Playing; album and artist anchor | V2.2, V2.3 |
@@ -156,38 +180,22 @@ built-ins, grouped search results, bubble shapes, delivery captions.
 6. **Glass on passive notices:** glass only on controls; notification banners and the connection notice use
    standard material or solid ([material table](DESIGN_PHILOSOPHY.md#material-by-component)).
 
-## The next PR: V2.1, shared glass and motion
+## What comes next
 
-Reuben agreed this direction on 2026-11-24. The passive-notice question is settled (decision 6). At 12:24 he
-decided V2.1 does not wait for #437 and #438 to pass on the phone: their phone checks and V2.1's are done
-together in the next sitting, on one combined Device Lab build that holds both. The "before" for that sitting
-is the build on the phone now (1.29925122, made before #437 and #438, so without their glass changes):
-screenshots of Now Playing, the mini-player, a Relay chat and its connection notice are taken from it
-before the new build is installed. There is no build with #437/#438 but without V2.1 on the phone, so the V1
-checks run against the combined build, with the two passive notices expected frosted, not glass.
+V2.1 is merged (#441), and the record of what it planned and what it shipped is in
+[Where things stand](#since-the-plan-reconciled-with-main-on-2026-11-28) and the
+[tokens](DESIGN_TOKENS.md). Its acceptance still needs the phone: on one combined Device Lab build, the
+controls from #437 and #438 show glass, the Undo banner and Relay's connection notice show standard
+material, Relay's New Messages button and connection notice don't animate under Reduce Motion, and every
+glass surface turns solid under Reduce Transparency. The same sitting covers #440, #443, #446 and #455.
 
-**Why this one.** It changes almost nothing a person sees on the happy path (only the two passive notices
-lose their glass), so it respects "no more visual
-implementation yet", and every later screen PR draws floating controls and animates them. Doing V3 and V4
-on three private glass helpers, with no Reduce Motion in Relay, would multiply the inconsistency the
-programme exists to remove. The reference study sharpened it: Apple's grouping (`GlassEffectContainer`),
-concentric shapes, regular vs clear with a dim layer, and Element X's Dynamic Type-scaled metrics all
-belong in this one place.
+V2.2 has two parts left:
 
-**Scope.** `forgekit/Sources/ForgeUI/Tokens/ForgeMaterial.swift` and `ForgeMotion.swift`; `ForgeRadius.xl`;
-scaled padding and frame helpers; Soundscape, Relay and ForgeBanner call them (names that describe each
-app's places, like `relayFloatingBar`, stay as thin wrappers); ForgeBanner and Relay's connection notice move
-from glass to standard material (solid under Reduce Transparency); Relay's animations go through `ForgeMotion`;
-Linux tests for tokens, contrast and the material choices (which variant each surface gets); a Materials and Motion section in docs/forgeui.md; a parity rule flagging
-`.glassEffect(` outside ForgeUI.
+1. **`SoundscapeColors`**, built as `RelayColors` was (#455): the ink, surface, ivory, secondary, lavender
+   accent and onAccent values from the [tokens](DESIGN_TOKENS.md#2-soundscape-tokens-app-local-soundscapecolors-soundscapemetrics-soundscapemotion),
+   applied as a theme, with `contrastIssues()` and composed-pair tests. Only the accent is adopted in views at
+   first, as with Relay; backgrounds follow in V3.
+2. **First visual-regression baselines** for both apps, captured on the iPhone, so V3 and V4 have a "before"
+   that a test can compare.
 
-**Not in scope.** Colours, layouts, new components, other apps' looks.
-
-**Depends on.** #437 and #438 (merged). No phone gate; its phone checks join the next combined Device Lab sitting.
-
-**Acceptance.** `cargo test --workspace`, ForgeKit's Linux Swift tests and `make validate` pass; the laptop's
-Device Lab build compiles; on the phone (combined build, against the "before" screenshots above) the controls
-from #437 and #438 show glass as their phone checks describe, and the Undo banner and Relay's connection notice
-show standard material; with
-Reduce Motion on, Relay's New Messages button, staging and connection notice don't animate; with Reduce
-Transparency on, every glass surface is solid.
+Then V2.3 (captures and approved compositions) gates V3 and V4, as decided on 2026-11-24.

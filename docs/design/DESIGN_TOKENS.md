@@ -4,8 +4,9 @@ The shared visual language of ixOS apps, and the app-level tokens that give Soun
 identity. Shared tokens live in ForgeUI (`forgekit/Sources/ForgeUI/Tokens/`); app tokens live in each app.
 Principles behind them: [DESIGN_PHILOSOPHY.md](DESIGN_PHILOSOPHY.md).
 
-Status per token: **exists** (in main today), **proposed** (this programme; built in the PR named), or
-**decision** (needs Reuben's choice before it is built).
+Status per token: **exists** (in main; the PR that added it is named), **proposed** (this programme; built in
+the PR named), **deferred** (planned, but not built until a screen needs it), or **decision** (needs Reuben's
+choice before it is built). Reconciled with main on 2026-11-28, after #440, #441, #443, #446 and #455.
 
 ## 1. Shared tokens (ForgeUI)
 
@@ -16,8 +17,10 @@ gaps. Apps use these names, or their own named metrics built from them (`Soundsc
 is a named exception for shelves lining up with large titles). No literal padding numbers in views.
 
 Scaled spacing: padding and frames around text use `@ScaledMetric` so they grow with Dynamic Type
-(Element X does this throughout with `scaledFrame` / `scaledPadding`; ForgeUI has no helper yet:
-**proposed** in V2.1 as `forgeScaledPadding` / `forgeScaledFrame`).
+(Element X does this throughout with `scaledFrame` / `scaledPadding`). ForgeUI's own components already
+use `@ScaledMetric` (button heights, row tiles, badges). A shared `forgeScaledPadding` / `forgeScaledFrame`
+helper was planned for V2.1 but not built: **deferred** to the first V3 or V4 screen that needs one, so it
+is shaped by a real use.
 
 ### Corner radii
 
@@ -26,14 +29,15 @@ Scaled spacing: padding and frames around text use `@ScaledMetric` so they grow 
 | `ForgeRadius.s` | 7 | Badges, icon tiles | exists |
 | `ForgeRadius.m` | 12 | Buttons, fields, small cards | exists |
 | `ForgeRadius.l` | 18 | Cards, sheets | exists |
-| `ForgeRadius.xl` | 28 | Overlays, large floating panels | proposed (V2.1) |
-| Concentric | follows the device | Floating controls near the screen edge (mini-player, composer) on iOS 26 | proposed (V2.1, `ConcentricRectangle`) |
+| `ForgeRadius.xl` | 28 | Overlays, large floating panels | exists (#441) |
+| Concentric | follows the device | Floating controls near the screen edge (mini-player, composer) on iOS 26 | deferred (not in #441; with the mini-player in V3.1 and the composer in V4.2) |
 
 Reuben's brief suggested 12 / 16 / 20 / 28. **Decided 2026-11-24: no global rescale.** 28 is added where
 needed; existing apps keep 7 / 12 / 18.
 
-Today's strays to remove: Soundscape mini-player 16, Relay composer 24, Relay bubbles 18 (bubbles are content
-and keep an app-owned value; see Relay tokens).
+Strays still in main: Soundscape mini-player 16 (and the radio station tile, 16), Relay composer 24. They go
+when those controls are redesigned (V3.1, V4.2), not in a sweep. Relay bubbles 18 are content and keep an
+app-owned value (see Relay tokens).
 
 ### Typography (exists, extended)
 
@@ -45,15 +49,27 @@ metadata, note, figure, figureCaption). No fixed point sizes except SF Symbol gl
 
 Semantic and adaptive. `ForgeAccent` gives each app an accent with light, dark and Increase Contrast values;
 `ForgeContrast` checks 4.5:1 in Linux tests. Status colours (failure red, success green, warning orange) are
-system semantic colours and are never replaced by an app accent.
+ForgeUI's tones (`danger`, `success`, `warning`) and are never replaced by an app accent.
 
-Proposed (V2.2): `ForgeAccent.custom(light:dark:…)` so an app can supply its own accent values (Soundscape's
-lavender, Relay's muted blue) and still get the contrast checks.
+An app's own accent needs no new API (the `ForgeAccent.custom` proposed here earlier was not needed):
+`ForgePalette.standard.withAccent(light:dark:)` takes two `ForgeToneColors`, and
+`ForgeTheme.contrastIssues()` checks every pairing ForgeUI draws, in light, dark and both with Increase
+Contrast. Relay does exactly this (`RelayColors`, #455), with a test that the list is empty.
 
-### Materials (proposed, V2.1: `ForgeMaterial.swift`)
+Contrast is checked on the colour a person actually sees: a translucent layer (text at 80%, an inset fill
+at 20%) is composited over the background it sits on before the ratio is taken. #455's review found two
+places where the raw pair passed (6.9:1) and the composed one did not (3.4:1); see
+[DESIGN_QA](DESIGN_QA.md#2-accessibility-every-pr-for-every-changed-screen).
 
-One implementation replacing today's three private copies (`soundscapeGlass`, `relayFloatingBar` /
-`relayProminentButton`, ForgeAppKit's `BannerSurface`):
+### Materials (exists, #441: `ForgeMaterial.swift`, `ForgeMaterial+SwiftUI.swift`)
+
+One implementation replaced the three private copies (`soundscapeGlass`, `relayFloatingBar` /
+`relayProminentButton`, ForgeAppKit's `BannerSurface`); the app names that remain are thin wrappers that
+keep each app's layout. The parity rule `glass` fails any app that calls `glassEffect` or a `.glass` button
+style by hand. `ForgeMaterial.material(for:)` maps each `ForgeSurfaceKind` (floatingControl,
+controlOverMedia, notice, overlay, content) to its material, checked on Linux
+(`ForgeMaterialMotionTests`). The table below is what was planned; the differences from what shipped are
+listed under it.
 
 | API | iOS 26 (SDK 26 binary) | iOS 17 to 25, or Xcode 16 | Reduce Transparency |
 |---|---|---|---|
@@ -61,16 +77,27 @@ One implementation replacing today's three private copies (`soundscapeGlass`, `r
 | `forgeGlass(.clear, in: shape)` over media | `glassEffect(.clear, in:)`, only over a background already dark enough for white glyphs. Soundscape's Now Playing buttons sit on the artwork palette, which is clamped for white text, so they need no extra dim; over raw media that can be bright, dim it first (about 35%) | white at 14%: over a background clamped so white at 75% reads at 4.5:1 (sRGB grey 0.37 at worst), opaque white glyphs on the washed disc still read at 4.6:1, above the 3:1 for controls | Solid dark |
 | `interactive: true` | `.interactive()` | none | — |
 | `forgeGlassProminentButton()` | `.buttonStyle(.glassProminent)` | `.borderedProminent` | system |
-| `ForgeGlassGroup { }` | `GlassEffectContainer` | plain container | — |
+| `ForgeGlassGroup { }` | `GlassEffectContainer` | plain container | — (not built; deferred) |
 
 Which surface gets which material is decided by the
 [material table](DESIGN_PHILOSOPHY.md#material-by-component), not by convenience: passive notices
-(the Undo banner, Relay's connection notice) use `forgeMaterial(.regular)` (the standard material, solid
-under Reduce Transparency), never `forgeGlass`. V2.1 adds that helper beside `forgeGlass`.
+(the Undo banner, Relay's connection notice and the Chats notices, #446) use `forgeMaterial(in: shape)`, the
+standard material, never `forgeGlass`.
 
-Fallback shadow token: black 12%, radius 12, y 4. Shadows exist only in fallbacks and under large artwork.
+As shipped in #441, where it differs from the plan above:
 
-### Motion (proposed, V2.1: `ForgeMotion.swift`)
+- The standard material is `forgeMaterial(in:)` (no style argument), with a hairline edge.
+- Under Reduce Transparency the fallbacks and the standard material turn to the theme's raised surface,
+  not `.background(.background)`.
+- `ForgeGlassGroup` was not built. No screen yet places two glass controls close enough to need one; it
+  comes with the first that does (likely Now Playing's controls in V3.2).
+- `ForgeGlassSupport.isAvailable` was added, for layouts that change around glass (Relay's composer is
+  inset from the edges only when it floats).
+
+Fallback tokens (exist): shadow black 12%, radius 12, y 4; clear-glass wash white 14%; hairline 60% at
+0.5 pt. Shadows exist only in fallbacks and under large artwork.
+
+### Motion (exists, #441: `ForgeMotion.swift`, `ForgeMotion+SwiftUI.swift`)
 
 | Name | Value | Use |
 |---|---|---|
@@ -79,9 +106,12 @@ Fallback shadow token: black 12%, radius 12, y 4. Shadows exist only in fallback
 | `emphasised` | spring, response 0.45, damping 0.8 | Things the finger drives: artwork scale, sheet settle |
 | `ambient` | ease-in-out 0.6 s | Background colour and palette changes |
 
-`forgeAnimation(_:value:)` returns nil under Reduce Motion; the matching transitions fall back to opacity.
-Every animation a person can trigger must be interruptible (springs or SwiftUI's default animation
-merging, never a chained timeline that blocks input).
+`.forgeAnimation(_:value:)` and `withForgeAnimation(_:reduceMotion:)` give no animation at all under
+Reduce Motion. Touch feedback is the one exception to the four kinds: a press may be quicker (ForgeUI's
+press styles use 0.12 s) and may keep a fade under Reduce Motion, but never moves. Shared transitions with an
+opacity fallback were not built; screens that add transitions in V3 and V4 give their reduced form
+themselves (DESIGN_QA 2.4). Every animation a person can trigger must be interruptible (springs or
+SwiftUI's default animation merging, never a chained timeline that blocks input).
 
 ### Haptics (exists)
 
@@ -90,8 +120,11 @@ background event. No new kinds without a decision (Reuben, 2026-11-17).
 
 ### States (exists, extended)
 
-`ForgeStateView` covers empty, loading and failed. Proposed (V2.2): an `offline` preset, because both apps
-need a calm "not connected" state that is not an error.
+`ForgeStateView` covers empty, loading and failed. Proposed: an `offline` preset, because both apps need a
+calm "not connected" state that is not an error. Not built in V2.2: Relay's Chats list already says when
+messages are waiting or the server can't be reached (#446 put those notices on the standard material), and
+its single "Offline" line is part of V4.1. The preset is built when the first screen needs it, which also
+gives it its second use.
 
 ## 2. Soundscape tokens (app-local, `SoundscapeColors`, `SoundscapeMetrics`, `SoundscapeMotion`)
 
@@ -112,12 +145,17 @@ appearance; contrast ratios computed with the WCAG formula.
 Two traps the numbers show: the brief's accent on white is only 2.6:1, and white text on it is 2.6:1. So the
 light accent is the darker partner, and dark-mode filled buttons use ink text, not white.
 
-Today's accent is `ForgeAccent.purple` (#8A3FBF light, #C58AF5 dark). Moving to the brief's lavender is a
-decision.
+Main still uses `ForgeAccent.purple` (#8A3FBF light, #C58AF5 dark). Adopting these values is the Soundscape half
+of V2.2, not yet done: a `SoundscapeColors` built the way `RelayColors` is (#455), with the same contrast
+tests.
 
-**Artwork palette** (exists, `ArtworkPalette.swift`): average and most saturated colour from a 24-pixel
-thumbnail, brightness clamped so white text keeps 4.5:1. It colours Now Playing, album and artist headers and
-the Continue Listening card. Following Luma's rule (album colour belongs to the background; controls keep a
+**Artwork palette** (exists, `ArtworkPalette.swift`, tightened in #440): average and most saturated colour
+from a 24-pixel thumbnail. Each gradient stop is darkened until white at 75% (the secondary text) reads at
+4.5:1, and the check runs against the average and every distinct thumbnail region, so a white patch in a
+dark cover cannot pass on the average alone. The blurred artwork layer under the text is capped at 45%
+opacity, and the fit lowers it further when a region would still fail. `ArtworkPaletteTests` cover the
+lightest-region and every-region cases. It colours Now Playing, album and artist headers and the Continue
+Listening card. Following Luma's rule (album colour belongs to the background; controls keep a
 constant tint), artwork colour never tints controls.
 
 ### Type
@@ -135,14 +173,14 @@ constant tint), artwork colour never tints controls.
 Row artwork 44, mini-player artwork 40 to 56, shelf artwork 150, screen edge 20, shelf gap 12, section gap 24,
 Now Playing edge 28, overlay radius 28 (moves to `ForgeRadius.xl`).
 
-### Motion (exists, rebased on ForgeMotion in V2.1)
+### Motion (exists; `SoundscapeMotion` names, ForgeMotion for scrolling and lyric changes since #441)
 
 Palette 0.6 s (`ambient`), artwork pause scale spring (`emphasised`), zoom transitions iOS 18+, all off
 under Reduce Motion.
 
-## 3. Relay tokens (app-local, proposed `RelayColors`, `RelayMetrics`)
+## 3. Relay tokens (app-local: `RelayColors` exists since #455; `RelayMetrics` proposed)
 
-### Colour (adopted 2026-11-24, subject to visual review on the phone)
+### Colour (adopted 2026-11-24, subject to visual review on the phone; accent in main since #455)
 
 | Token | Dark | Light | Use | Contrast |
 |---|---|---|---|---|
@@ -154,9 +192,19 @@ under Reduce Motion.
 | `onAccent` | #111317 | #FFFFFF | Text in outgoing bubbles | 6.6:1 (dark), 6.9:1 (light) |
 
 As in Soundscape, the brief's accent fails on white (2.8:1) and with white text (2.8:1), hence the darker
-light partner and midnight text in dark-mode outgoing bubbles. Today Relay sets no theme and uses system
-blue. The accent is adopted in `RelayColors` (V2.2, checked by `RelayColorsTests`); backgrounds and text
-follow with the redesign (V4).
+light partner and midnight text in dark-mode outgoing bubbles. What #455 put in main:
+
+- `RelayColors.theme`: ForgeUI's standard palette with Relay's accent, applied at the root, so Device Lab's
+  sheet gets it too.
+- Our bubbles use the accent with onAccent text; a failed bubble uses the danger tone with its own text
+  colour; a sending bubble keeps the full accent (at 60% its text fell to 2.8:1).
+- Text inside our bubbles (quotes, document and voice captions) is full strength, and insets on our bubbles
+  are outlines, not fills.
+- `RelayColorsTests` checks `contrastIssues()`, text on the accent and danger bubbles, and the redesign
+  tokens in this table.
+
+Midnight, surface, text and secondary are defined and tested but not used yet: the screens keep the
+system's list backgrounds and label colours until they are redesigned (V4).
 
 Delivery and trust colours stay semantic: Not Delivered red, trust badges in their existing system colours,
 never the accent.
@@ -179,4 +227,5 @@ delivery `.caption2` secondary `.monospacedDigit()`; one timestamp format everyw
 ### Motion
 
 `standard` for message insertion (only when at the bottom), `quick` for delivery state changes; no spring
-bounces; everything off under Reduce Motion (Relay has no Reduce Motion handling today).
+bounces; everything off under Reduce Motion. Since #441 all seven chat animations go through
+`withForgeAnimation` and stop under Reduce Motion.

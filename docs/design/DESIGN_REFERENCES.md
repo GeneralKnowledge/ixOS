@@ -222,21 +222,23 @@ From [Materials](https://developer.apple.com/design/human-interface-guidelines/m
 
 ## Comparison with ixOS today (main 5b31a175, with #437 and #438 merged)
 
+Written on 2026-11-24. Where a gap has since been closed, the last column says so (2026-11-28).
+
 | Topic | References | ixOS today | Gap |
 |---|---|---|---|
-| Glass in the content layer | Never (HIG) | None in content. But two passive notices got glass: ForgeAppKit's Undo banner (#437) and Relay's connection notice (#438) | Both move to standard material in V2.1 ([material table](DESIGN_PHILOSOPHY.md#material-by-component)) |
+| Glass in the content layer | Never (HIG) | None in content. But two passive notices got glass: ForgeAppKit's Undo banner (#437) and Relay's connection notice (#438) | Both moved to standard material in #441 ([material table](DESIGN_PHILOSOPHY.md#material-by-component)) |
 | Custom glass count | Sparingly (HIG); Luma uses it on transport buttons only | Soundscape: mini-player, Now Playing circles, banner. Relay: composer, connection notice, New Messages, Send | Decided: the banner and the connection notice are status, not controls, so they lose glass; the rest keeps it |
 | Custom bars vs system bars | System bars and scroll edge effect (HIG) | Relay's composer is a custom glass card | Try iOS 26's `safeAreaBar` so the system's scroll edge effect keeps text legible; keep the card only if it looks better on the phone |
-| Grouping glass | `GlassEffectContainer` (HIG) | Not used | Use it where two glass controls sit together (Now Playing's circle buttons) |
-| Three copies of the glass helper | One design system (Compound) | `soundscapeGlass`, `relayFloatingBar`, `BannerSurface` | V2.1 |
+| Grouping glass | `GlassEffectContainer` (HIG) | Not used | Use it where two glass controls sit together (Now Playing's circle buttons). Not built in #441; comes with V3.2 |
+| Three copies of the glass helper | One design system (Compound) | `soundscapeGlass`, `relayFloatingBar`, `BannerSurface` | Closed: one ForgeUI implementation (#441) |
 | Artwork colour vs control tint | Luma: colour in the background, controls constant | Soundscape: palette in the background; controls white over it | Aligned; keep it a rule |
 | Off-screen animation | Luma stops it off screen, in background, under Reduce Motion | Soundscape checks Reduce Motion; no visualiser yet | Rule for any future visualiser |
 | Bubble shape by group position | Element X, Messages | Relay groups by author and time but every bubble has the same 18 pt corners | V4.2 |
 | Delivery state | Signal: quiet icon in footer; Element X: silent unless failed | Relay: text under the bubble ("Delivered", "Read", "In the Mailbox", "Not Delivered. Tap to Try Again.") | V4.2: quieter form, keep In the Mailbox and Not Delivered explicit |
 | Trust events | Signal: system rows in the conversation | Relay: revocation and device lists live on Devices | V4.3: show trust changes in the affected conversation too |
 | Long press without the gesture | Element X: VoiceOver action | Relay: `.contextMenu` (VoiceOver gets actions from it) | Check on the phone; add named actions if missing |
-| Dynamic Type scaled metrics | Element X `scaledFrame` | Soundscape uses `@ScaledMetric` for transport glyphs | V2.1 helper |
-| Reduce Motion | Luma, Doppler declare it | Soundscape yes; Relay no checks | V2.1 |
+| Dynamic Type scaled metrics | Element X `scaledFrame` | Soundscape uses `@ScaledMetric` for transport glyphs | Helper deferred to the first screen that needs it |
+| Reduce Motion | Luma, Doppler declare it | Soundscape yes; Relay no checks | Closed: Relay's animations stop under Reduce Motion (#441) |
 | Quality budgets | Resona writes them down | None written | DESIGN_QA.md |
 | Accessibility declaration | Doppler declares seven | Not declared | DESIGN_QA.md lists ours |
 

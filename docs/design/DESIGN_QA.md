@@ -21,7 +21,14 @@ phone checks show behaviour.
    (`screen.element`); reading order follows the visual hierarchy; long-press menus are reachable as
    actions; delivery, trust and playback states are read aloud.
 3. Contrast: 4.5:1 for text, 3:1 for large text and control outlines, in light, dark and Increase
-   Contrast. Token pairs and clamped artwork palettes are checked by Linux tests with `ForgeContrast`.
+   Contrast. Token pairs and clamped artwork palettes are checked by Linux tests with `ForgeContrast`:
+   `ForgeTheme.contrastIssues()` for a theme (`RelayColorsTests`, ForgeUITests), `ArtworkPaletteTests` for
+   Soundscape's palette. The ratio is taken on what is drawn: every translucent layer (text opacity, an
+   inset fill, a blurred artwork layer) is composited over the real background first, and the test checks
+   that composed pair. A raw token pair passing is not evidence for text drawn at 80% on a 20% inset
+   (#455: 6.9:1 raw, 3.4:1 composed). Text on a coloured bubble or button covers every fill it can take
+   (Relay: the accent and the failed, danger-tone bubble). Over artwork, the check runs against the
+   lightest region, not the average (#440).
 4. Reduce Motion: every animation has its stated reduced form.
 5. Reduce Transparency: every glass and translucent surface turns solid and stays readable.
 6. Bold Text, Button Shapes, Differentiate Without Colour: layouts hold; no state shown by colour alone.
@@ -77,14 +84,19 @@ Every PR from V2.2 on carries, for each changed screen:
   and a reaction for Relay.
 
 Where a UI test reaches the screen, the screenshot is a `screenshot =` step so it becomes a visual-regression
-baseline ([visual-regression.md](../visual-regression.md)); neither app has baselines yet, and V2.2 adds the
-first. Screenshots a person takes are attached to the PR and labelled as such.
+baseline ([visual-regression.md](../visual-regression.md)). Neither app has baselines yet (checked
+2026-11-28); they are still owed from V2.2 and need a phone sitting, because a baseline is captured on the
+iPhone. Until then a PR that changes colour says "screenshots owed" and lists the phone check that stands in
+for them, as #455 did (relay-design.md, phone check 8). Screenshots a person takes are attached to the PR and
+labelled as such.
 
 ## 7. Acceptance criteria per milestone
 
 | Area | Standard | Evidence |
 |---|---|---|
 | Visual consistency | Spacing, radii and type from tokens; no literal values outside the app's metrics files | Review; a grep for literal `cornerRadius:` and `padding(` numbers in changed files |
+| Colour | Colours from the app's theme (`forgeTheme`) and ForgeUI tones; no `Color.accentColor`, `Color.white` text on a tinted fill, or system blue in an app with its own accent | `contrastIssues()` empty and composed-pair tests (section 2.3); a grep for `accentColor` and `Color.white` in changed files |
+| Materials | Each surface's material matches `ForgeMaterial.material(for:)` and the [material table](DESIGN_PHILOSOPHY.md#material-by-component); glass only through ForgeUI | The parity rule `glass` (`scripts/check-app-parity.sh`); phone with Reduce Transparency on |
 | Responsiveness | Section 4 | A person's phone report |
 | Motion | Interruptible; reduced forms work | Phone, Reduce Motion on and off |
 | Accessibility | Section 2 | `forge a11y`; phone with VoiceOver and AX5 |
