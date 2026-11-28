@@ -1055,7 +1055,7 @@ impl SoundscapeCore {
 
     /// Whether the station `uuid` is saved.
     pub fn is_live_station_saved(&self, uuid: String) -> bool {
-        self.live_radio.get().is_saved(&uuid)
+        live_radio::clean_uuid(&uuid).is_ok_and(|uuid| self.live_radio.get().is_saved(&uuid))
     }
 
     /// Live stations from Radio Browser for `ask`, most played first.
@@ -1181,6 +1181,7 @@ impl SoundscapeCore {
 
     /// Removes a saved live station.
     pub async fn unsave_live_station(&self, uuid: String) -> Result<LiveRadio, SoundscapeError> {
+        let uuid = live_radio::clean_uuid(&uuid)?;
         self.rt
             .command("live-unsave", move |state| {
                 state.change_live_radio(|file| {

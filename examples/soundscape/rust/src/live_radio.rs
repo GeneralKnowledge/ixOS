@@ -164,14 +164,16 @@ impl LiveRadioFile {
     /// Saves `station` (newest last, as the person built the list). Saving
     /// one already saved refreshes its details and keeps its place.
     pub fn save(&mut self, station: LiveStation, now: i64) -> Result<(), SoundscapeError> {
+        // Details from a list or Now Playing, not a lookup: they keep the
+        // time of the last lookup of this stream address, or none.
+        let checked_ms = self.checked_for(&station);
         if let Some(kept) = self
             .saved
             .iter_mut()
             .find(|k| k.station.uuid == station.uuid)
         {
-            // Details from a list or Now Playing, not a lookup: the check
-            // time stays that of the last lookup.
             kept.station = station;
+            kept.checked_ms = checked_ms;
             return Ok(());
         }
         if self.saved.len() >= MAX_SAVED {
@@ -179,8 +181,6 @@ impl LiveRadioFile {
                 setting: format!("saved stations (at most {MAX_SAVED})"),
             });
         }
-        // Checked when another copy (Recent) was looked up; else never.
-        let checked_ms = self.checked_ms(&station.uuid).unwrap_or(0);
         self.saved.push(KeptStation {
             station,
             checked_ms,
@@ -201,20 +201,7 @@ impl LiveRadioFile {
     /// time already known for it is kept (none: never checked), so playing
     /// unchecked details never makes them count as fresh.
     pub fn played(&mut self, station: LiveStation, now: i64, checked_ms: Option<i64>) {
-        // Unchecked details inherit a check time only from a copy with the
-        // same stream address: a lookup of another address says nothing
-        // about this one.
-        let checked_ms = checked_ms.unwrap_or_else(|| {
-            self.saved
-                .iter()
-                .chain(self.recent.iter())
-                .filter(|k| {
-                    k.station.uuid == station.uuid && k.station.stream_url == station.stream_url
-                })
-                .map(|k| k.checked_ms)
-                .max()
-                .unwrap_or(0)
-        });
+        let checked_ms = checked_ms.unwrap_or_else(|| self.checked_for(&station));
         self.recent.retain(|k| k.station.uuid != station.uuid);
         self.recent.insert(
             0,
@@ -235,6 +222,21 @@ impl LiveRadioFile {
                 kept.checked_ms = now;
             }
         }
+    }
+
+    /// When `station`'s stream address was last looked up, from any kept
+    /// copy with the same address; 0 when never. A lookup of another
+    /// address says nothing about this one.
+    fn checked_for(&self, station: &LiveStation) -> i64 {
+        self.saved
+            .iter()
+            .chain(self.recent.iter())
+            .filter(|k| {
+                k.station.uuid == station.uuid && k.station.stream_url == station.stream_url
+            })
+            .map(|k| k.checked_ms)
+            .max()
+            .unwrap_or(0)
     }
 
     /// The stream of `uuid` failed: its kept details are looked up again
