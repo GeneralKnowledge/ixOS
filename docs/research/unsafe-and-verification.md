@@ -2,7 +2,7 @@
 
 An audit of every `unsafe` in ixOS's Rust, and a proportionate plan for catching mistakes in the code that decides who is trusted and what they may do (Reuben, 2026-11-28: "check we aren't using unnecessary unsafe Rust", and the earlier idea of verifying that logic with Lean). Audited at main `10039e7e`.
 
-**In short.** ixOS has 15 `unsafe` blocks, every one a direct operating-system call in a framework or tools crate, and none in any app, Relay included. All are needed; one was a duplicate and is gone. A lint now makes each one an explicit exception, and app crates forbid `unsafe` outright. For the security logic, the best value is model-based property tests on the real Rust code, then Lean for the one place where a proof says something tests can't (revocation spreading across several devices), and a CI job for the Lean model that already exists. Reading the trust rules for this plan found one real bug, fixed in the same PR.
+**In short.** ixOS has 15 `unsafe` blocks, every one a direct operating-system call in a framework or tools crate, and none in any app, Relay included (Relay's Stage 0 spike exports one C symbol). All are needed; one was a duplicate and is gone. A lint now makes each one an explicit exception, and app crates forbid `unsafe` outright. For the security logic, the best value is model-based property tests on the real Rust code, then Lean for the one place where a proof says something tests can't (revocation spreading across several devices), and a CI job for the Lean model that already exists. Reading the trust rules for this plan found one real bug, fixed in the same PR.
 
 ## 1. Unsafe Rust
 
@@ -22,6 +22,7 @@ An audit of every `unsafe` in ixOS's Rust, and a proportionate plan for catching
 | `forge-uitest/src/session.rs` `pid_alive` | `kill(pid, 0)` | Yes | Now the only copy |
 | `forge-runtime/src/logging.rs` (Android, iOS) | `__android_log_write`, `syslog("%s", …)` | Yes: the platform log | Kept; the format string is a constant `%s` |
 | `forge-runtime/src/jni_init.rs` | `#[unsafe(no_mangle)]` on the JNI entry point | Yes: the JVM finds it by symbol name | Kept; the body is safe Rust through the `jni` crate |
+| `examples/relay/spike/src/lib.rs` | `#[no_mangle]` on the spike's start function | Yes, for the Stage 0 iOS size check; the spike is research code, not the app | Its crate denies `unsafe_code` instead of forbidding it, with this one exception |
 | `forge-app/src/runtime.rs` `try_lock` (Android only) | `flock` | Yes: std's `File::try_lock` reports "not supported" on Android | Kept |
 
 Every block is a single syscall with no pointer arithmetic, no `transmute`, no lifetime tricks and no `unsafe impl Send/Sync`. None touches user data or anything in Relay.
@@ -33,7 +34,7 @@ Every block is a single syscall with no pointer arithmetic, no `transmute`, no l
 ### The lint
 
 - The workspace now sets `unsafe_code = "deny"` and `clippy::undocumented_unsafe_blocks = "deny"` (`[workspace.lints]`), and every workspace crate inherits them. Each function above carries `#[allow(unsafe_code)]`, so `grep allow(unsafe_code)` lists every exception, and a new `unsafe` anywhere fails `cargo clippy -D warnings` in CI until someone adds the exception on purpose.
-- Every app crate (`examples/*/rust`, Relay's messaging crates and spike) and both templates set `unsafe_code = "forbid"`, which nothing can override. UniFFI's generated scaffolding passes it; all app crates were built and linted with it. New apps get it from `forge init`.
+- Every app crate (`examples/*/rust` and Relay's messaging crates) and both templates set `unsafe_code = "forbid"`, which nothing can override. UniFFI's generated scaffolding passes it; all app crates were built and linted with it. New apps get it from `forge init`.
 - No new CI step is needed: the existing `cargo clippy --workspace` and `scripts/check-app-crates.sh` runs enforce it.
 
 ### Where the real unsafe lives

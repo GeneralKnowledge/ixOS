@@ -26,6 +26,6 @@ path = "src/lib.rs"
 lto = true
 codegen-units = 1
 
-# App code has no unsafe Rust; UniFFI's generated scaffolding passes this too.
+# The spike's one exception is its exported start function (src/lib.rs).
 [lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
