@@ -87,7 +87,7 @@ Two smaller notes, not changed:
 
 ### How the Lean models stay honest
 
-As `CodeSession.lean` already does: each model's header names the Rust it describes; the Rust has an `invariant_holds` that mirrors the model's invariant; a property test replays random sequences through the Rust and checks it after every step. If the Rust changes in a way the model doesn't allow, the test fails, which is the signal to update the model and re-run the proof (now in CI, V1).
+Today `CodeSession.lean` is tied to the Rust only loosely: the model's header names the Rust it describes, the Rust has an `invariant_holds` that mirrors the model's invariant, and a test replays random sequences through the Rust and checks that invariant after every step. That is sampled invariant checking, not conformance: a change can keep the invariant while departing from the model's transitions, and the test won't notice. For V5 and V6, the property tests should also replay each random step through a small Rust copy of the model's transition function and compare the two states, so a drift fails a test. Once V1 is in place, CI re-checks the proof whenever a model changes.
 
 ## Recommendation
 
