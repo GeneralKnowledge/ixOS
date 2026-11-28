@@ -208,12 +208,13 @@ final class LivePlayer {
             }
         }
         // A live stream has no end: one that ends, or can't carry on, dropped.
+        let itemID = ObjectIdentifier(item)
         for name in [AVPlayerItem.didPlayToEndTimeNotification, AVPlayerItem.failedToPlayToEndTimeNotification] {
             endObservers.append(NotificationCenter.default.addObserver(
                 forName: name, object: item, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, self.player.currentItem === item else { return }
+                    guard let self, self.player.currentItem.map(ObjectIdentifier.init) == itemID else { return }
                     log.warn("stream ended")
                     self.stalled()
                 }
