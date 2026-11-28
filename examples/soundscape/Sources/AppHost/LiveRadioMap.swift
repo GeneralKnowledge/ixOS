@@ -24,6 +24,8 @@ struct LiveRadioMap: View {
     @State private var problem: String?
     @State private var loading = false
     @State private var attempt = 0
+    /// Which request owns `loading` (a superseded one mustn't clear it).
+    @State private var request = 0
     /// The area in view once the map stops moving, when it is small enough
     /// to ask about on its own.
     @State private var area: LiveAsk?
@@ -50,8 +52,10 @@ struct LiveRadioMap: View {
             area = Self.area(context.region)
         }
         .onChange(of: selected) { _, uuid in
-            guard let uuid, player.station?.uuid != uuid,
-                  let station = stations.first(where: { $0.uuid == uuid }) else { return }
+            guard let uuid, let station = stations.first(where: { $0.uuid == uuid }) else { return }
+            // Already on: leave it. Paused or failed: tapping tries again.
+            let on = player.station?.uuid == uuid && (player.isPlaying || player.isConnecting)
+            if on { return }
             Task { await player.tune(station) }
         }
         .safeAreaInset(edge: .top) { searchHere }
@@ -70,7 +74,7 @@ struct LiveRadioMap: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                NavigationLink(value: ListenRoute.liveStations(ask, title: "On the Map")) {
+                NavigationLink(value: ListenRoute.liveMapList(ask, stations)) {
                     Label("Show as List", systemImage: "list.bullet")
                 }
                 .accessibilityIdentifier("live.map.list")
@@ -80,29 +84,59 @@ struct LiveRadioMap: View {
         .task(id: attempt) { await find() }
     }
 
-    /// Asks about the area in view, once the map has moved somewhere new.
+    /// Asks about the area in view, once the map has moved somewhere new;
+    /// back to the worldwide stations once it shows the globe again; and
+    /// why the last ask failed while earlier pins stay.
     @ViewBuilder private var searchHere: some View {
-        if let area, area != ask {
+        if let problem, !stations.isEmpty, !loading {
             Button {
-                ask = area
                 attempt += 1
             } label: {
-                Label("Stations Here", systemImage: "magnifyingglass")
-                    .font(.subheadline.weight(.semibold))
+                Label("\(problem) Try Again", systemImage: "exclamationmark.triangle")
+                    .font(.subheadline)
+                    .lineLimit(2)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .buttonBorderShape(.capsule)
-            .accessibilityHint("Shows the most played stations in this part of the map")
-            .accessibilityIdentifier("live.map.searchHere")
+            .background(.regularMaterial, in: Capsule())
+            .accessibilityIdentifier("live.map.retry")
             .padding(.top, 8)
+        } else if let area, area != ask {
+            pill("Stations Here", systemImage: "magnifyingglass",
+                 hint: "Shows the most played stations in this part of the map",
+                 identifier: "live.map.searchHere") { ask = area }
+        } else if area == nil, ask != .mapped, !loading {
+            pill("Stations Worldwide", systemImage: "globe",
+                 hint: "Shows the most played stations around the world",
+                 identifier: "live.map.worldwide") { ask = .mapped }
         } else if loading, !stations.isEmpty {
             ProgressView()
                 .padding(8)
                 .background(.regularMaterial, in: Capsule())
                 .padding(.top, 8)
         }
+    }
+
+    private func pill(
+        _ title: LocalizedStringKey, systemImage: String, hint: LocalizedStringKey, identifier: String,
+        ask change: @escaping () -> Void
+    ) -> some View {
+        Button {
+            change()
+            attempt += 1
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .accessibilityHint(hint)
+        .accessibilityIdentifier(identifier)
+        .padding(.top, 8)
     }
 
     /// The tapped station: what it is, and Save.
@@ -147,10 +181,15 @@ struct LiveRadioMap: View {
     }
 
     private func find() async {
+        request += 1
+        let mine = request
         loading = true
-        defer { loading = false }
+        defer { if request == mine { loading = false } }
         problem = nil
-        switch await live.stations(ask) {
+        let result = await live.stations(ask)
+        // A newer ask replaced this one: its answer is out of date.
+        guard !Task.isCancelled, request == mine else { return }
+        switch result {
         case .success(let found):
             stations = found
             if let selected, !found.contains(where: { $0.uuid == selected }) { self.selected = nil }
@@ -173,9 +212,13 @@ struct LiveRadioMap: View {
         // Round, so a nudge of the map doesn't count as a new area.
         func round(_ value: Double, to step: Double) -> Double { (value / step).rounded() * step }
         let step = max(radiusKm / 111 / 4, 0.01)
+        // Rounding can step just past the poles or the date line.
+        let latitude = min(max(round(region.center.latitude, to: step), -90), 90)
+        var longitude = round(region.center.longitude, to: step).truncatingRemainder(dividingBy: 360)
+        if longitude > 180 { longitude -= 360 } else if longitude < -180 { longitude += 360 }
         return .near(
-            latitude: round(region.center.latitude, to: step),
-            longitude: round(region.center.longitude, to: step),
+            latitude: latitude,
+            longitude: longitude,
             radiusKm: radiusKm.rounded()
         )
     }

@@ -252,7 +252,8 @@ next radio step, before P0.
   inside the circle, so a server that ignores it gives fewer stations, never wrong ones. Stations without a
   location stay in the lists as before.
 - **Screen**: Discover > Live Radio > **Radio Map** (MapKit, hybrid imagery with realistic elevation). It opens
-  on the globe with the worldwide stations. Move or zoom in and **Stations Here** asks about the area in view. Tap
+  on the globe with the worldwide stations. Move or zoom in and **Stations Here** asks about the area in view; zoom back out to the globe and **Stations
+  Worldwide** brings the worldwide stations back. Tap
   a station: it plays, and a card shows it with Save. **Show as List** gives the same stations as a list (also the
   VoiceOver route).
 - **Not yet**: clustering (MapKit's SwiftUI map has none; 300 pins is the limit for now), the person's own

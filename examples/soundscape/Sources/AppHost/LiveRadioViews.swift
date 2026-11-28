@@ -93,6 +93,9 @@ struct LiveRadioHome: View {
 struct LiveStationsView: View {
     let ask: LiveAsk
     let title: String
+    /// Stations already found (the map's): shown as they are; pulling to
+    /// refresh asks again.
+    var given: [LiveStation]?
 
     @Environment(LiveRadioModel.self) private var live
     @State private var stations: [LiveStation]?
@@ -126,6 +129,10 @@ struct LiveStationsView: View {
             }
         }
         .task(id: attempt) {
+            if attempt == 0, let given {
+                stations = given
+                return
+            }
             problem = nil
             switch await live.stations(ask) {
             case .success(let found): stations = found
