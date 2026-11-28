@@ -347,6 +347,17 @@ fn saved_and_recent_stations_are_kept_by_uuid() {
         other.is_stale(KYOTO, 200_001),
         "the moved address was never checked"
     );
+    // Saving details with another address doesn't borrow that lookup's time.
+    let mut old_address = kyoto.clone();
+    old_address.stream_url = "https://kyoto.example/old".into();
+    let mut third = LiveRadioFile::default();
+    third.played(kyoto.clone(), 1, Some(200_000));
+    third.save(old_address, 2).unwrap();
+    third.clear_recent();
+    assert!(
+        third.is_stale(KYOTO, 200_001),
+        "the saved address was never checked"
+    );
     // A failed stream makes every copy stale.
     file.mark_stale(KYOTO);
     assert!(
