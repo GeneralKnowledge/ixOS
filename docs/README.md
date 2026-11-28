@@ -30,6 +30,7 @@ Each area has one entry page that lists its pages in reading order ([areas.md](a
 | [audits/half-baked-work-audit.md](audits/half-baked-work-audit.md) | Unfinished and half-baked work in the foundation: what is unproven, duplicated or misleading, and the order to fix it |
 | [audits/defect-hunt-2026-11.md](audits/defect-hunt-2026-11.md) | Bugs a phone sitting misses (November 2026): seven ranked defects with evidence, the same flaws checked across every app, and the fix PRs to pick from |
 | [audits/structure-audit.md](audits/structure-audit.md) | The `forge` CLI, area boundaries and Device Lab: parallel systems and drift between lists, with the order to fix them |
+| [design/README.md](design/README.md) | The design programme for Soundscape and Relay: philosophy, reference study, tokens, both apps' specs, design QA and the PR roadmap |
 
 ## Background
 
