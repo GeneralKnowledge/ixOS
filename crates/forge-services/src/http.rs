@@ -183,6 +183,7 @@ pub struct HostClient {
     host: Arc<dyn HostHttp>,
     timeout: Duration,
     max_body_bytes: u64,
+    user_agent: Option<String>,
 }
 
 impl HostClient {
@@ -191,7 +192,36 @@ impl HostClient {
             host,
             timeout: DEFAULT_TIMEOUT,
             max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+            user_agent: None,
         }
+    }
+
+    /// The `User-Agent` sent with requests that don't set their own, so the
+    /// app names itself the same way through the host as through
+    /// `UreqClient::with_user_agent`. Without it the host's default goes
+    /// out (on iOS, `<App>/<build> CFNetwork/… Darwin/…`).
+    pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.user_agent = Some(user_agent.into());
+        self
+    }
+
+    /// `request` with this client's defaults filled in.
+    fn prepared(&self, request: &Request) -> Request {
+        let mut request = request.clone();
+        request.timeout = Some(request.timeout.unwrap_or(self.timeout));
+        if let Some(agent) = &self.user_agent {
+            let has_own = request
+                .headers
+                .iter()
+                .any(|h| h.name.eq_ignore_ascii_case("user-agent"));
+            if !has_own {
+                request.headers.push(Header {
+                    name: "User-Agent".into(),
+                    value: agent.clone(),
+                });
+            }
+        }
+        request
     }
 
     /// The timeout for requests that don't set one.
@@ -217,8 +247,7 @@ impl HostClient {
             return Err(NetError::Cancelled);
         }
         let id = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
-        let mut request = request.clone();
-        request.timeout = Some(request.timeout.unwrap_or(self.timeout));
+        let request = self.prepared(request);
         let host = Arc::clone(&self.host);
         let registration = cancel.on_cancel(move || host.cancel(id));
         let result = self.host.send(HostRequest {
@@ -256,8 +285,7 @@ impl HostClient {
             return Err(NetError::Cancelled);
         }
         let id = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
-        let mut request = request.clone();
-        request.timeout = Some(request.timeout.unwrap_or(self.timeout));
+        let request = self.prepared(request);
         let host = Arc::clone(&self.host);
         let registration = cancel.on_cancel(move || host.cancel(id));
         let (feed, receiver) = StreamFeed::new();

@@ -25,3 +25,7 @@ path = "src/lib.rs"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# The spike's one exception is its exported start function (src/lib.rs).
+[lints.rust]
+unsafe_code = "deny"

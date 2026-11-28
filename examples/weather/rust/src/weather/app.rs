@@ -313,7 +313,7 @@ impl ForgeWeatherApp {
 fn default_client() -> Arc<dyn HttpClient> {
     Arc::new(crate::native::http::HttpService::prefer_installed(
         Arc::new(UreqClient::with_user_agent(USER_AGENT)),
-        |client| client,
+        |client| client.user_agent(USER_AGENT),
     ))
 }
 

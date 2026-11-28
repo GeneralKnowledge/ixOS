@@ -145,6 +145,23 @@ def rule_urlsession(app):
     return False, "iOS requests go through ureq, not the `http` service"
 
 
+# The app names itself to the services it asks through the `http` service
+# too, not only through its ureq fallback: `UreqClient::with_user_agent`
+# never reaches URLSession, so without `.user_agent(..)` on the host client
+# iPhone requests went out with iOS's default (shared API layer audit,
+# 2026-11-28).
+def rule_user_agent(app):
+    if app.name in NO_RUST:
+        return None
+    files = [p for p in rust_sources(app) if "prefer_installed(" in read(p)]
+    if not files:
+        return None
+    bare = [p.name for p in files if ".user_agent(" not in read(p)]
+    if bare:
+        return False, "the `http` service sends no app User-Agent (add `.user_agent(..)` in `prefer_installed`): " + ", ".join(bare)
+    return True, ""
+
+
 def rule_location(app):
     own = [p for p in swift_sources(app) if "CLLocationManager" in read(p)]
     if not own:
@@ -1564,6 +1581,7 @@ RULES = [
     ("feedback", "Outcome haptics (success, failure) through ForgeAppKit's `ForgeFeedback`", rule_feedback),
     ("forgeui-appearance", "Launch appearance from ForgeUI, no own LaunchAppearance.swift", rule_forgeui_appearance),
     ("urlsession", "iOS requests through the URLSession `http` service", rule_urlsession),
+    ("user-agent", "The app's User-Agent on `http` service requests too", rule_user_agent),
     ("location", "Location through the `location` service", rule_location),
     ("rust-cancellation", "Rust work cancelled from Swift through ForgeKit's `withRustCancellation`", rule_rust_cancellation),
     ("swift6-traps", "No Swift 6.2 errors only the iOS build shows: no `await` inside an XCTest assertion, no shared closure default in an environment key", rule_swift6_traps),

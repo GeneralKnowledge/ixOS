@@ -39,11 +39,19 @@ public final class ForgeNowPlaying {
         /// Where this item is in a queue, when there is one.
         public var queueIndex: Int?
         public var queueCount: Int?
+        /// A live stream (a radio station): the lock screen shows it as live,
+        /// with no progress bar. Give no duration or position with it.
+        public var isLive: Bool
+        /// The speed while playing (1 is normal), so the lock screen's
+        /// progress moves at the right pace when the player plays faster or
+        /// slower.
+        public var rate: Double
 
         public init(
             title: String, artist: String? = nil, album: String? = nil, artwork: UIImage? = nil,
             duration: Double? = nil, position: Double? = nil, playing: Bool,
-            queueIndex: Int? = nil, queueCount: Int? = nil
+            queueIndex: Int? = nil, queueCount: Int? = nil,
+            isLive: Bool = false, rate: Double = 1.0
         ) {
             self.title = title
             self.artist = artist
@@ -54,6 +62,8 @@ public final class ForgeNowPlaying {
             self.playing = playing
             self.queueIndex = queueIndex
             self.queueCount = queueCount
+            self.isLive = isLive
+            self.rate = rate
         }
     }
 
@@ -159,19 +169,23 @@ public final class ForgeNowPlaying {
     /// Whether this player has its buttons on the lock screen now.
     public var hasCommands: Bool { !targets.isEmpty }
 
-    /// Writes what the lock screen shows. The media type and default rate
-    /// are set every time.
+    /// Writes what the lock screen shows. The media type, default rate and
+    /// whether it is live are set every time.
     public func update(_ info: Info) {
+        let rate = info.rate.isFinite && info.rate > 0 ? info.rate : 1.0
         var values: [String: Any] = [
             MPMediaItemPropertyTitle: info.title,
-            MPNowPlayingInfoPropertyPlaybackRate: info.playing ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: info.playing ? rate : 0.0,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            MPNowPlayingInfoPropertyIsLiveStream: info.isLive,
         ]
         if let artist = info.artist { values[MPMediaItemPropertyArtist] = artist }
         if let album = info.album { values[MPMediaItemPropertyAlbumTitle] = album }
-        if let duration = info.duration, duration > 0 { values[MPMediaItemPropertyPlaybackDuration] = duration }
-        if let position = info.position { values[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position }
+        if !info.isLive {
+            if let duration = info.duration, duration > 0 { values[MPMediaItemPropertyPlaybackDuration] = duration }
+            if let position = info.position { values[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position }
+        }
         if let artwork = info.artwork { values[MPMediaItemPropertyArtwork] = Self.artwork(artwork) }
         if let index = info.queueIndex, let count = info.queueCount {
             values[MPNowPlayingInfoPropertyPlaybackQueueIndex] = index
