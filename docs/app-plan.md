@@ -76,15 +76,15 @@ Writing workouts to Apple Health is possible later (HealthKit on a free team is 
 
 ### Soundscape
 
-Plans: [architecture.md](../examples/soundscape/docs/architecture.md#work-in-order) (steps 1 to 12), [sources.md](../examples/soundscape/docs/sources.md), [Android ports plan, AntennaPod](research/android-ports.md#3-antennapod--soundscape) (P0 to P4). Player features come before more sources.
+Plans: [architecture.md](../examples/soundscape/docs/architecture.md#work-in-order) (steps 1 to 12), [sources.md](../examples/soundscape/docs/sources.md), [Android ports plan, AntennaPod](research/android-ports.md#3-antennapod--soundscape) (P0 to P4), [podcasts and live radio](../examples/soundscape/docs/podcasts-and-radio.md) (proposal). Player features come before more sources.
 
-1. Step 0: takes (M5), gapless and crossfade, sleep timer, the saved queue after a restart, Identify Song, downloads and licences of catalogue tracks, Archive Add All, and the playlist fixes from #328.
+1. Step 0, **the one list of owed Soundscape phone checks** (other Soundscape plans point here; nothing new starts before it passes): takes (M5), gapless and crossfade, sleep timer, the saved queue after a restart, Identify Song, downloads and licences of catalogue tracks, Archive Add All, the playlist fixes from #328, the redesign's checks ([design.md](../examples/soundscape/docs/design.md), #418), Smart Playlists (#428), Jamendo artist and release pages with functional albums (#444, #445), and no silence when changing song (#447). Each is recorded as it passes; none is assumed.
 2. **A small fixed test catalogue (N4)**, so phone checks don't depend on Jamendo's charts.
 3. **Stable recording ids and the resolver** (steps 5 and 6): the player asks Rust what to play and shows why when nothing can.
 4. **Reconciliation**: linked songs merge into one song with several sources.
 5. **P0 player features**: playback speed, skip amounts, a saved position per item.
 6. **Background downloads and a storage limit** (step 10): the first real feature on the background transfers service, and everyday capabilities phase 3 (kept but not backed up).
-7. Loudness levelling (after measuring on the phone), then podcasts (P1 to P4) as their own section.
+7. Loudness levelling (after measuring on the phone), then podcasts (P1 to P4) as their own section. Live radio (L1, L2) is proposed to come after step 0 and before P0; see [podcasts-and-radio.md](../examples/soundscape/docs/podcasts-and-radio.md).
 
 Syncing the library between devices (step 12) could go over Relay or iCloud **(paid)**; no decision needed yet.
 
@@ -217,7 +217,7 @@ Each row is one capability. "Where it goes" names the package: ForgeUI (SwiftUI 
 | **Share extension** (receive URLs, text, files) | Commonplace | Pocket Library | Template + helper | Spike S2 (App Groups), then both | Spike |
 | **Durable work queue** (stored before sending, retried, recovered) | Relay outbox | Soundscape uploads or podcasts | `forge-runtime` | A second app needs it; Relay's stays its own until then | No |
 | **Background downloads with a storage limit** (the service exists) | Soundscape | Soundscape podcasts, Pocket Library | `forge-services` `transfers` + phase 3 storage class | Soundscape's downloads pass | No |
-| **Feed parsing and OPML** | Commonplace | Soundscape podcasts | A small crate or `forge-net` module | Podcasts (P1) start | No |
+| **Feed parsing and OPML** | Commonplace | Soundscape podcasts (built in Soundscape first) | A small crate or `forge-net` module | Both Commonplace's feeds and Soundscape's podcasts pass on the phone | No |
 | **Speech recognition** | Urdu, Naturally | Relay voice messages | `forge-services` optional | Both pass | No |
 | **Keychain keys the person brings** (the Keychain service exists) | Weather W3 | Soundscape's Jamendo client ID | Recipe | Already shared through the service; nothing to extract | No |
 | **GGUF models with llama.cpp** | AI Lab | Urdu M2 (if needed) | `forge-services` `ai` backend | A second app loads a model | No |
